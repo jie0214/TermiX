@@ -14,6 +14,10 @@ export function CancelConnectTerminal(arg1) {
   return window['go']['app']['App']['CancelConnectTerminal'](arg1);
 }
 
+export function CheckForUpdate() {
+  return window['go']['app']['App']['CheckForUpdate']();
+}
+
 export function CloseKubernetesPodShell(arg1) {
   return window['go']['app']['App']['CloseKubernetesPodShell'](arg1);
 }

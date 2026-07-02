@@ -1,6 +1,7 @@
 // @ts-check
 // @ts-ignore -- 與專案慣例一致，binding facade 以 `.ts` 副檔名匯入；此處僅抑制 TS5097，不改變執行期行為。
 import { requireAppBinding } from '../../platform/wails/bindings.ts';
+import { t } from '../../i18n/index.ts';
 
 /**
  * @typedef {import('../../domain').OperationResult} OperationResult
@@ -16,7 +17,7 @@ function parseOperationPayload(result) {
   if (!Object.prototype.hasOwnProperty.call(result, 'success')) return result;
   const operation = /** @type {OperationResult} */ (result);
   if (!operation.success) {
-    throw new Error(operation.error || '後端操作失敗');
+    throw new Error(operation.error || t('k8s.err.backendOperationFailed'));
   }
   if (!operation.output) return null;
   try {

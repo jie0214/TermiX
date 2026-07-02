@@ -3,6 +3,8 @@
 // 避免被 App 的 innerHTML 重繪清掉，並讓螢幕閱讀器可靠朗讀。
 // 用法：showToast('已套用', { type: 'success' })
 
+import { t } from '../../i18n/index.ts';
+
 // 各 type → 主題色變數（隨淺/深色主題切換，不再寫死深色值）。
 // accent/border 用該語意色，bg 用面板底色混入少量語意色（維持可讀對比）。
 const TOAST_TYPES = {
@@ -83,7 +85,7 @@ export function showToast(message, options = {}) {
       : '';
     // error 類附關閉鈕（可手動移除），其餘維持自動淡出。
     const closeHtml = type === 'error'
-      ? '<button type="button" aria-label="關閉通知" style="position:absolute;top:4px;right:4px;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;padding:0;background:none;border:0;color:var(--color-text);opacity:0.6;font-size:16px;line-height:1;cursor:pointer;">×</button>'
+      ? `<button type="button" aria-label="${escapeHtml(t('misc.toast.closeNotification'))}" style="position:absolute;top:4px;right:4px;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;padding:0;background:none;border:0;color:var(--color-text);opacity:0.6;font-size:16px;line-height:1;cursor:pointer;">×</button>`
       : '';
     toast.innerHTML = `${closeHtml}${titleHtml}<div${type === 'error' ? ' style="padding-right:24px;"' : ''}>${escapeHtml(message)}</div>`;
 

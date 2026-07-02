@@ -6,6 +6,7 @@ import { confirmDialog } from '../../components/feedback/confirmDialog';
 import { showToast } from '../../components/feedback/toast.js';
 import { suppressScrollbarAutohide } from '../../runtime/scrollbarAutohide';
 import { Terminal } from '@xterm/xterm';
+import { t } from '../../i18n/index.ts';
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -178,9 +179,9 @@ function statusBadge(value) {
 
 function dashboardErrorTitle(error, hasSnapshot = false) {
   const message = String(error || '');
-  if (/沒有 list 權限|forbidden|RBAC/i.test(message)) return 'Kubernetes RBAC 權限不足';
-  if (/認證已失效|unauthorized/i.test(message)) return 'Kubernetes 認證已失效';
-  return hasSnapshot ? '重新整理失敗，以下為上次成功資料' : '載入叢集資料失敗';
+  if (/沒有 list 權限|forbidden|RBAC/i.test(message)) return t('k8s.dashboard.errorRbac');
+  if (/認證已失效|unauthorized/i.test(message)) return t('k8s.dashboard.errorUnauthorized');
+  return hasSnapshot ? t('k8s.dashboard.errorRefresh') : t('k8s.dashboard.errorLoad');
 }
 
 function objectEntries(value) {
@@ -533,7 +534,7 @@ export class KubernetesSessionPage extends HTMLElement {
   async guardedCloseCreate() {
     const currentTemplate = kubernetesSessionStore.getState().createResourceYAML;
     const hasUnsavedChanges = this.createYAMLDraft !== null && this.createYAMLDraft !== currentTemplate;
-    if (hasUnsavedChanges && !(await confirmDialog('有未儲存的變更，確定關閉並捨棄？', { title: '確認關閉', danger: true }))) {
+    if (hasUnsavedChanges && !(await confirmDialog(t('k8s.guard.unsavedMessage'), { title: t('k8s.guard.unsavedTitle'), danger: true }))) {
       return;
     }
     this.createYAMLDraft = null;
@@ -545,7 +546,7 @@ export class KubernetesSessionPage extends HTMLElement {
   async guardedCloseDetail() {
     const original = String(kubernetesSessionStore.getState().resourceDetail?.yaml || '');
     const hasUnsavedChanges = this.yamlEditing && this.yamlEditDraft !== null && this.yamlEditDraft !== original;
-    if (hasUnsavedChanges && !(await confirmDialog('有未儲存的變更，確定關閉並捨棄？', { title: '確認關閉', danger: true }))) {
+    if (hasUnsavedChanges && !(await confirmDialog(t('k8s.guard.unsavedMessage'), { title: t('k8s.guard.unsavedTitle'), danger: true }))) {
       return;
     }
     this.yamlEditing = false;
@@ -597,8 +598,8 @@ export class KubernetesSessionPage extends HTMLElement {
           ${this.renderMetricCard('Memory Usage', formatBytes(metrics.memoryUsageBytes), formatBytes(metrics.memoryCapacityBytes), memoryPercent, 'memory')}
         ` : `
           <div class="kubernetes-metrics-unavailable" role="status">
-            <strong>Metrics API 無法使用</strong>
-            <span>${escapeHtml(metrics.error || '叢集未回傳 CPU 與 Memory 使用量。')}</span>
+            <strong>${t('k8s.metrics.unavailable')}</strong>
+            <span>${escapeHtml(metrics.error || t('k8s.metrics.unavailableDetail'))}</span>
           </div>
         `}
       </section>
@@ -749,7 +750,7 @@ export class KubernetesSessionPage extends HTMLElement {
     };
     const resourceError = dashboard.resourceErrors?.[section];
     if (resourceError) {
-      return `<div class="kubernetes-session-error kubernetes-resource-section-error" role="alert"><strong>${escapeHtml(SECTIONS.find(([id]) => id === section)?.[1] || 'Kubernetes 資源')} 無法讀取</strong><span>${escapeHtml(resourceError)}</span></div>`;
+      return `<div class="kubernetes-session-error kubernetes-resource-section-error" role="alert"><strong>${escapeHtml(SECTIONS.find(([id]) => id === section)?.[1] || t('k8s.resource.genericName'))} ${t('k8s.resource.loadFailedSuffix')}</strong><span>${escapeHtml(resourceError)}</span></div>`;
     }
     if (section === 'pods') return this.renderPodsTable(dashboard.pods || [], metricsAvailable);
     if (section === 'namespaces') return this.renderNamespacesTable(dashboard.namespaceDetails || []);
@@ -777,10 +778,10 @@ export class KubernetesSessionPage extends HTMLElement {
     if (items.length === 0) {
       // cluster-scoped section（nodes / persistentVolumes / storageClasses）維持「叢集沒有可顯示的 X」；
       // namespaced 則用「目前篩選範圍沒有此類資源」（多選/All 模式語意正確）。
-      const clusterScopedEmpty = { nodes: '叢集沒有可顯示的 Node。', persistentVolumes: '叢集沒有可顯示的 Persistent Volume。', storageClasses: '叢集沒有可顯示的 Storage Class。' };
+      const clusterScopedEmpty = { nodes: t('k8s.empty.nodes'), persistentVolumes: t('k8s.empty.persistentVolumes'), storageClasses: t('k8s.empty.storageClasses') };
       const emptyText = this.tableSearch[section]
-        ? '沒有符合的資源。'
-        : (clusterScopedEmpty[section] || '目前篩選範圍沒有此類資源。');
+        ? t('k8s.empty.noMatch')
+        : (clusterScopedEmpty[section] || t('k8s.empty.noResourcesInScope'));
       return `${this.renderSectionRefresh(section)}<div class="kubernetes-resource-empty">${emptyText}</div>`;
     }
     // 通用表格所有欄皆可排序：creationTimestamp 依時間、已知數值欄依數值，其餘依字串。
@@ -788,10 +789,10 @@ export class KubernetesSessionPage extends HTMLElement {
       ${this.renderSectionRefresh(section)}
       <div class="kubernetes-resource-table-wrap">
         <table class="kubernetes-resource-table">
-          <caption class="kubernetes-table-caption">${escapeHtml(SECTIONS.find(([id]) => id === section)?.[1] || 'Kubernetes Resources')}</caption>
+          <caption class="kubernetes-table-caption">${escapeHtml(SECTIONS.find(([id]) => id === section)?.[1] || t('k8s.resource.fallback'))}</caption>
           <thead><tr>${definition.columns.map(([key, label]) => this.sortableTh(section, key, label, { type: sortTypeForKey(key) })).join('')}</tr></thead>
           <tbody>${items.map(item => `
-            <tr class="kubernetes-resource-row" tabindex="0" role="button" data-resource-kind="${RESOURCE_KINDS[section]}" data-resource-name="${escapeHtml(item.name)}" data-resource-namespace="${escapeHtml(item.namespace || '')}" data-resource-apiversion="${escapeHtml(RESOURCE_META[section]?.apiVersion || '')}" aria-label="查看 ${escapeHtml(item.name)} 詳細資訊">${definition.columns.map(([key, , formatter]) => (!formatter && ELLIPSIS_KEYS.has(key)) ? this.ellipsisCell(item[key]) : `<td>${formatter ? formatter(item[key]) : escapeHtml(item[key] ?? '-')}</td>`).join('')}</tr>
+            <tr class="kubernetes-resource-row" tabindex="0" role="button" data-resource-kind="${RESOURCE_KINDS[section]}" data-resource-name="${escapeHtml(item.name)}" data-resource-namespace="${escapeHtml(item.namespace || '')}" data-resource-apiversion="${escapeHtml(RESOURCE_META[section]?.apiVersion || '')}" aria-label="${t('k8s.row.viewDetailAria', { name: escapeHtml(item.name) })}">${definition.columns.map(([key, , formatter]) => (!formatter && ELLIPSIS_KEYS.has(key)) ? this.ellipsisCell(item[key]) : `<td>${formatter ? formatter(item[key]) : escapeHtml(item[key] ?? '-')}</td>`).join('')}</tr>
           `).join('')}</tbody>
         </table>
       </div>`;
@@ -802,7 +803,7 @@ export class KubernetesSessionPage extends HTMLElement {
     // 通用搜尋框（Pods 除外，Pods 有自己的搜尋 + 狀態 filter）：對目前 section 清單過濾 name/namespace。
     const term = escapeHtml(this.tableSearch[section] || '');
     return `<div class="kubernetes-section-toolbar">
-      <div class="kubernetes-section-search no-drag"><span class="kubernetes-section-search-icon" aria-hidden="true">${renderKubernetesIcon('search', 14)}</span><input id="kubernetesSectionSearch" class="no-drag" data-section-search="${escapeHtml(section)}" value="${term}" placeholder="搜尋名稱…" aria-label="搜尋資源名稱"></div>
+      <div class="kubernetes-section-search no-drag"><span class="kubernetes-section-search-icon" aria-hidden="true">${renderKubernetesIcon('search', 14)}</span><input id="kubernetesSectionSearch" class="no-drag" data-section-search="${escapeHtml(section)}" value="${term}" placeholder="${t('k8s.table.searchNamePlaceholder')}" aria-label="${t('k8s.table.searchNameAria')}"></div>
       ${this.renderRefreshButton('refreshKubernetesSection')}
     </div>`;
   }
@@ -811,7 +812,7 @@ export class KubernetesSessionPage extends HTMLElement {
   // 避免重複點擊並提供回饋（Pods 與各 section 共用）。
   renderRefreshButton(id) {
     const busy = this.manualRefreshing;
-    return `<button type="button" id="${id}" class="no-drag kubernetes-secondary-btn" ${busy ? 'disabled aria-busy="true"' : ''}>${busy ? '<span class="kubernetes-spinner-mini kubernetes-refresh-spinner" aria-hidden="true"></span><span>更新中…</span>' : 'Refresh'}</button>`;
+    return `<button type="button" id="${id}" class="no-drag kubernetes-secondary-btn" ${busy ? 'disabled aria-busy="true"' : ''}>${busy ? `<span class="kubernetes-spinner-mini kubernetes-refresh-spinner" aria-hidden="true"></span><span>${t('k8s.refresh.busy')}</span>` : t('common.refresh')}</button>`;
   }
 
   // 依 namespace 名稱以決定性方式（簡單字串 hash）從固定調色盤取色，
@@ -832,7 +833,7 @@ export class KubernetesSessionPage extends HTMLElement {
   // cluster-scoped 資源 namespace 留空。extraClass/extraStyle 供既有色條列併存。
   resourceRowAttrs(section, name, namespace, extraStyle = '') {
     const meta = RESOURCE_META[section] || {};
-    return `class="kubernetes-resource-row" tabindex="0" role="button"${extraStyle ? ` style="${extraStyle}"` : ''} data-resource-kind="${escapeHtml(meta.kind || '')}" data-resource-name="${escapeHtml(name ?? '')}" data-resource-namespace="${escapeHtml(namespace || '')}" data-resource-apiversion="${escapeHtml(meta.apiVersion || '')}" aria-label="查看 ${escapeHtml(name ?? '')} 詳細資訊"`;
+    return `class="kubernetes-resource-row" tabindex="0" role="button"${extraStyle ? ` style="${extraStyle}"` : ''} data-resource-kind="${escapeHtml(meta.kind || '')}" data-resource-name="${escapeHtml(name ?? '')}" data-resource-namespace="${escapeHtml(namespace || '')}" data-resource-apiversion="${escapeHtml(meta.apiVersion || '')}" aria-label="${t('k8s.row.viewDetailAria', { name: escapeHtml(name ?? '') })}"`;
   }
 
   // 產生一列 namespace 儲存格內容：色點 + namespace 文字標籤。
@@ -850,13 +851,13 @@ export class KubernetesSessionPage extends HTMLElement {
     const isAll = selected.length === 0;
     const specific = namespaces.filter(item => item !== '*');
     let summary;
-    if (isAll) summary = 'All Namespaces';
+    if (isAll) summary = t('k8s.namespace.all');
     else if (selected.length === 1) summary = selected[0];
-    else summary = `${selected.length} 個 namespace`;
+    else summary = t('k8s.namespace.countSelected', { count: selected.length });
     // cluster-scoped section 不受 namespace 篩選，停用整個多選控制項並加提示。
     const clusterScoped = CLUSTER_SCOPED_SECTIONS.has(state.activeSection || '');
     const disabled = (state.dashboardLoading || clusterScoped) ? 'disabled' : '';
-    const scopeHint = clusterScoped ? ' title="此資源不受 namespace 篩選"' : '';
+    const scopeHint = clusterScoped ? ` title="${t('k8s.namespace.scopeHint')}"` : '';
     const open = clusterScoped ? false : this.namespaceDropdownOpen;
     const legacyValue = isAll ? '*' : (selected.length === 1 ? selected[0] : '*');
     const options = specific.map(item => {
@@ -865,17 +866,17 @@ export class KubernetesSessionPage extends HTMLElement {
       return `<label class="kubernetes-namespace-option no-drag"><input type="checkbox" class="no-drag" data-namespace-option value="${escapeHtml(item)}" ${checked} ${disabled}><span class="kubernetes-namespace-dot" style="background:${color}" aria-hidden="true"></span><span>${escapeHtml(item)}</span></label>`;
     }).join('');
     return `<div class="kubernetes-namespace-field kubernetes-namespace-multiselect${clusterScoped ? ' cluster-scoped' : ''}" data-namespace-multiselect${scopeHint}>
-      <span id="kubernetesNamespaceLabel">Namespace</span>
+      <span id="kubernetesNamespaceLabel">${t('k8s.namespace.label')}</span>
       <button type="button" id="kubernetesNamespaceToggle" class="no-drag kubernetes-namespace-toggle" aria-haspopup="true" aria-expanded="${open ? 'true' : 'false'}" aria-labelledby="kubernetesNamespaceLabel kubernetesNamespaceToggle"${scopeHint} ${disabled}>
         <span class="kubernetes-namespace-summary">${escapeHtml(summary)}</span>
         <span class="kubernetes-namespace-caret" aria-hidden="true">▾</span>
       </button>
-      <div class="kubernetes-namespace-panel ${open ? 'open' : ''}" role="group" aria-label="選擇 Namespace" ${open ? '' : 'hidden'}>
-        <label class="kubernetes-namespace-option no-drag"><input type="checkbox" class="no-drag" data-namespace-all ${isAll ? 'checked' : ''} ${disabled}><span>All Namespaces</span></label>
+      <div class="kubernetes-namespace-panel ${open ? 'open' : ''}" role="group" aria-label="${t('k8s.namespace.selectAria')}" ${open ? '' : 'hidden'}>
+        <label class="kubernetes-namespace-option no-drag"><input type="checkbox" class="no-drag" data-namespace-all ${isAll ? 'checked' : ''} ${disabled}><span>${t('k8s.namespace.all')}</span></label>
         ${options}
       </div>
-      <select id="kubernetesNamespaceSelect" class="no-drag kubernetes-visually-hidden" tabindex="-1" aria-hidden="true" ${disabled}>${namespaces.map(item => `<option value="${escapeHtml(item)}" ${item === legacyValue ? 'selected' : ''}>${item === '*' ? 'All Namespaces' : escapeHtml(item)}</option>`).join('')}</select>
-      ${clusterScoped ? '<small class="kubernetes-namespace-note">此資源不受 namespace 篩選</small>' : ''}
+      <select id="kubernetesNamespaceSelect" class="no-drag kubernetes-visually-hidden" tabindex="-1" aria-hidden="true" ${disabled}>${namespaces.map(item => `<option value="${escapeHtml(item)}" ${item === legacyValue ? 'selected' : ''}>${item === '*' ? t('k8s.namespace.all') : escapeHtml(item)}</option>`).join('')}</select>
+      ${clusterScoped ? `<small class="kubernetes-namespace-note">${t('k8s.namespace.scopeHint')}</small>` : ''}
     </div>`;
   }
 
@@ -906,16 +907,16 @@ export class KubernetesSessionPage extends HTMLElement {
     });
     // 先過濾（狀態 filter + 既有 Pod 搜尋）再排序（走通用穩定排序）。
     const visible = this.applyTableSort('pods', filtered);
-    const filters = [['all', 'All'], ['running', 'Running'], ['pending', 'Pending'], ['unhealthy', 'Unhealthy'], ['failed', 'Failed'], ['succeeded', 'Succeeded']];
+    const filters = [['all', t('k8s.pods.filter.all')], ['running', t('k8s.pods.filter.running')], ['pending', t('k8s.pods.filter.pending')], ['unhealthy', t('k8s.pods.filter.unhealthy')], ['failed', t('k8s.pods.filter.failed')], ['succeeded', t('k8s.pods.filter.succeeded')]];
     return `<section class="kubernetes-pods-view">
-      <div class="kubernetes-pods-toolbar"><div class="kubernetes-pod-filters">${filters.map(([id, label]) => `<button type="button" data-pod-filter="${id}" class="no-drag ${this.podFilter === id ? 'active' : ''}">${label} ${counts[id]}</button>`).join('')}</div><div class="kubernetes-pod-tools"><input id="kubernetesPodSearch" class="no-drag" value="${escapeHtml(this.podSearch)}" placeholder="搜尋 Pod"><span class="kubernetes-watching">Watching</span>${this.renderRefreshButton('refreshKubernetesPods')}</div></div>
+      <div class="kubernetes-pods-toolbar"><div class="kubernetes-pod-filters">${filters.map(([id, label]) => `<button type="button" data-pod-filter="${id}" class="no-drag ${this.podFilter === id ? 'active' : ''}">${label} ${counts[id]}</button>`).join('')}</div><div class="kubernetes-pod-tools"><input id="kubernetesPodSearch" class="no-drag" value="${escapeHtml(this.podSearch)}" placeholder="${t('k8s.pods.searchPlaceholder')}"><span class="kubernetes-watching">${t('k8s.pods.watching')}</span>${this.renderRefreshButton('refreshKubernetesPods')}</div></div>
       <div class="kubernetes-resource-table-wrap kubernetes-pods-table-wrap"><table class="kubernetes-resource-table kubernetes-pods-table"><thead><tr>${this.sortableTh('pods', 'name', 'Name')}${this.sortableTh('pods', 'namespace', 'Namespace')}<th scope="col">Ready</th>${this.sortableTh('pods', 'status', 'Status')}${this.sortableTh('pods', 'restarts', 'Restarts', { type: 'number' })}<th scope="col">Node</th>${this.sortableTh('pods', 'creationTimestamp', 'Age', { type: 'time' })}${this.sortableTh('pods', 'cpuUsageMilli', 'CPU', { type: 'number' })}${this.sortableTh('pods', 'memoryUsageBytes', 'Memory', { type: 'number' })}<th scope="col">Actions</th></tr></thead><tbody>
       ${visible.map(pod => {
         const container = pod.containers?.[0]?.name || '';
         const running = String(pod.phase || '').toLowerCase() === 'running';
         const hasPorts = (pod.containers || []).some(item => item.ports?.length);
         const encoded = encodeURIComponent(JSON.stringify(pod));
-        return `<tr class="kubernetes-resource-row" tabindex="0" role="button" aria-label="查看 ${escapeHtml(pod.name)} 詳細資訊" style="border-left-color:${this.namespaceColor(pod.namespace)}" data-resource-kind="pod" data-resource-name="${escapeHtml(pod.name)}" data-resource-namespace="${escapeHtml(pod.namespace)}" data-resource-apiversion="v1">${this.ellipsisCell(pod.name)}<td>${this.renderNamespaceCell(pod.namespace)}</td><td>${escapeHtml(pod.ready)}</td><td>${statusBadge(pod.status)}</td><td>${pod.restarts || 0}</td><td>${escapeHtml(pod.nodeName || '-')}</td><td>${formatAge(pod.creationTimestamp)}</td><td>${metricsAvailable ? formatCPU(pod.cpuUsageMilli) : '-'}</td><td>${metricsAvailable ? formatBytes(pod.memoryUsageBytes) : '-'}</td><td class="kubernetes-pod-actions"><button data-pod-action="logs" data-pod="${encoded}" data-container="${escapeHtml(container)}" ${container ? '' : 'disabled'}>Logs</button><button data-pod-action="shell" data-pod="${encoded}" data-container="${escapeHtml(container)}" ${running && container ? '' : 'disabled'}>Shell</button><button data-pod-action="forward" data-pod="${encoded}" ${running && hasPorts ? '' : 'disabled'}>Forward</button></td></tr>`;
+        return `<tr class="kubernetes-resource-row" tabindex="0" role="button" aria-label="${t('k8s.row.viewDetailAria', { name: escapeHtml(pod.name) })}" style="border-left-color:${this.namespaceColor(pod.namespace)}" data-resource-kind="pod" data-resource-name="${escapeHtml(pod.name)}" data-resource-namespace="${escapeHtml(pod.namespace)}" data-resource-apiversion="v1">${this.ellipsisCell(pod.name)}<td>${this.renderNamespaceCell(pod.namespace)}</td><td>${escapeHtml(pod.ready)}</td><td>${statusBadge(pod.status)}</td><td>${pod.restarts || 0}</td><td>${escapeHtml(pod.nodeName || '-')}</td><td>${formatAge(pod.creationTimestamp)}</td><td>${metricsAvailable ? formatCPU(pod.cpuUsageMilli) : '-'}</td><td>${metricsAvailable ? formatBytes(pod.memoryUsageBytes) : '-'}</td><td class="kubernetes-pod-actions"><button data-pod-action="logs" data-pod="${encoded}" data-container="${escapeHtml(container)}" ${container ? '' : 'disabled'}>Logs</button><button data-pod-action="shell" data-pod="${encoded}" data-container="${escapeHtml(container)}" ${running && container ? '' : 'disabled'}>Shell</button><button data-pod-action="forward" data-pod="${encoded}" ${running && hasPorts ? '' : 'disabled'}>Forward</button></td></tr>`;
       }).join('')}</tbody></table></div></section>`;
   }
 
@@ -923,13 +924,13 @@ export class KubernetesSessionPage extends HTMLElement {
     const pod = state.selectedResource || {};
     const action = state.podActionView || {};
     if (action.type === 'logs') {
-      return `<section class="kubernetes-pod-action-view"><header><button id="closeKubernetesPodAction" class="no-drag kubernetes-secondary-btn">返回 Pods</button><div><h1>Logs：${escapeHtml(pod.name)}</h1><p>${escapeHtml(pod.namespace)} / ${escapeHtml(action.container)}</p></div><span class="kubernetes-watching">${this.logPaused ? 'Paused' : 'Streaming'}</span></header>${this.renderLogsPanel(state, [action.container].filter(Boolean), action.container, 'action')}</section>`;
+      return `<section class="kubernetes-pod-action-view"><header><button id="closeKubernetesPodAction" class="no-drag kubernetes-secondary-btn">${t('k8s.podAction.backToPods')}</button><div><h1>${t('k8s.podAction.logsTitle', { name: escapeHtml(pod.name) })}</h1><p>${escapeHtml(pod.namespace)} / ${escapeHtml(action.container)}</p></div><span class="kubernetes-watching">${this.logPaused ? t('k8s.podAction.paused') : t('k8s.podAction.streaming')}</span></header>${this.renderLogsPanel(state, [action.container].filter(Boolean), action.container, 'action')}</section>`;
     }
-    return `<section class="kubernetes-pod-action-view kubernetes-shell-view"><header><button id="closeKubernetesPodAction" class="no-drag kubernetes-secondary-btn">返回 Pods</button><div><h1>Shell：${escapeHtml(pod.name)}</h1><p>${escapeHtml(pod.namespace)} / ${escapeHtml(action.container)}</p></div></header><div id="kubernetesPodShellTerminal" class="kubernetes-pod-shell-terminal"></div></section>`;
+    return `<section class="kubernetes-pod-action-view kubernetes-shell-view"><header><button id="closeKubernetesPodAction" class="no-drag kubernetes-secondary-btn">${t('k8s.podAction.backToPods')}</button><div><h1>${t('k8s.podAction.shellTitle', { name: escapeHtml(pod.name) })}</h1><p>${escapeHtml(pod.namespace)} / ${escapeHtml(action.container)}</p></div></header><div id="kubernetesPodShellTerminal" class="kubernetes-pod-shell-terminal"></div></section>`;
   }
 
   renderEventsTable(events) {
-    if (!events.length) return '<div class="kubernetes-resource-empty">目前 Namespace 沒有事件。</div>';
+    if (!events.length) return `<div class="kubernetes-resource-empty">${t('k8s.empty.noEvents')}</div>`;
     // 統一事件時間欄位（後端可能給 timestamp / time / lastTimestamp / eventTime），
     // 供顯示（formatAge 相對時間）與排序（_eventTime，Date.parse）共用。
     const withTime = events.map(event => ({
@@ -947,9 +948,9 @@ export class KubernetesSessionPage extends HTMLElement {
     return `
       <div class="kubernetes-events-toolbar">
         <label class="kubernetes-events-filter no-drag">
-          <span>Type</span>
-          <select id="kubernetesEventsTypeFilter" class="no-drag" aria-label="依事件類型篩選">
-            ${filterOption('all', 'All')}${filterOption('Warning', 'Warning')}${filterOption('Normal', 'Normal')}
+          <span>${t('k8s.events.type')}</span>
+          <select id="kubernetesEventsTypeFilter" class="no-drag" aria-label="${t('k8s.events.filterAria')}">
+            ${filterOption('all', t('k8s.events.typeAll'))}${filterOption('Warning', t('k8s.events.typeWarning'))}${filterOption('Normal', t('k8s.events.typeNormal'))}
           </select>
         </label>
       </div>
@@ -963,7 +964,7 @@ export class KubernetesSessionPage extends HTMLElement {
             ${this.ellipsisCell(event.object || event.involvedObject)}
             <td class="kubernetes-event-message">${escapeHtml(event.message || '-')}</td>
             <td${event._eventTime ? ` title="${escapeHtml(event._eventTime)}"` : ''}>${event._eventTime ? formatAge(event._eventTime) : '-'}</td>
-          </tr>`).join('') : '<tr><td colspan="5" class="kubernetes-events-empty">沒有符合的事件。</td></tr>'}</tbody>
+          </tr>`).join('') : `<tr><td colspan="5" class="kubernetes-events-empty">${t('k8s.empty.noMatchingEvents')}</td></tr>`}</tbody>
         </table>
       </div>`;
   }
@@ -973,7 +974,7 @@ export class KubernetesSessionPage extends HTMLElement {
   renderNamespacesTable(allNamespaces) {
     const namespaces = this.applyTableSort('namespaces', this.applyTableSearch('namespaces', allNamespaces));
     if (!namespaces.length) {
-      return `${this.renderSectionRefresh('namespaces')}<div class="kubernetes-resource-empty">${this.tableSearch.namespaces ? '沒有符合的資源。' : '叢集沒有可顯示的 Namespace。'}</div>`;
+      return `${this.renderSectionRefresh('namespaces')}<div class="kubernetes-resource-empty">${this.tableSearch.namespaces ? t('k8s.empty.noMatch') : t('k8s.empty.namespaces')}</div>`;
     }
     return `
       ${this.renderSectionRefresh('namespaces')}
@@ -1000,7 +1001,7 @@ export class KubernetesSessionPage extends HTMLElement {
       : allConfigMaps.filter(item => namespaceSet.has(item.namespace));
     const configMaps = this.applyTableSort('configMaps', this.applyTableSearch('configMaps', nsFiltered));
     if (!configMaps.length) {
-      return `${this.renderSectionRefresh('configMaps')}<div class="kubernetes-resource-empty">${this.tableSearch.configMaps ? '沒有符合的資源。' : '目前篩選範圍沒有此類資源。'}</div>`;
+      return `${this.renderSectionRefresh('configMaps')}<div class="kubernetes-resource-empty">${this.tableSearch.configMaps ? t('k8s.empty.noMatch') : t('k8s.empty.noResourcesInScope')}</div>`;
     }
     return `
       ${this.renderSectionRefresh('configMaps')}
@@ -1029,7 +1030,7 @@ export class KubernetesSessionPage extends HTMLElement {
       : allSecrets.filter(item => namespaceSet.has(item.namespace));
     const secrets = this.applyTableSort('secrets', this.applyTableSearch('secrets', nsFiltered));
     if (!secrets.length) {
-      return `${this.renderSectionRefresh('secrets')}<div class="kubernetes-resource-empty">${this.tableSearch.secrets ? '沒有符合的資源。' : '目前篩選範圍沒有此類資源。'}</div>`;
+      return `${this.renderSectionRefresh('secrets')}<div class="kubernetes-resource-empty">${this.tableSearch.secrets ? t('k8s.empty.noMatch') : t('k8s.empty.noResourcesInScope')}</div>`;
     }
     return `
       ${this.renderSectionRefresh('secrets')}
@@ -1058,7 +1059,7 @@ export class KubernetesSessionPage extends HTMLElement {
       : allDaemonSets.filter(item => namespaceSet.has(item.namespace));
     const daemonSets = this.applyTableSort('daemonSets', this.applyTableSearch('daemonSets', nsFiltered));
     if (!daemonSets.length) {
-      return `${this.renderSectionRefresh('daemonSets')}<div class="kubernetes-resource-empty">${this.tableSearch.daemonSets ? '沒有符合的資源。' : '目前篩選範圍沒有此類資源。'}</div>`;
+      return `${this.renderSectionRefresh('daemonSets')}<div class="kubernetes-resource-empty">${this.tableSearch.daemonSets ? t('k8s.empty.noMatch') : t('k8s.empty.noResourcesInScope')}</div>`;
     }
     return `
       ${this.renderSectionRefresh('daemonSets')}
@@ -1087,7 +1088,7 @@ export class KubernetesSessionPage extends HTMLElement {
       : allJobs.filter(item => namespaceSet.has(item.namespace));
     const jobs = this.applyTableSort('jobs', this.applyTableSearch('jobs', nsFiltered));
     if (!jobs.length) {
-      return `${this.renderSectionRefresh('jobs')}<div class="kubernetes-resource-empty">${this.tableSearch.jobs ? '沒有符合的資源。' : '目前篩選範圍沒有此類資源。'}</div>`;
+      return `${this.renderSectionRefresh('jobs')}<div class="kubernetes-resource-empty">${this.tableSearch.jobs ? t('k8s.empty.noMatch') : t('k8s.empty.noResourcesInScope')}</div>`;
     }
     return `
       ${this.renderSectionRefresh('jobs')}
@@ -1116,7 +1117,7 @@ export class KubernetesSessionPage extends HTMLElement {
       : allCronJobs.filter(item => namespaceSet.has(item.namespace));
     const cronJobs = this.applyTableSort('cronJobs', this.applyTableSearch('cronJobs', nsFiltered));
     if (!cronJobs.length) {
-      return `${this.renderSectionRefresh('cronJobs')}<div class="kubernetes-resource-empty">${this.tableSearch.cronJobs ? '沒有符合的資源。' : '目前篩選範圍沒有此類資源。'}</div>`;
+      return `${this.renderSectionRefresh('cronJobs')}<div class="kubernetes-resource-empty">${this.tableSearch.cronJobs ? t('k8s.empty.noMatch') : t('k8s.empty.noResourcesInScope')}</div>`;
     }
     return `
       ${this.renderSectionRefresh('cronJobs')}
@@ -1146,7 +1147,7 @@ export class KubernetesSessionPage extends HTMLElement {
       : allEndpoints.filter(item => namespaceSet.has(item.namespace));
     const endpoints = this.applyTableSort('endpoints', this.applyTableSearch('endpoints', nsFiltered));
     if (!endpoints.length) {
-      return `${this.renderSectionRefresh('endpoints')}<div class="kubernetes-resource-empty">${this.tableSearch.endpoints ? '沒有符合的資源。' : '目前篩選範圍沒有此類資源。'}</div>`;
+      return `${this.renderSectionRefresh('endpoints')}<div class="kubernetes-resource-empty">${this.tableSearch.endpoints ? t('k8s.empty.noMatch') : t('k8s.empty.noResourcesInScope')}</div>`;
     }
     return `
       ${this.renderSectionRefresh('endpoints')}
@@ -1174,7 +1175,7 @@ export class KubernetesSessionPage extends HTMLElement {
       : allPolicies.filter(item => namespaceSet.has(item.namespace));
     const policies = this.applyTableSort('networkPolicies', this.applyTableSearch('networkPolicies', nsFiltered));
     if (!policies.length) {
-      return `${this.renderSectionRefresh('networkPolicies')}<div class="kubernetes-resource-empty">${this.tableSearch.networkPolicies ? '沒有符合的資源。' : '目前篩選範圍沒有此類資源。'}</div>`;
+      return `${this.renderSectionRefresh('networkPolicies')}<div class="kubernetes-resource-empty">${this.tableSearch.networkPolicies ? t('k8s.empty.noMatch') : t('k8s.empty.noResourcesInScope')}</div>`;
     }
     return `
       ${this.renderSectionRefresh('networkPolicies')}
@@ -1203,7 +1204,7 @@ export class KubernetesSessionPage extends HTMLElement {
       : allServiceAccounts.filter(item => namespaceSet.has(item.namespace));
     const serviceAccounts = this.applyTableSort('serviceAccounts', this.applyTableSearch('serviceAccounts', nsFiltered));
     if (!serviceAccounts.length) {
-      return `${this.renderSectionRefresh('serviceAccounts')}<div class="kubernetes-resource-empty">${this.tableSearch.serviceAccounts ? '沒有符合的資源。' : '目前篩選範圍沒有此類資源。'}</div>`;
+      return `${this.renderSectionRefresh('serviceAccounts')}<div class="kubernetes-resource-empty">${this.tableSearch.serviceAccounts ? t('k8s.empty.noMatch') : t('k8s.empty.noResourcesInScope')}</div>`;
     }
     return `
       ${this.renderSectionRefresh('serviceAccounts')}
@@ -1231,7 +1232,7 @@ export class KubernetesSessionPage extends HTMLElement {
       : allRoles.filter(item => namespaceSet.has(item.namespace));
     const roles = this.applyTableSort('roles', this.applyTableSearch('roles', nsFiltered));
     if (!roles.length) {
-      return `${this.renderSectionRefresh('roles')}<div class="kubernetes-resource-empty">${this.tableSearch.roles ? '沒有符合的資源。' : '目前篩選範圍沒有此類資源。'}</div>`;
+      return `${this.renderSectionRefresh('roles')}<div class="kubernetes-resource-empty">${this.tableSearch.roles ? t('k8s.empty.noMatch') : t('k8s.empty.noResourcesInScope')}</div>`;
     }
     return `
       ${this.renderSectionRefresh('roles')}
@@ -1259,7 +1260,7 @@ export class KubernetesSessionPage extends HTMLElement {
       : allRoleBindings.filter(item => namespaceSet.has(item.namespace));
     const roleBindings = this.applyTableSort('roleBindings', this.applyTableSearch('roleBindings', nsFiltered));
     if (!roleBindings.length) {
-      return `${this.renderSectionRefresh('roleBindings')}<div class="kubernetes-resource-empty">${this.tableSearch.roleBindings ? '沒有符合的資源。' : '目前篩選範圍沒有此類資源。'}</div>`;
+      return `${this.renderSectionRefresh('roleBindings')}<div class="kubernetes-resource-empty">${this.tableSearch.roleBindings ? t('k8s.empty.noMatch') : t('k8s.empty.noResourcesInScope')}</div>`;
     }
     return `
       ${this.renderSectionRefresh('roleBindings')}
@@ -1283,7 +1284,7 @@ export class KubernetesSessionPage extends HTMLElement {
   renderClusterRolesTable(allClusterRoles) {
     const clusterRoles = this.applyTableSort('clusterRoles', this.applyTableSearch('clusterRoles', allClusterRoles));
     if (!clusterRoles.length) {
-      return `${this.renderSectionRefresh('clusterRoles')}<div class="kubernetes-resource-empty">${this.tableSearch.clusterRoles ? '沒有符合的資源。' : '叢集沒有可顯示的 Cluster Role。'}</div>`;
+      return `${this.renderSectionRefresh('clusterRoles')}<div class="kubernetes-resource-empty">${this.tableSearch.clusterRoles ? t('k8s.empty.noMatch') : t('k8s.empty.clusterRoles')}</div>`;
     }
     return `
       ${this.renderSectionRefresh('clusterRoles')}
@@ -1305,7 +1306,7 @@ export class KubernetesSessionPage extends HTMLElement {
   renderClusterRoleBindingsTable(allClusterRoleBindings) {
     const clusterRoleBindings = this.applyTableSort('clusterRoleBindings', this.applyTableSearch('clusterRoleBindings', allClusterRoleBindings));
     if (!clusterRoleBindings.length) {
-      return `${this.renderSectionRefresh('clusterRoleBindings')}<div class="kubernetes-resource-empty">${this.tableSearch.clusterRoleBindings ? '沒有符合的資源。' : '叢集沒有可顯示的 Cluster Role Binding。'}</div>`;
+      return `${this.renderSectionRefresh('clusterRoleBindings')}<div class="kubernetes-resource-empty">${this.tableSearch.clusterRoleBindings ? t('k8s.empty.noMatch') : t('k8s.empty.clusterRoleBindings')}</div>`;
     }
     return `
       ${this.renderSectionRefresh('clusterRoleBindings')}
@@ -1333,7 +1334,7 @@ export class KubernetesSessionPage extends HTMLElement {
       : allHpas.filter(item => namespaceSet.has(item.namespace));
     const hpas = this.applyTableSort('horizontalPodAutoscalers', this.applyTableSearch('horizontalPodAutoscalers', nsFiltered));
     if (!hpas.length) {
-      return `${this.renderSectionRefresh('horizontalPodAutoscalers')}<div class="kubernetes-resource-empty">${this.tableSearch.horizontalPodAutoscalers ? '沒有符合的資源。' : '目前篩選範圍沒有此類資源。'}</div>`;
+      return `${this.renderSectionRefresh('horizontalPodAutoscalers')}<div class="kubernetes-resource-empty">${this.tableSearch.horizontalPodAutoscalers ? t('k8s.empty.noMatch') : t('k8s.empty.noResourcesInScope')}</div>`;
     }
     return `
       ${this.renderSectionRefresh('horizontalPodAutoscalers')}
@@ -1364,7 +1365,7 @@ export class KubernetesSessionPage extends HTMLElement {
       : allPdbs.filter(item => namespaceSet.has(item.namespace));
     const pdbs = this.applyTableSort('podDisruptionBudgets', this.applyTableSearch('podDisruptionBudgets', nsFiltered));
     if (!pdbs.length) {
-      return `${this.renderSectionRefresh('podDisruptionBudgets')}<div class="kubernetes-resource-empty">${this.tableSearch.podDisruptionBudgets ? '沒有符合的資源。' : '目前篩選範圍沒有此類資源。'}</div>`;
+      return `${this.renderSectionRefresh('podDisruptionBudgets')}<div class="kubernetes-resource-empty">${this.tableSearch.podDisruptionBudgets ? t('k8s.empty.noMatch') : t('k8s.empty.noResourcesInScope')}</div>`;
     }
     return `
       ${this.renderSectionRefresh('podDisruptionBudgets')}
@@ -1394,7 +1395,7 @@ export class KubernetesSessionPage extends HTMLElement {
       : allQuotas.filter(item => namespaceSet.has(item.namespace));
     const quotas = this.applyTableSort('resourceQuotas', this.applyTableSearch('resourceQuotas', nsFiltered));
     if (!quotas.length) {
-      return `${this.renderSectionRefresh('resourceQuotas')}<div class="kubernetes-resource-empty">${this.tableSearch.resourceQuotas ? '沒有符合的資源。' : '目前篩選範圍沒有此類資源。'}</div>`;
+      return `${this.renderSectionRefresh('resourceQuotas')}<div class="kubernetes-resource-empty">${this.tableSearch.resourceQuotas ? t('k8s.empty.noMatch') : t('k8s.empty.noResourcesInScope')}</div>`;
     }
     return `
       ${this.renderSectionRefresh('resourceQuotas')}
@@ -1417,7 +1418,7 @@ export class KubernetesSessionPage extends HTMLElement {
   renderCustomResourceDefinitionsTable(allCrds) {
     const crds = this.applyTableSort('customResourceDefinitions', this.applyTableSearch('customResourceDefinitions', allCrds));
     if (!crds.length) {
-      return `${this.renderSectionRefresh('customResourceDefinitions')}<div class="kubernetes-resource-empty">${this.tableSearch.customResourceDefinitions ? '沒有符合的資源。' : '叢集沒有可顯示的 CRD。'}</div>`;
+      return `${this.renderSectionRefresh('customResourceDefinitions')}<div class="kubernetes-resource-empty">${this.tableSearch.customResourceDefinitions ? t('k8s.empty.noMatch') : t('k8s.empty.crds')}</div>`;
     }
     return `
       ${this.renderSectionRefresh('customResourceDefinitions')}
@@ -1441,25 +1442,25 @@ export class KubernetesSessionPage extends HTMLElement {
     if (!state.detailOpen) return '';
     const detail = state.resourceDetail;
     const selected = state.selectedResource || {};
-    const title = detail?.name || detail?.metadata?.name || selected.name || 'Resource Detail';
+    const title = detail?.name || detail?.metadata?.name || selected.name || t('k8s.detail.fallbackTitle');
     const namespace = detail?.namespace || detail?.metadata?.namespace || selected.namespace || '';
     const kind = String(selected.kind || detail?.kind || '').toLowerCase();
     const isPod = kind === 'pod';
     let body = '';
     if (state.detailLoading && !detail) {
-      body = '<div class="kubernetes-drawer-state"><span class="kubernetes-spinner"></span><span>正在載入資源詳細資訊</span></div>';
+      body = `<div class="kubernetes-drawer-state"><span class="kubernetes-spinner"></span><span>${t('k8s.detail.loading')}</span></div>`;
     } else if (state.detailError && !detail) {
-      body = `<div class="kubernetes-session-error" role="alert"><strong>載入資源詳細資訊失敗</strong><span>${escapeHtml(state.detailError)}</span></div>`;
+      body = `<div class="kubernetes-session-error" role="alert"><strong>${t('k8s.detail.loadFailed')}</strong><span>${escapeHtml(state.detailError)}</span></div>`;
     } else if (detail) {
       body = this.renderResourceDetailTab(detail, selected, state);
     } else {
-      body = '<div class="kubernetes-resource-empty">沒有可顯示的詳細資訊。</div>';
+      body = `<div class="kubernetes-resource-empty">${t('k8s.empty.noDetail')}</div>`;
     }
     return `
       <div class="kubernetes-detail-backdrop no-drag" data-close-detail="true"></div>
       <aside class="kubernetes-detail-drawer no-drag ${isPod ? 'kubernetes-pod-detail-drawer' : ''}" role="dialog" aria-modal="true" aria-labelledby="kubernetesDetailTitle">
-        <header><div><h2 id="kubernetesDetailTitle">${escapeHtml(title)}</h2><p><span class="kubernetes-detail-kind">${escapeHtml(selected.kind || detail?.kind || 'Kubernetes Resource')}</span>${namespace ? ` in ${escapeHtml(namespace)}` : ''}</p></div><button type="button" class="kubernetes-drawer-close no-drag" aria-label="關閉詳細資訊">${renderKubernetesIcon('close', 16)}</button></header>
-        ${state.detailError && detail ? `<div class="kubernetes-session-error compact"><strong>重新整理失敗，以下為上次成功資料</strong><span>${escapeHtml(state.detailError)}</span></div>` : ''}
+        <header><div><h2 id="kubernetesDetailTitle">${escapeHtml(title)}</h2><p><span class="kubernetes-detail-kind">${escapeHtml(selected.kind || detail?.kind || t('k8s.resource.genericName'))}</span>${namespace ? ` ${t('k8s.detail.inNamespace', { namespace: escapeHtml(namespace) })}` : ''}</p></div><button type="button" class="kubernetes-drawer-close no-drag" aria-label="${t('k8s.detail.closeAria')}">${renderKubernetesIcon('close', 16)}</button></header>
+        ${state.detailError && detail ? `<div class="kubernetes-session-error compact"><strong>${t('k8s.detail.refreshFailedSnapshot')}</strong><span>${escapeHtml(state.detailError)}</span></div>` : ''}
         ${detail ? this.renderResourceDetailTabs(state.detailTab, isPod) : ''}
         <div class="kubernetes-detail-body"${detail ? ` id="k8s-detail-panel" role="tabpanel" aria-labelledby="k8s-detail-tab-${escapeHtml(state.detailTab || 'overview')}"` : ''}>${body}</div>
       </aside>`;
@@ -1472,7 +1473,7 @@ export class KubernetesSessionPage extends HTMLElement {
       : [['overview', 'Overview'], ['yaml', 'YAML'], ['delete', 'Delete']];
     // 內容面板 id 固定為 k8s-detail-panel；各 tab id 為 k8s-detail-tab-${id}。
     // aria-controls 指向面板、aria-selected 標示 active；面板側於 renderDetailDrawer 補 aria-labelledby。
-    return `<nav class="kubernetes-pod-detail-tabs" aria-label="Pod 詳細資訊頁籤" role="tablist">${tabs.map(([id, label]) => `<button type="button" id="k8s-detail-tab-${id}" class="no-drag ${activeTab === id ? 'active' : ''} ${id === 'delete' ? 'danger' : ''}" data-detail-tab="${id}" role="tab" aria-selected="${activeTab === id}" aria-controls="k8s-detail-panel">${label}</button>`).join('')}</nav>`;
+    return `<nav class="kubernetes-pod-detail-tabs" aria-label="${t('k8s.detail.tabsAria')}" role="tablist">${tabs.map(([id, label]) => `<button type="button" id="k8s-detail-tab-${id}" class="no-drag ${activeTab === id ? 'active' : ''} ${id === 'delete' ? 'danger' : ''}" data-detail-tab="${id}" role="tab" aria-selected="${activeTab === id}" aria-controls="k8s-detail-panel">${label}</button>`).join('')}</nav>`;
   }
 
   renderResourceDetailTab(detail, selected, state) {
@@ -1517,7 +1518,7 @@ export class KubernetesSessionPage extends HTMLElement {
       ${this.renderDetailSection('Labels', normalizeEntries(labels), 'kubernetes-detail-labels')}
       ${conditions.length ? `<section class="kubernetes-detail-section"><h3>Conditions</h3><div class="kubernetes-detail-conditions">${conditions.map(condition => `<div><strong>${escapeHtml(condition.type || '-')}</strong>${statusBadge(condition.status)}<span>${escapeHtml(condition.reason || '')}</span><p>${escapeHtml(condition.message || '')}</p></div>`).join('')}</div></section>` : ''}
       ${containers.length ? `<section class="kubernetes-detail-section"><h3>Containers</h3><div class="kubernetes-detail-containers">${containers.map(container => `<div><strong>${escapeHtml(container.name || '-')}</strong><span>${escapeHtml(container.image || '')}</span>${container.ready !== undefined ? statusBadge(container.ready ? 'Ready' : 'Not Ready') : ''}<small>${escapeHtml(container.state || container.status || '')}</small></div>`).join('')}</div></section>` : ''}
-      ${detail.eventsError ? `<div class="kubernetes-session-error compact" role="status"><strong>Related Events 無法讀取</strong><span>${escapeHtml(detail.eventsError)}</span></div>` : ''}
+      ${detail.eventsError ? `<div class="kubernetes-session-error compact" role="status"><strong>${t('k8s.detail.relatedEventsError')}</strong><span>${escapeHtml(detail.eventsError)}</span></div>` : ''}
       ${events.length ? `<section class="kubernetes-detail-section"><h3>Related Events</h3>${this.renderEventsTable(events)}</section>` : ''}`;
   }
 
@@ -1583,74 +1584,74 @@ export class KubernetesSessionPage extends HTMLElement {
     const canLoad = !state.logsLoading && selectedContainer;
     return `<div class="kubernetes-log-panel ${variant === 'action' ? 'kubernetes-log-panel-action' : ''}">
       <div class="kubernetes-log-header">
-        <div><h3>Logs: ${escapeHtml(state.selectedResource?.name || 'Pod')}</h3><span>${escapeHtml(state.selectedResource?.namespace || options.namespace || '')}</span>${this.logPaused ? '<span class="kubernetes-log-paused">Paused</span>' : '<span class="kubernetes-watching">Streaming active</span>'}</div>
+        <div><h3>${t('k8s.logs.title', { name: escapeHtml(state.selectedResource?.name || 'Pod') })}</h3><span>${escapeHtml(state.selectedResource?.namespace || options.namespace || '')}</span>${this.logPaused ? `<span class="kubernetes-log-paused">${t('k8s.logs.paused')}</span>` : `<span class="kubernetes-watching">${t('k8s.logs.streamingActive')}</span>`}</div>
         <select id="kubernetesLogContainer" class="no-drag">${containers.map(name => `<option value="${escapeHtml(name)}" ${name === selectedContainer ? 'selected' : ''}>${escapeHtml(name)}</option>`).join('')}</select>
       </div>
       <div class="kubernetes-log-load-controls">
         <div class="kubernetes-log-control-group">
-          <span class="kubernetes-log-control-label">Tail Lines</span>
+          <span class="kubernetes-log-control-label">${t('k8s.logs.tailLines')}</span>
           <input id="kubernetesLogTailLines" class="no-drag" type="number" min="1" max="1000" value="${escapeHtml(options.tailLines || 200)}">
         </div>
         <label class="kubernetes-log-previous-toggle no-drag">
           <input id="kubernetesLogPrevious" type="checkbox" ${options.previous ? 'checked' : ''}>
-          <span>Previous Logs</span>
+          <span>${t('k8s.logs.previous')}</span>
         </label>
         <button type="button" id="reloadKubernetesPodLogs" class="no-drag kubernetes-primary-btn load-logs-btn" ${canLoad ? '' : 'disabled'}>
           ${state.logsLoading ? '<span class="kubernetes-spinner-mini"></span>' : ''}
-          <span>${state.logsLoading ? '載入中...' : '載入 Logs'}</span>
+          <span>${state.logsLoading ? t('k8s.logs.loading') : t('k8s.logs.load')}</span>
         </button>
       </div>
       <div class="kubernetes-log-toolbar">
         <div class="kubernetes-log-toolbar-filters">
           <div class="kubernetes-log-search no-drag">
             <span class="kubernetes-log-search-icon" aria-hidden="true">${renderKubernetesIcon('search', 14)}</span>
-            <input id="kubernetesLogSearch" class="no-drag" value="${escapeHtml(this.logSearch)}" placeholder="Search">
-            <button type="button" aria-label="切換 Regex 比對" id="toggleKubernetesLogRegex" class="no-drag ${this.logRegex ? 'active' : ''}" title="切換 Regex 比對">.*</button>
+            <input id="kubernetesLogSearch" class="no-drag" value="${escapeHtml(this.logSearch)}" placeholder="${t('k8s.logs.searchPlaceholder')}">
+            <button type="button" aria-label="${t('k8s.logs.toggleRegex')}" id="toggleKubernetesLogRegex" class="no-drag ${this.logRegex ? 'active' : ''}" title="${t('k8s.logs.toggleRegex')}">.*</button>
           </div>
           <div class="kubernetes-log-level-group">
             <span class="kubernetes-log-level-icon" aria-hidden="true">${renderKubernetesIcon('filter', 14)}</span>
             <select id="kubernetesLogLevel" class="no-drag">
-              <option value="all" ${this.logLevel === 'all' ? 'selected' : ''}>All Levels</option>
-              <option value="error" ${this.logLevel === 'error' ? 'selected' : ''}>Error</option>
-              <option value="warning" ${this.logLevel === 'warning' ? 'selected' : ''}>Warning</option>
-              <option value="info" ${this.logLevel === 'info' ? 'selected' : ''}>Info</option>
-              <option value="debug" ${this.logLevel === 'debug' ? 'selected' : ''}>Debug</option>
+              <option value="all" ${this.logLevel === 'all' ? 'selected' : ''}>${t('k8s.logs.allLevels')}</option>
+              <option value="error" ${this.logLevel === 'error' ? 'selected' : ''}>${t('k8s.logs.levelError')}</option>
+              <option value="warning" ${this.logLevel === 'warning' ? 'selected' : ''}>${t('k8s.logs.levelWarning')}</option>
+              <option value="info" ${this.logLevel === 'info' ? 'selected' : ''}>${t('k8s.logs.levelInfo')}</option>
+              <option value="debug" ${this.logLevel === 'debug' ? 'selected' : ''}>${t('k8s.logs.levelDebug')}</option>
             </select>
           </div>
         </div>
         <div class="kubernetes-log-toolbar-actions">
           <button type="button" id="toggleKubernetesLogsPause" class="no-drag kubernetes-log-state-btn ${this.logPaused ? 'paused' : 'streaming'}">
-            ${this.logPaused ? `${renderKubernetesIcon('play', 13)}<span>Follow</span>` : `${renderKubernetesIcon('pause', 13)}<span>Pause</span>`}
+            ${this.logPaused ? `${renderKubernetesIcon('play', 13)}<span>${t('k8s.logs.follow')}</span>` : `${renderKubernetesIcon('pause', 13)}<span>${t('k8s.logs.pause')}</span>`}
           </button>
           <div class="kubernetes-log-action-group">
-            <button type="button" id="downloadKubernetesLogs" class="no-drag kubernetes-icon-btn" title="下載 Logs" aria-label="下載 Logs" ${hasLogs ? '' : 'disabled'}>
+            <button type="button" id="downloadKubernetesLogs" class="no-drag kubernetes-icon-btn" title="${t('k8s.logs.download')}" aria-label="${t('k8s.logs.download')}" ${hasLogs ? '' : 'disabled'}>
               ${renderKubernetesIcon('download', 16)}
             </button>
             <div class="kubernetes-log-options-wrap">
-              <button type="button" id="toggleKubernetesLogOptions" class="no-drag kubernetes-icon-btn ${this.logDisplayOptionsOpen ? 'active' : ''}" title="Display Options" aria-label="Display Options">
+              <button type="button" id="toggleKubernetesLogOptions" class="no-drag kubernetes-icon-btn ${this.logDisplayOptionsOpen ? 'active' : ''}" title="${t('k8s.logs.displayOptions')}" aria-label="${t('k8s.logs.displayOptions')}">
                 ${renderKubernetesIcon('sliders', 16)}
               </button>
               ${this.logDisplayOptionsOpen ? this.renderLogDisplayOptions() : ''}
             </div>
-            <button type="button" id="clearKubernetesLogs" class="no-drag kubernetes-icon-btn danger" title="Clear" aria-label="Clear" ${state.podLogs ? '' : 'disabled'}>
+            <button type="button" id="clearKubernetesLogs" class="no-drag kubernetes-icon-btn danger" title="${t('k8s.logs.clear')}" aria-label="${t('k8s.logs.clear')}" ${state.podLogs ? '' : 'disabled'}>
               ${renderKubernetesIcon('trash', 16)}
             </button>
           </div>
         </div>
       </div>
-      ${state.logsError ? `<div class="kubernetes-session-error compact" role="alert"><strong>Logs 載入失敗</strong><span>${escapeHtml(state.logsError)}</span></div>` : ''}
-      ${state.logsTruncated ? '<div class="kubernetes-log-truncated" role="status">Logs 已達 1 MiB 顯示上限，內容已截斷。</div>' : ''}
-      ${state.podLogs ? `<pre class="kubernetes-log-output ${this.logLineWrap ? 'wrap' : ''}" tabindex="0">${escapeHtml(logs.join('\n'))}</pre>` : `<div class="kubernetes-log-empty">${state.logsLoading ? '正在讀取 Pod Logs...' : '選擇 Container 後載入 Logs。'}</div>`}
+      ${state.logsError ? `<div class="kubernetes-session-error compact" role="alert"><strong>${t('k8s.logs.loadFailed')}</strong><span>${escapeHtml(state.logsError)}</span></div>` : ''}
+      ${state.logsTruncated ? `<div class="kubernetes-log-truncated" role="status">${t('k8s.logs.truncated')}</div>` : ''}
+      ${state.podLogs ? `<pre class="kubernetes-log-output ${this.logLineWrap ? 'wrap' : ''}" tabindex="0">${escapeHtml(logs.join('\n'))}</pre>` : `<div class="kubernetes-log-empty">${state.logsLoading ? t('k8s.logs.reading') : t('k8s.logs.selectContainer')}</div>`}
     </div>`;
   }
 
   renderLogDisplayOptions() {
     return `<div class="kubernetes-log-options-menu no-drag" role="menu">
-      <strong>DISPLAY OPTIONS</strong>
-      <label><input id="kubernetesLogLineWrap" class="no-drag" type="checkbox" ${this.logLineWrap ? 'checked' : ''}>Line Wrap</label>
-      <strong>TIMESTAMP</strong>
+      <strong>${t('k8s.logs.displayOptionsHeading')}</strong>
+      <label><input id="kubernetesLogLineWrap" class="no-drag" type="checkbox" ${this.logLineWrap ? 'checked' : ''}>${t('k8s.logs.lineWrap')}</label>
+      <strong>${t('k8s.logs.timestamp')}</strong>
       <div class="kubernetes-log-timestamp-options">
-        ${['off', 'utc', 'local'].map(mode => `<button type="button" class="no-drag ${this.logTimestampMode === mode ? 'active' : ''}" data-log-timestamp="${mode}">${mode === 'off' ? 'Off' : mode.toUpperCase()}</button>`).join('')}
+        ${['off', 'utc', 'local'].map(mode => `<button type="button" class="no-drag ${this.logTimestampMode === mode ? 'active' : ''}" data-log-timestamp="${mode}">${mode === 'off' ? t('k8s.logs.timestampOff') : mode.toUpperCase()}</button>`).join('')}
       </div>
     </div>`;
   }
@@ -1710,7 +1711,7 @@ export class KubernetesSessionPage extends HTMLElement {
     const draft = this.yamlEditDraft !== null ? this.yamlEditDraft : original;
 
     if (!original) {
-      return '<section class="kubernetes-detail-section kubernetes-pod-yaml"><header><h3>YAML</h3></header><div class="kubernetes-resource-empty">目前沒有可顯示的 YAML。</div></section>';
+      return `<section class="kubernetes-detail-section kubernetes-pod-yaml"><header><h3>YAML</h3></header><div class="kubernetes-resource-empty">${t('k8s.yaml.empty')}</div></section>`;
     }
 
     // 檢視模式下依搜尋詞（不分大小寫）以 <mark> 標記符合處，第一個符合處加 id 供捲動定位。
@@ -1730,23 +1731,23 @@ export class KubernetesSessionPage extends HTMLElement {
     }
 
     const toolbar = `<div class="kubernetes-yaml-toolbar">
-      <button type="button" id="toggleKubernetesYAMLSearch" class="no-drag kubernetes-icon-btn ${this.yamlSearchOpen ? 'active' : ''}" title="搜尋" aria-label="搜尋" ${editing ? 'disabled' : ''}>${renderKubernetesIcon('search', 16)}</button>
-      <button type="button" id="editKubernetesYAML" class="no-drag kubernetes-icon-btn ${editing ? 'active' : ''}" title="${editDisabled ? '此資源的 YAML 已遮蔽，無法編輯套用' : '編輯'}" aria-label="編輯" ${editDisabled ? 'disabled' : ''}>${renderKubernetesIcon('edit', 16)}</button>
-      <button type="button" id="copyKubernetesYAML" class="no-drag kubernetes-icon-btn" title="複製" aria-label="複製">${renderKubernetesIcon('copy', 16)}</button>
+      <button type="button" id="toggleKubernetesYAMLSearch" class="no-drag kubernetes-icon-btn ${this.yamlSearchOpen ? 'active' : ''}" title="${t('k8s.yaml.search')}" aria-label="${t('k8s.yaml.search')}" ${editing ? 'disabled' : ''}>${renderKubernetesIcon('search', 16)}</button>
+      <button type="button" id="editKubernetesYAML" class="no-drag kubernetes-icon-btn ${editing ? 'active' : ''}" title="${editDisabled ? t('k8s.yaml.editDisabledHint') : t('k8s.yaml.edit')}" aria-label="${t('k8s.yaml.edit')}" ${editDisabled ? 'disabled' : ''}>${renderKubernetesIcon('edit', 16)}</button>
+      <button type="button" id="copyKubernetesYAML" class="no-drag kubernetes-icon-btn" title="${t('k8s.yaml.copy')}" aria-label="${t('k8s.yaml.copy')}">${renderKubernetesIcon('copy', 16)}</button>
     </div>`;
 
     const searchBox = (this.yamlSearchOpen && !editing)
-      ? `<div class="kubernetes-yaml-search no-drag"><span class="kubernetes-yaml-search-icon" aria-hidden="true">${renderKubernetesIcon('search', 14)}</span><input id="kubernetesYAMLSearch" class="no-drag" value="${escapeHtml(this.yamlSearchTerm)}" placeholder="搜尋 YAML"></div>`
+      ? `<div class="kubernetes-yaml-search no-drag"><span class="kubernetes-yaml-search-icon" aria-hidden="true">${renderKubernetesIcon('search', 14)}</span><input id="kubernetesYAMLSearch" class="no-drag" value="${escapeHtml(this.yamlSearchTerm)}" placeholder="${t('k8s.yaml.searchPlaceholder')}"></div>`
       : '';
 
     const body = editing
-      ? `${state.updateError ? `<div class="kubernetes-session-error compact" role="alert"><strong>套用 YAML 失敗</strong><span>${escapeHtml(state.updateError)}</span><button type="button" id="reloadKubernetesResourceYAML" class="no-drag kubernetes-secondary-btn" ${state.updateLoading ? 'disabled' : ''}>重新載入最新版本</button></div>` : ''}
+      ? `${state.updateError ? `<div class="kubernetes-session-error compact" role="alert"><strong>${t('k8s.yaml.applyFailed')}</strong><span>${escapeHtml(state.updateError)}</span><button type="button" id="reloadKubernetesResourceYAML" class="no-drag kubernetes-secondary-btn" ${state.updateLoading ? 'disabled' : ''}>${t('k8s.yaml.reloadLatest')}</button></div>` : ''}
         <textarea id="kubernetesYAMLEditor" class="no-drag kubernetes-yaml-editor" spellcheck="false" autocapitalize="off" autocomplete="off" ${state.updateLoading ? 'readonly' : ''}>${escapeHtml(draft)}</textarea>
         <div class="kubernetes-yaml-edit-actions">
-          <button type="button" id="applyKubernetesYAML" class="no-drag kubernetes-primary-btn" title="套用" aria-label="套用" ${state.updateLoading ? 'disabled' : ''}>${renderKubernetesIcon('check', 14)}<span>${state.updateLoading ? '套用中...' : '套用'}</span></button>
-          <button type="button" id="cancelKubernetesYAML" class="no-drag kubernetes-secondary-btn" title="取消" aria-label="取消" ${state.updateLoading ? 'disabled' : ''}>${renderKubernetesIcon('close', 14)}<span>取消</span></button>
+          <button type="button" id="applyKubernetesYAML" class="no-drag kubernetes-primary-btn" title="${t('k8s.yaml.apply')}" aria-label="${t('k8s.yaml.apply')}" ${state.updateLoading ? 'disabled' : ''}>${renderKubernetesIcon('check', 14)}<span>${state.updateLoading ? t('k8s.yaml.applying') : t('k8s.yaml.apply')}</span></button>
+          <button type="button" id="cancelKubernetesYAML" class="no-drag kubernetes-secondary-btn" title="${t('k8s.yaml.cancel')}" aria-label="${t('k8s.yaml.cancel')}" ${state.updateLoading ? 'disabled' : ''}>${renderKubernetesIcon('close', 14)}<span>${t('k8s.yaml.cancel')}</span></button>
         </div>`
-      : `${editDisabled ? '<div class="kubernetes-yaml-readonly-hint" role="status">Secret/Pod 的 YAML 已遮蔽，無法編輯套用。</div>' : ''}
+      : `${editDisabled ? `<div class="kubernetes-yaml-readonly-hint" role="status">${t('k8s.yaml.readonlyHint')}</div>` : ''}
         <pre class="kubernetes-yaml-output" tabindex="0"><code>${viewHtml}</code></pre>`;
 
     return `<section class="kubernetes-detail-section kubernetes-pod-yaml kubernetes-detail-yaml"><header><h3>YAML</h3>${toolbar}</header>
@@ -1765,13 +1766,13 @@ export class KubernetesSessionPage extends HTMLElement {
         }
       }
     }
-    return `<section class="kubernetes-detail-section kubernetes-pod-forward"><h3>Port Forward</h3>
-      ${state.forwardsError ? `<div class="kubernetes-session-error compact" role="alert"><strong>Port Forward 操作失敗</strong><span>${escapeHtml(state.forwardsError)}</span></div>` : ''}
-      <div class="kubernetes-forward-list">${ports.map(port => `<div class="kubernetes-forward-card"><div><strong>${escapeHtml(port.name || port.container || `Port ${port.port}`)}</strong><span>${port.port}/${escapeHtml(port.protocol || 'TCP')}</span></div><label>本機 Port<input class="no-drag kubernetes-forward-local-port" type="number" min="0" max="65535" value="${port.port}"></label><button type="button" class="no-drag kubernetes-primary-btn start-kubernetes-forward" data-remote-port="${port.port}" ${state.forwardsLoading ? 'disabled' : ''}>Forward</button></div>`).join('')}</div>
-      ${ports.length ? '' : '<p class="kubernetes-forward-empty">Pod 未宣告 Container Port，可使用自訂連接埠。</p>'}
-      <div class="kubernetes-forward-custom"><label>本機 Port<input id="kubernetesForwardCustomLocal" class="no-drag" type="number" min="0" max="65535" value="0"></label><label>Pod Port<input id="kubernetesForwardCustomRemote" class="no-drag" type="number" min="1" max="65535"></label><button type="button" id="startKubernetesCustomForward" class="no-drag kubernetes-secondary-btn" ${state.forwardsLoading ? 'disabled' : ''}>建立自訂 Forward</button></div>
-      <h3>Active Forwards</h3>
-      ${state.podForwards.length ? `<div class="kubernetes-active-forwards">${state.podForwards.map(item => `<div><code>${escapeHtml(item.address)}:${item.localPort} → ${item.remotePort}</code><button type="button" class="no-drag stop-kubernetes-forward" data-forward-id="${escapeHtml(item.id)}" ${state.forwardsLoading ? 'disabled' : ''}>停止</button></div>`).join('')}</div>` : `<div class="kubernetes-forward-empty">${state.forwardsLoading ? '正在更新 Port Forward...' : '目前沒有作用中的 Port Forward。'}</div>`}
+    return `<section class="kubernetes-detail-section kubernetes-pod-forward"><h3>${t('k8s.forward.title')}</h3>
+      ${state.forwardsError ? `<div class="kubernetes-session-error compact" role="alert"><strong>${t('k8s.forward.operationFailed')}</strong><span>${escapeHtml(state.forwardsError)}</span></div>` : ''}
+      <div class="kubernetes-forward-list">${ports.map(port => `<div class="kubernetes-forward-card"><div><strong>${escapeHtml(port.name || port.container || t('k8s.forward.portLabel', { port: port.port }))}</strong><span>${port.port}/${escapeHtml(port.protocol || 'TCP')}</span></div><label>${t('k8s.forward.localPort')}<input class="no-drag kubernetes-forward-local-port" type="number" min="0" max="65535" value="${port.port}"></label><button type="button" class="no-drag kubernetes-primary-btn start-kubernetes-forward" data-remote-port="${port.port}" ${state.forwardsLoading ? 'disabled' : ''}>${t('k8s.forward.forward')}</button></div>`).join('')}</div>
+      ${ports.length ? '' : `<p class="kubernetes-forward-empty">${t('k8s.forward.noContainerPort')}</p>`}
+      <div class="kubernetes-forward-custom"><label>${t('k8s.forward.localPort')}<input id="kubernetesForwardCustomLocal" class="no-drag" type="number" min="0" max="65535" value="0"></label><label>${t('k8s.forward.podPort')}<input id="kubernetesForwardCustomRemote" class="no-drag" type="number" min="1" max="65535"></label><button type="button" id="startKubernetesCustomForward" class="no-drag kubernetes-secondary-btn" ${state.forwardsLoading ? 'disabled' : ''}>${t('k8s.forward.createCustom')}</button></div>
+      <h3>${t('k8s.forward.active')}</h3>
+      ${state.podForwards.length ? `<div class="kubernetes-active-forwards">${state.podForwards.map(item => `<div><code>${escapeHtml(item.address)}:${item.localPort} → ${item.remotePort}</code><button type="button" class="no-drag stop-kubernetes-forward" data-forward-id="${escapeHtml(item.id)}" ${state.forwardsLoading ? 'disabled' : ''}>${t('k8s.forward.stop')}</button></div>`).join('')}</div>` : `<div class="kubernetes-forward-empty">${state.forwardsLoading ? t('k8s.forward.updating') : t('k8s.forward.noActive')}</div>`}
     </section>`;
   }
 
@@ -1787,12 +1788,12 @@ export class KubernetesSessionPage extends HTMLElement {
       const typed = this.deleteConfirmInput || '';
       const matched = name !== '' && typed === name;
       return `<section class="kubernetes-detail-section kubernetes-pod-delete">
-        ${state.deleteError ? `<div class="kubernetes-session-error compact" role="alert"><strong>刪除 ${escapeHtml(kind)} 失敗</strong><span>${escapeHtml(state.deleteError)}</span></div>` : ''}
+        ${state.deleteError ? `<div class="kubernetes-session-error compact" role="alert"><strong>${t('k8s.delete.failed', { kind: escapeHtml(kind) })}</strong><span>${escapeHtml(state.deleteError)}</span></div>` : ''}
         <div class="kubernetes-delete-highrisk">
-          <strong>Delete ${escapeHtml(fullId)}</strong>
-          <small>此為高風險資源，動作無法復原。請輸入資源名稱 <code>${escapeHtml(name)}</code> 以啟用刪除。</small>
-          <input type="text" id="kubernetesDeleteConfirmInput" class="no-drag" autocomplete="off" spellcheck="false" placeholder="輸入資源名稱以確認" value="${escapeHtml(typed)}" ${state.deleteLoading ? 'disabled' : ''}>
-          <button type="button" id="deleteKubernetesResource" class="no-drag kubernetes-danger-btn" ${(state.deleteLoading || !matched) ? 'disabled' : ''}>${state.deleteLoading ? '刪除中...' : '確認刪除'}</button>
+          <strong>${t('k8s.delete.deleteLabel', { id: escapeHtml(fullId) })}</strong>
+          <small>${t('k8s.delete.highRiskHint', { name: `<code>${escapeHtml(name)}</code>` })}</small>
+          <input type="text" id="kubernetesDeleteConfirmInput" class="no-drag" autocomplete="off" spellcheck="false" placeholder="${t('k8s.delete.confirmPlaceholder')}" value="${escapeHtml(typed)}" ${state.deleteLoading ? 'disabled' : ''}>
+          <button type="button" id="deleteKubernetesResource" class="no-drag kubernetes-danger-btn" ${(state.deleteLoading || !matched) ? 'disabled' : ''}>${state.deleteLoading ? t('k8s.delete.deleting') : t('k8s.delete.confirm')}</button>
         </div>
       </section>`;
     }
@@ -1801,11 +1802,11 @@ export class KubernetesSessionPage extends HTMLElement {
     // 重繪不會重置）。第一次點擊後按鈕改為「確認刪除 X？」並套用 confirm-stage 樣式。
     const confirming = this.pendingDeleteConfirm === true;
     const buttonLabel = state.deleteLoading
-      ? '刪除中...'
-      : (confirming ? `確認刪除 ${escapeHtml(fullId)}？` : 'Delete');
+      ? t('k8s.delete.deleting')
+      : (confirming ? t('k8s.delete.confirmDelete', { id: escapeHtml(fullId) }) : t('k8s.delete.delete'));
     return `<section class="kubernetes-detail-section kubernetes-pod-delete">
-      ${state.deleteError ? `<div class="kubernetes-session-error compact" role="alert"><strong>刪除 ${escapeHtml(kind)} 失敗</strong><span>${escapeHtml(state.deleteError)}</span></div>` : ''}
-      <div><span><strong>Delete ${escapeHtml(fullId)}</strong><small>此動作無法復原，Controller 管理的 Pod 可能會自動重建。</small></span><button type="button" id="deleteKubernetesResource" class="no-drag kubernetes-danger-btn ${confirming ? 'confirm-stage' : ''}" ${state.deleteLoading ? 'disabled' : ''}>${buttonLabel}</button></div>
+      ${state.deleteError ? `<div class="kubernetes-session-error compact" role="alert"><strong>${t('k8s.delete.failed', { kind: escapeHtml(kind) })}</strong><span>${escapeHtml(state.deleteError)}</span></div>` : ''}
+      <div><span><strong>${t('k8s.delete.deleteLabel', { id: escapeHtml(fullId) })}</strong><small>${t('k8s.delete.lowRiskHint')}</small></span><button type="button" id="deleteKubernetesResource" class="no-drag kubernetes-danger-btn ${confirming ? 'confirm-stage' : ''}" ${state.deleteLoading ? 'disabled' : ''}>${buttonLabel}</button></div>
     </section>`;
   }
 
@@ -1817,16 +1818,16 @@ export class KubernetesSessionPage extends HTMLElement {
     return `
       <div class="kubernetes-detail-backdrop no-drag" data-close-create="true"></div>
       <aside class="kubernetes-create-drawer no-drag" role="dialog" aria-modal="true" aria-labelledby="kubernetesCreateResourceTitle">
-        <header><h2 id="kubernetesCreateResourceTitle">Create Resource</h2><button type="button" class="kubernetes-drawer-close no-drag" aria-label="關閉建立資源視窗">${renderKubernetesIcon('close', 16)}</button></header>
+        <header><h2 id="kubernetesCreateResourceTitle">${t('k8s.create.title')}</h2><button type="button" class="kubernetes-drawer-close no-drag" aria-label="${t('k8s.create.closeAria')}">${renderKubernetesIcon('close', 16)}</button></header>
         <div class="kubernetes-create-toolbar">
-          <div class="kubernetes-create-actions"><button type="button" id="applyKubernetesResource" class="no-drag kubernetes-primary-btn" ${state.createLoading || state.createSaving ? 'disabled' : ''}>${state.createLoading ? '套用中...' : 'Apply'}</button><button type="button" id="saveKubernetesResourceYAML" class="no-drag kubernetes-secondary-btn" ${state.createLoading || state.createSaving ? 'disabled' : ''}>${state.createSaving ? '儲存中...' : 'Save'}</button></div>
-          <label><span class="kubernetes-visually-hidden">Resource Type</span><select id="kubernetesCreateResourceType" class="no-drag" ${state.createLoading || state.createSaving ? 'disabled' : ''}>${KUBERNETES_CREATE_RESOURCE_GROUPS.map(([group, types]) => `<optgroup label="${escapeHtml(group)}">${types.map(type => `<option value="${type}" ${type === state.createResourceType ? 'selected' : ''}>${type}</option>`).join('')}</optgroup>`).join('')}</select></label>
+          <div class="kubernetes-create-actions"><button type="button" id="applyKubernetesResource" class="no-drag kubernetes-primary-btn" ${state.createLoading || state.createSaving ? 'disabled' : ''}>${state.createLoading ? t('k8s.create.applying') : t('k8s.create.apply')}</button><button type="button" id="saveKubernetesResourceYAML" class="no-drag kubernetes-secondary-btn" ${state.createLoading || state.createSaving ? 'disabled' : ''}>${state.createSaving ? t('k8s.create.saving') : t('k8s.create.save')}</button></div>
+          <label><span class="kubernetes-visually-hidden">${t('k8s.create.resourceType')}</span><select id="kubernetesCreateResourceType" class="no-drag" ${state.createLoading || state.createSaving ? 'disabled' : ''}>${KUBERNETES_CREATE_RESOURCE_GROUPS.map(([group, types]) => `<optgroup label="${escapeHtml(group)}">${types.map(type => `<option value="${type}" ${type === state.createResourceType ? 'selected' : ''}>${type}</option>`).join('')}</optgroup>`).join('')}</select></label>
         </div>
-        ${state.createError || state.createSaveError ? `<div class="kubernetes-session-error compact kubernetes-create-error" role="alert"><strong>Kubernetes Resource YAML 操作失敗</strong><span>${escapeHtml(state.createError || state.createSaveError)}</span></div>` : ''}
-        ${state.createSavedPath && !hasUnsavedChanges ? `<div class="kubernetes-create-saved" role="status">已儲存至：<code>${escapeHtml(state.createSavedPath)}</code></div>` : ''}
+        ${state.createError || state.createSaveError ? `<div class="kubernetes-session-error compact kubernetes-create-error" role="alert"><strong>${t('k8s.create.operationFailed')}</strong><span>${escapeHtml(state.createError || state.createSaveError)}</span></div>` : ''}
+        ${state.createSavedPath && !hasUnsavedChanges ? `<div class="kubernetes-create-saved" role="status">${t('k8s.create.savedTo')}<code>${escapeHtml(state.createSavedPath)}</code></div>` : ''}
         <div class="kubernetes-create-editor">
           <pre id="kubernetesCreateLineNumbers" aria-hidden="true">${Array.from({ length: lineCount }, (_, index) => index + 1).join('\n')}</pre>
-          <textarea id="kubernetesCreateYAML" class="no-drag" aria-label="Kubernetes Resource YAML" spellcheck="false" autocapitalize="off" autocomplete="off" ${state.createLoading ? 'readonly' : ''}>${escapeHtml(content)}</textarea>
+          <textarea id="kubernetesCreateYAML" class="no-drag" aria-label="${t('k8s.create.yamlAria')}" spellcheck="false" autocapitalize="off" autocomplete="off" ${state.createLoading ? 'readonly' : ''}>${escapeHtml(content)}</textarea>
         </div>
       </aside>`;
   }
@@ -1835,7 +1836,7 @@ export class KubernetesSessionPage extends HTMLElement {
     const state = kubernetesSessionStore.getState();
     const cluster = state.connectedCluster;
     if (!cluster) {
-      this.innerHTML = '<div class="kubernetes-session-empty"><div class="kubernetes-empty-icon">K8s</div><h1>尚未連接 Kubernetes Cluster</h1><p>請返回 Vaults 的 Kubernetes 頁面選擇叢集。</p></div>';
+      this.innerHTML = `<div class="kubernetes-session-empty"><div class="kubernetes-empty-icon">K8s</div><h1>${t('k8s.session.notConnectedTitle')}</h1><p>${t('k8s.session.notConnectedDetail')}</p></div>`;
       return;
     }
 
@@ -1851,7 +1852,7 @@ export class KubernetesSessionPage extends HTMLElement {
       content = this.renderPodActionView(state);
     } else
     if (state.dashboardLoading && !dashboard) {
-      content = '<div class="kubernetes-session-loading" role="status" aria-live="polite"><span class="kubernetes-spinner" aria-hidden="true"></span><h2>正在讀取 Kubernetes API</h2></div>';
+      content = `<div class="kubernetes-session-loading" role="status" aria-live="polite"><span class="kubernetes-spinner" aria-hidden="true"></span><h2>${t('k8s.session.loadingApi')}</h2></div>`;
     } else if (state.dashboardError && !dashboard) {
       content = `<div class="kubernetes-session-error" role="alert"><strong>${dashboardErrorTitle(state.dashboardError)}</strong><span>${escapeHtml(state.dashboardError)}</span></div>`;
     } else if (dashboard) {
@@ -1861,12 +1862,12 @@ export class KubernetesSessionPage extends HTMLElement {
     this.innerHTML = `
       <div class="kubernetes-session-layout no-drag">
         <aside class="kubernetes-session-nav">
-          <div class="kubernetes-session-cluster"><span class="kubernetes-session-status" aria-hidden="true"></span><span class="kubernetes-visually-hidden">已連接</span><div><strong>${escapeHtml(clusterName)}</strong><small>${escapeHtml(cluster.contextName || '')}</small></div></div>
+          <div class="kubernetes-session-cluster"><span class="kubernetes-session-status" aria-hidden="true"></span><span class="kubernetes-visually-hidden">${t('k8s.session.connected')}</span><div><strong>${escapeHtml(clusterName)}</strong><small>${escapeHtml(cluster.contextName || '')}</small></div></div>
           ${namespaceControl}
-          <nav aria-label="Kubernetes 資源導覽">${SECTION_GROUPS.map(([group, sections]) => `<div class="kubernetes-nav-group ${this.collapsedNavGroups.has(group) ? 'collapsed' : ''}"><button type="button" class="no-drag kubernetes-nav-heading" data-nav-group="${escapeHtml(group)}" aria-expanded="${this.collapsedNavGroups.has(group) ? 'false' : 'true'}"><span>${group}</span><svg class="kubernetes-nav-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>${sections.map(([id, label]) => `<button type="button" class="no-drag kubernetes-section-link ${activeSection === id ? 'active' : ''}" data-section="${id}" ${activeSection === id ? 'aria-current="page"' : ''}>${label}</button>`).join('')}</div>`).join('')}</nav>
+          <nav aria-label="${t('k8s.session.navAria')}">${SECTION_GROUPS.map(([group, sections]) => `<div class="kubernetes-nav-group ${this.collapsedNavGroups.has(group) ? 'collapsed' : ''}"><button type="button" class="no-drag kubernetes-nav-heading" data-nav-group="${escapeHtml(group)}" aria-expanded="${this.collapsedNavGroups.has(group) ? 'false' : 'true'}"><span>${group}</span><svg class="kubernetes-nav-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>${sections.map(([id, label]) => `<button type="button" class="no-drag kubernetes-section-link ${activeSection === id ? 'active' : ''}" data-section="${id}" ${activeSection === id ? 'aria-current="page"' : ''}>${label}</button>`).join('')}</div>`).join('')}</nav>
         </aside>
         <main class="kubernetes-session-content">
-          ${state.podActionView ? '' : `<header class="kubernetes-session-header"><div><span>Kubernetes Session</span><h1>${escapeHtml(sectionTitle)}</h1><p>${escapeHtml(cluster.server || cluster.clusterName || cluster.contextName)}${dashboard?.serverVersion ? ` · ${escapeHtml(dashboard.serverVersion)}` : ''}</p></div><div class="kubernetes-session-actions"><button type="button" id="openKubernetesCreateResource" class="no-drag kubernetes-primary-btn">Create Resource</button></div></header>`}
+          ${state.podActionView ? '' : `<header class="kubernetes-session-header"><div><span>${t('k8s.session.label')}</span><h1>${escapeHtml(sectionTitle)}</h1><p>${escapeHtml(cluster.server || cluster.clusterName || cluster.contextName)}${dashboard?.serverVersion ? ` · ${escapeHtml(dashboard.serverVersion)}` : ''}</p></div><div class="kubernetes-session-actions"><button type="button" id="openKubernetesCreateResource" class="no-drag kubernetes-primary-btn">${t('k8s.session.createResource')}</button></div></header>`}
           ${state.dashboardError && dashboard ? `<div class="kubernetes-session-error compact" role="status"><strong>${dashboardErrorTitle(state.dashboardError, true)}</strong><span>${escapeHtml(state.dashboardError)}</span></div>` : ''}
           ${content}
         </main>
@@ -2036,7 +2037,7 @@ export class KubernetesSessionPage extends HTMLElement {
       // 切換資源類型會以新模板覆蓋 YAML。若使用者已編輯（draft 與目前模板不同）則先確認，避免丟失編輯內容。
       const currentTemplate = kubernetesSessionStore.getState().createResourceYAML;
       const hasUnsavedChanges = this.createYAMLDraft !== null && this.createYAMLDraft !== currentTemplate;
-      if (hasUnsavedChanges && !(await confirmDialog('切換資源類型將以新模板覆蓋目前的 YAML，您尚未套用的編輯內容會遺失。確定要切換嗎？', { title: '確認切換資源類型', danger: true }))) {
+      if (hasUnsavedChanges && !(await confirmDialog(t('k8s.guard.switchTypeMessage'), { title: t('k8s.guard.switchTypeTitle'), danger: true }))) {
         // 還原下拉選單至原本的資源類型，不覆蓋編輯內容。
         select.value = previousType;
         return;
@@ -2049,9 +2050,9 @@ export class KubernetesSessionPage extends HTMLElement {
       // 破壞性操作二次確認：套用 YAML 前明確標示目標 cluster / namespace，避免誤套用到錯誤環境。
       const applyState = kubernetesSessionStore.getState();
       const applyCluster = applyState.connectedCluster || {};
-      const clusterLabel = applyCluster.displayName || applyCluster.clusterName || applyCluster.contextName || '未知叢集';
+      const clusterLabel = applyCluster.displayName || applyCluster.clusterName || applyCluster.contextName || t('k8s.cluster.unknown');
       const namespaceLabel = applyState.selectedNamespace || applyCluster.namespace || 'default';
-      if (!(await confirmDialog(`即將套用 YAML 至：\n\nCluster：${clusterLabel}\nNamespace：${namespaceLabel}\n\n此操作會在叢集上建立 / 變更資源，確定要套用嗎？`, { title: '確認套用資源', danger: true }))) {
+      if (!(await confirmDialog(t('k8s.apply.confirmCreateMessage', { cluster: clusterLabel, namespace: namespaceLabel }), { title: t('k8s.apply.confirmTitle'), danger: true }))) {
         return;
       }
       kubernetesSessionStore.getState().applyCreateResource(yaml).catch(() => {});
@@ -2152,8 +2153,8 @@ export class KubernetesSessionPage extends HTMLElement {
       const yaml = editorValue !== undefined ? editorValue : (kubernetesSessionStore.getState().resourceDetail?.yaml || '');
       if (!yaml) return;
       navigator.clipboard?.writeText(yaml)
-        .then(() => showToast('已複製', { type: 'success' }))
-        .catch(() => showToast('複製失敗', { type: 'error' }));
+        .then(() => showToast(t('k8s.toast.copied'), { type: 'success' }))
+        .catch(() => showToast(t('k8s.toast.copyFailed'), { type: 'error' }));
     });
     // YAML 頁籤：切換搜尋框；開啟後聚焦輸入。
     this.querySelector('#toggleKubernetesYAMLSearch')?.addEventListener('click', () => {
@@ -2203,8 +2204,8 @@ export class KubernetesSessionPage extends HTMLElement {
       const applyState = kubernetesSessionStore.getState();
       const resource = applyState.selectedResource || {};
       const applyCluster = applyState.connectedCluster || {};
-      const clusterLabel = applyCluster.displayName || applyCluster.clusterName || applyCluster.contextName || '未知叢集';
-      if (!(await confirmDialog(`即將以編輯後的 YAML 更新資源：\n\nCluster：${clusterLabel}\n資源：${resource.kind || ''}/${resource.name || ''}\n\n此操作會變更叢集上的資源，確定要套用嗎？`, { title: '確認套用資源', danger: true }))) {
+      const clusterLabel = applyCluster.displayName || applyCluster.clusterName || applyCluster.contextName || t('k8s.cluster.unknown');
+      if (!(await confirmDialog(t('k8s.apply.confirmUpdateMessage', { cluster: clusterLabel, resource: `${resource.kind || ''}/${resource.name || ''}` }), { title: t('k8s.apply.confirmTitle'), danger: true }))) {
         return;
       }
       try {
@@ -2231,7 +2232,7 @@ export class KubernetesSessionPage extends HTMLElement {
       if (selected.kind && selected.name) {
         store.openResource(selected.kind, selected).catch(() => {});
       }
-      showToast('已載入最新版本，請重新套用你的變更', { type: 'info', title: 'Kubernetes YAML' });
+      showToast(t('k8s.toast.reloadedLatest'), { type: 'info', title: t('k8s.toast.yamlTitle') });
     });
     // YAML 頁籤：取消編輯，還原檢視模式。
     this.querySelector('#cancelKubernetesYAML')?.addEventListener('click', () => {
@@ -2265,7 +2266,7 @@ export class KubernetesSessionPage extends HTMLElement {
     const pod = state.selectedResource || {};
     this.shellTerminal = new Terminal({ cursorBlink: true, fontSize: 12, fontFamily: 'SFMono-Regular, Consolas, Liberation Mono, monospace' });
     this.shellTerminal.open(container);
-    this.shellTerminal.writeln('正在連接 Pod Shell...');
+    this.shellTerminal.writeln(t('k8s.shell.connecting'));
     try {
       this.shellSession = await KubernetesAPI.startPodShell({ namespace: pod.namespace, podName: pod.name, container: state.podActionView.container, cols: this.shellTerminal.cols, rows: this.shellTerminal.rows });
       this.shellTerminal.clear();
@@ -2275,7 +2276,7 @@ export class KubernetesSessionPage extends HTMLElement {
       this.resizePodShell(container);
       this.shellTerminal.focus();
     } catch (error) {
-      this.shellTerminal.writeln(`\r\n開啟 Pod Shell 失敗：${error?.message || error}`);
+      this.shellTerminal.writeln(`\r\n${t('k8s.shell.openFailed', { error: error?.message || error })}`);
     }
   }
 

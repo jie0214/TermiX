@@ -495,7 +495,7 @@ test('Kubernetes API 缺少 Wails binding 時會回報具名錯誤', async () =>
   try {
     await assert.rejects(
       () => KubernetesAPI.getDashboard('default'),
-      /缺少後端 API：GetKubernetesDashboard/
+      /Missing backend API: GetKubernetesDashboard/
     );
   } finally {
     if (originalWindow === undefined) delete globalThis.window;

@@ -2,6 +2,7 @@ import { TerminalAPI } from '../terminal/TerminalAPI';
 import { terminalStore } from '../terminal/TerminalStore';
 import { snippetStore, toTerminalPayload } from './SnippetStore';
 import { SnippetAPI } from './SnippetAPI';
+import { t } from '../../i18n/index.ts';
 
 export function isLocalSession(session) {
   return !!(session?.isLocal || session?.config?.isLocal);
@@ -9,7 +10,7 @@ export function isLocalSession(session) {
 
 export async function pasteSnippetToSession(sessionKey, snippet) {
   if (!sessionKey || !snippet?.script) {
-    return { success: false, error: 'Snippet 或 Terminal session 不存在' };
+    return { success: false, error: t('misc.snippet.sessionNotFound') };
   }
   await TerminalAPI.writeTerminalInput(sessionKey, toTerminalPayload(snippet.script, 'paste'));
   return { success: true };
@@ -17,7 +18,7 @@ export async function pasteSnippetToSession(sessionKey, snippet) {
 
 export async function runSnippetInSession(sessionKey, snippet) {
   if (!sessionKey || !snippet?.script) {
-    return { success: false, error: 'Snippet 或 Terminal session 不存在' };
+    return { success: false, error: t('misc.snippet.sessionNotFound') };
   }
   const cmd = snippet.script.endsWith('\n') ? snippet.script : (snippet.script + '\n');
   await TerminalAPI.writeTerminalInput(sessionKey, cmd);

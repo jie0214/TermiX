@@ -1,5 +1,6 @@
 import { ControlPanelAPI } from './ControlPanelAPI';
 import { TerminalAPI } from '../terminal/TerminalAPI';
+import { t } from '../../i18n/index.ts';
 
 const EXPORT_VAR_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
@@ -83,7 +84,7 @@ export async function executeFunctionBox(comp, sessionKey) {
         success: false,
         phase: 'remote',
         remoteResult,
-        error: remoteResult.error || '遠端指令執行失敗'
+        error: remoteResult.error || t('cp.err.remoteFailed')
       };
     }
     localEnv = buildLocalCommandEnv(comp.exportVars, remoteResult.output);
@@ -95,7 +96,7 @@ export async function executeFunctionBox(comp, sessionKey) {
         phase: 'export',
         remoteResult,
         localEnv,
-        error: `遠端輸出缺少必要變數：${missingVars.join(', ')}`
+        error: t('cp.err.missingVars', { vars: missingVars.join(', ') })
       };
     }
   }
@@ -110,7 +111,7 @@ export async function executeFunctionBox(comp, sessionKey) {
         remoteResult,
         localResult,
         localEnv,
-        error: localResult.error || '本機指令執行失敗'
+        error: localResult.error || t('cp.err.localFailed')
       };
     }
   }

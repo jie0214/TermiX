@@ -137,15 +137,6 @@
   --color-primary: #8fd8ff;
   --color-primary-hover: #b8e8ff;
   --color-focus: #9ee4ff;
-  /* 語意化狀態色（深色主題適配：較亮前景 + 低飽和淡底） */
-  --color-success: #4ade80;
-  --color-success-bg: color-mix(in srgb, #22c55e 16%, transparent);
-  --color-warning: #fbbf24;
-  --color-warning-bg: color-mix(in srgb, #f59e0b 16%, transparent);
-  --color-danger: #f87171;
-  --color-danger-bg: color-mix(in srgb, #ef4444 15%, transparent);
-  --color-info: #60a5fa;
-  --color-info-bg: color-mix(in srgb, #3b82f6 16%, transparent);
   --terminal-frame-bg: #0d1520;
   --terminal-bg: #070b12;
   --terminal-border: #223344;
@@ -192,15 +183,6 @@
   --color-primary: #a3b0c2;
   --color-primary-hover: #c2ccd9;
   --color-focus: #8fa3bd;
-  /* 語意化狀態色（深色主題適配：較亮前景 + 低飽和淡底） */
-  --color-success: #4ade80;
-  --color-success-bg: color-mix(in srgb, #22c55e 16%, transparent);
-  --color-warning: #fbbf24;
-  --color-warning-bg: color-mix(in srgb, #f59e0b 16%, transparent);
-  --color-danger: #f87171;
-  --color-danger-bg: color-mix(in srgb, #ef4444 15%, transparent);
-  --color-info: #60a5fa;
-  --color-info-bg: color-mix(in srgb, #3b82f6 16%, transparent);
   --terminal-frame-bg: #14171b;
   --terminal-bg: #0f1114;
   --terminal-border: #2d333d;
@@ -243,15 +225,6 @@
   --color-primary: #34d399;
   --color-primary-hover: #6ee7b7;
   --color-focus: #6ee7b7;
-  /* 語意化狀態色（深色主題適配：較亮前景 + 低飽和淡底） */
-  --color-success: #4ade80;
-  --color-success-bg: color-mix(in srgb, #22c55e 16%, transparent);
-  --color-warning: #fbbf24;
-  --color-warning-bg: color-mix(in srgb, #f59e0b 16%, transparent);
-  --color-danger: #f87171;
-  --color-danger-bg: color-mix(in srgb, #ef4444 15%, transparent);
-  --color-info: #60a5fa;
-  --color-info-bg: color-mix(in srgb, #3b82f6 16%, transparent);
   --terminal-frame-bg: #0e1e17;
   --terminal-bg: #09140f;
   --terminal-border: #1e4030;
@@ -294,15 +267,6 @@
   --color-primary: #fb923c;
   --color-primary-hover: #fdba74;
   --color-focus: #fdba74;
-  /* 語意化狀態色（深色主題適配：較亮前景 + 低飽和淡底） */
-  --color-success: #4ade80;
-  --color-success-bg: color-mix(in srgb, #22c55e 16%, transparent);
-  --color-warning: #fbbf24;
-  --color-warning-bg: color-mix(in srgb, #f59e0b 16%, transparent);
-  --color-danger: #f87171;
-  --color-danger-bg: color-mix(in srgb, #ef4444 15%, transparent);
-  --color-info: #60a5fa;
-  --color-info-bg: color-mix(in srgb, #3b82f6 16%, transparent);
   --terminal-frame-bg: #1e100a;
   --terminal-bg: #120a05;
   --terminal-border: #4a2515;
@@ -345,15 +309,6 @@
   --color-primary: #38bdf8;
   --color-primary-hover: #7dd3fc;
   --color-focus: #7dd3fc;
-  /* 語意化狀態色（深色主題適配：較亮前景 + 低飽和淡底） */
-  --color-success: #4ade80;
-  --color-success-bg: color-mix(in srgb, #22c55e 16%, transparent);
-  --color-warning: #fbbf24;
-  --color-warning-bg: color-mix(in srgb, #f59e0b 16%, transparent);
-  --color-danger: #f87171;
-  --color-danger-bg: color-mix(in srgb, #ef4444 15%, transparent);
-  --color-info: #60a5fa;
-  --color-info-bg: color-mix(in srgb, #3b82f6 16%, transparent);
   --terminal-frame-bg: #10122a;
   --terminal-bg: #0a0c1e;
   --terminal-border: #2a3060;
@@ -396,15 +351,6 @@
   --color-primary: #38bdf8;
   --color-primary-hover: #7dd3fc;
   --color-focus: #38bdf8;
-  /* 語意化狀態色（深色主題適配：較亮前景 + 低飽和淡底） */
-  --color-success: #4ade80;
-  --color-success-bg: color-mix(in srgb, #22c55e 16%, transparent);
-  --color-warning: #fbbf24;
-  --color-warning-bg: color-mix(in srgb, #f59e0b 16%, transparent);
-  --color-danger: #f87171;
-  --color-danger-bg: color-mix(in srgb, #ef4444 15%, transparent);
-  --color-info: #60a5fa;
-  --color-info-bg: color-mix(in srgb, #3b82f6 16%, transparent);
   --terminal-frame-bg: #060a12;
   --terminal-bg: #030712;
   --terminal-border: rgba(56, 189, 248, 0.15);
@@ -451,15 +397,6 @@
   --color-primary: #f97316;
   --color-primary-hover: #fdba74;
   --color-focus: #f97316;
-  /* 語意化狀態色（深色主題適配：較亮前景 + 低飽和淡底） */
-  --color-success: #4ade80;
-  --color-success-bg: color-mix(in srgb, #22c55e 16%, transparent);
-  --color-warning: #fbbf24;
-  --color-warning-bg: color-mix(in srgb, #f59e0b 16%, transparent);
-  --color-danger: #f87171;
-  --color-danger-bg: color-mix(in srgb, #ef4444 15%, transparent);
-  --color-info: #60a5fa;
-  --color-info-bg: color-mix(in srgb, #3b82f6 16%, transparent);
   --terminal-frame-bg: #110907;
   --terminal-bg: #090403;
   --terminal-border: rgba(249, 115, 22, 0.15);
@@ -506,15 +443,6 @@
   --color-primary: #a855f7;
   --color-primary-hover: #d8b4fe;
   --color-focus: #a855f7;
-  /* 語意化狀態色（深色主題適配：較亮前景 + 低飽和淡底） */
-  --color-success: #4ade80;
-  --color-success-bg: color-mix(in srgb, #22c55e 16%, transparent);
-  --color-warning: #fbbf24;
-  --color-warning-bg: color-mix(in srgb, #f59e0b 16%, transparent);
-  --color-danger: #f87171;
-  --color-danger-bg: color-mix(in srgb, #ef4444 15%, transparent);
-  --color-info: #60a5fa;
-  --color-info-bg: color-mix(in srgb, #3b82f6 16%, transparent);
   --terminal-frame-bg: #05030b;
   --terminal-bg: #030107;
   --terminal-border: rgba(168, 85, 247, 0.15);
@@ -561,15 +489,6 @@
   --color-primary: #22c55e;
   --color-primary-hover: #86efac;
   --color-focus: #22c55e;
-  /* 語意化狀態色（深色主題適配：較亮前景 + 低飽和淡底） */
-  --color-success: #4ade80;
-  --color-success-bg: color-mix(in srgb, #22c55e 16%, transparent);
-  --color-warning: #fbbf24;
-  --color-warning-bg: color-mix(in srgb, #f59e0b 16%, transparent);
-  --color-danger: #f87171;
-  --color-danger-bg: color-mix(in srgb, #ef4444 15%, transparent);
-  --color-info: #60a5fa;
-  --color-info-bg: color-mix(in srgb, #3b82f6 16%, transparent);
   --terminal-frame-bg: #030a05;
   --terminal-bg: #010502;
   --terminal-border: rgba(34, 197, 94, 0.15);
@@ -617,15 +536,6 @@
   --color-primary: #a855f7;
   --color-primary-hover: #c084fc;
   --color-focus: #a855f7;
-  /* 語意化狀態色（深色主題適配：較亮前景 + 低飽和淡底） */
-  --color-success: #4ade80;
-  --color-success-bg: color-mix(in srgb, #22c55e 16%, transparent);
-  --color-warning: #fbbf24;
-  --color-warning-bg: color-mix(in srgb, #f59e0b 16%, transparent);
-  --color-danger: #f87171;
-  --color-danger-bg: color-mix(in srgb, #ef4444 15%, transparent);
-  --color-info: #60a5fa;
-  --color-info-bg: color-mix(in srgb, #3b82f6 16%, transparent);
 
   --terminal-frame-bg: #050505;
   --terminal-bg: #000000;
@@ -680,15 +590,6 @@
   --color-primary: #9eff2b;
   --color-primary-hover: #b5ff5e;
   --color-focus: #9eff2b;
-  /* 語意化狀態色（深色主題適配：較亮前景 + 低飽和淡底） */
-  --color-success: #4ade80;
-  --color-success-bg: color-mix(in srgb, #22c55e 16%, transparent);
-  --color-warning: #fbbf24;
-  --color-warning-bg: color-mix(in srgb, #f59e0b 16%, transparent);
-  --color-danger: #f87171;
-  --color-danger-bg: color-mix(in srgb, #ef4444 15%, transparent);
-  --color-info: #60a5fa;
-  --color-info-bg: color-mix(in srgb, #3b82f6 16%, transparent);
 
   --terminal-frame-bg: #0d0e10;
   --terminal-bg: #08090a;
@@ -743,15 +644,6 @@
   --color-primary: #d1d1d6;
   --color-primary-hover: #f2f2f7;
   --color-focus: #e5e5ea;
-  /* 語意化狀態色（深色主題適配：較亮前景 + 低飽和淡底） */
-  --color-success: #4ade80;
-  --color-success-bg: color-mix(in srgb, #22c55e 16%, transparent);
-  --color-warning: #fbbf24;
-  --color-warning-bg: color-mix(in srgb, #f59e0b 16%, transparent);
-  --color-danger: #f87171;
-  --color-danger-bg: color-mix(in srgb, #ef4444 15%, transparent);
-  --color-info: #60a5fa;
-  --color-info-bg: color-mix(in srgb, #3b82f6 16%, transparent);
 
   --terminal-frame-bg: #111113;
   --terminal-bg: #0d0d0f;
@@ -785,6 +677,159 @@
   --glass-radius-md: 15px;
   --glass-radius-sm: 10px;
   --window-surface-radius: 22px;
+}
+
+/*
+ * 微透明「毛玻璃」主題（Glass）
+ * 讓 body / shell / workspace 背景完全透明，透過原生視窗透明度（macOS vibrancy /
+ * Windows Acrylic）隱約看到桌面與其他 App 的顏色。UI 面板採低 alpha，
+ * 終端機（--terminal-bg）保留較高 alpha 以維持文字可讀性。
+ * 架構分三層：結構(共用) → 透明度(light/dark) → 主題色(各 hue 覆蓋 accent)。
+ * 全部為深色系，會一併套用 .dark-theme（狀態色由該處提供）。
+ * 要新增一個透明色：把 class 加進「結構」「透明度 light」「body/shell」三處清單，
+ * 再補一個 accent 覆蓋區塊即可。
+ */
+
+/* ── 第 1 層：結構（所有 glass 變體共用；含預設青色 accent）── */
+:root.theme-glass-dark,
+:root.theme-glass-light,
+:root.theme-glass-violet,
+:root.theme-glass-emerald,
+:root.theme-glass-amber,
+:root.theme-glass-rose {
+  --color-text: #eef4fb;
+  --color-label: #d3dde8;
+  --color-subtext: #9fb0c0;
+  --color-text-muted: var(--color-subtext);
+  --color-primary: #7ecfff;
+  --color-primary-hover: #a8dfff;
+  --color-focus: #7ecfff;
+  --color-bg: transparent;
+  --color-shell-bg: transparent;
+  --color-workspace-bg: transparent;
+  --color-terminal-wrap-bg: transparent;
+  --terminal-foreground: #dde8f0;
+  --terminal-muted: #8a9bad;
+  --terminal-accent: #7ecfff;
+  --terminal-border: rgba(255, 255, 255, 0.10);
+  --tab-text: #cbd5e1;
+  --btn-secondary-text: #eef4fb;
+  --glass-inner-border: rgba(255, 255, 255, 0.20);
+  --glass-radius-lg: 20px;
+  --glass-radius-md: 15px;
+  --glass-radius-sm: 10px;
+  --window-surface-radius: 22px;
+}
+
+/* ── 第 2 層：透明度 = light（所有透明色變體共用「剛好」的透明度）── */
+:root.theme-glass-light,
+:root.theme-glass-violet,
+:root.theme-glass-emerald,
+:root.theme-glass-amber,
+:root.theme-glass-rose {
+  --color-titlebar-bg: rgba(14, 18, 28, 0.18);
+  --color-panel-bg: rgba(20, 26, 38, 0.16);
+  --color-border: rgba(255, 255, 255, 0.18);
+  --terminal-frame-bg: rgba(10, 13, 20, 0.10);
+  --terminal-bg: rgba(8, 11, 18, 0.55);
+  --shadow: 0 20px 50px rgba(0, 0, 0, 0.30);
+  --tab-bg: rgba(255, 255, 255, 0.06);
+  --tab-hover: rgba(255, 255, 255, 0.14);
+  --tab-border: rgba(255, 255, 255, 0.14);
+  --dialog-bg: rgba(18, 24, 36, 0.72);
+  --input-bg: rgba(8, 12, 20, 0.28);
+  --input-border: rgba(255, 255, 255, 0.22);
+  --btn-secondary-bg: rgba(255, 255, 255, 0.08);
+  --btn-secondary-border: rgba(255, 255, 255, 0.18);
+  --btn-secondary-hover: rgba(255, 255, 255, 0.14);
+  --glass-bg: rgba(20, 26, 40, 0.20);
+  --glass-bg-strong: rgba(15, 20, 32, 0.32);
+  --glass-bg-soft: rgba(255, 255, 255, 0.05);
+  --glass-border: rgba(255, 255, 255, 0.22);
+  --glass-shadow: 0 20px 52px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.20);
+  --glass-shadow-soft: 0 10px 28px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  --glass-blur: blur(22px) saturate(1.9);
+}
+
+/* ── 透明度 = dark（較實、可讀性優先；青色）── */
+:root.theme-glass-dark {
+  --color-titlebar-bg: rgba(14, 18, 28, 0.62);
+  --color-panel-bg: rgba(20, 26, 38, 0.58);
+  --color-border: rgba(255, 255, 255, 0.14);
+  --terminal-frame-bg: rgba(10, 13, 20, 0.45);
+  --terminal-bg: rgba(8, 11, 18, 0.90);
+  --shadow: 0 22px 54px rgba(0, 0, 0, 0.45);
+  --tab-bg: rgba(255, 255, 255, 0.08);
+  --tab-hover: rgba(255, 255, 255, 0.16);
+  --tab-border: rgba(255, 255, 255, 0.16);
+  --dialog-bg: rgba(18, 24, 36, 0.90);
+  --input-bg: rgba(8, 12, 20, 0.55);
+  --input-border: rgba(255, 255, 255, 0.18);
+  --btn-secondary-bg: rgba(255, 255, 255, 0.10);
+  --btn-secondary-border: rgba(255, 255, 255, 0.20);
+  --btn-secondary-hover: rgba(255, 255, 255, 0.16);
+  --glass-bg: rgba(20, 26, 40, 0.55);
+  --glass-bg-strong: rgba(15, 20, 32, 0.72);
+  --glass-bg-soft: rgba(255, 255, 255, 0.06);
+  --glass-border: rgba(255, 255, 255, 0.18);
+  --glass-shadow: 0 24px 60px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  --glass-shadow-soft: 0 12px 32px rgba(0, 0, 0, 0.30), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  --glass-blur: blur(30px) saturate(1.7);
+}
+
+/* ── 第 3 層：主題色（覆蓋 accent 與 hue 染色邊框；置於透明度層之後以生效）── */
+/* 暗版改用中性銀灰 accent，去除青色調，作為可讀性優先的中性深色玻璃 */
+:root.theme-glass-dark {
+  --color-primary: #cbd5e1;
+  --color-primary-hover: #e8eef5;
+  --color-focus: #cbd5e1;
+  --terminal-accent: #cbd5e1;
+}
+:root.theme-glass-violet {
+  --color-primary: #c4b5fd;
+  --color-primary-hover: #ddd6fe;
+  --color-focus: #c4b5fd;
+  --terminal-accent: #c4b5fd;
+  --glass-border: rgba(196, 181, 253, 0.24);
+}
+:root.theme-glass-emerald {
+  --color-primary: #6ee7b7;
+  --color-primary-hover: #a7f3d0;
+  --color-focus: #6ee7b7;
+  --terminal-accent: #6ee7b7;
+  --glass-border: rgba(110, 231, 183, 0.24);
+}
+:root.theme-glass-amber {
+  --color-primary: #fdba74;
+  --color-primary-hover: #fed7aa;
+  --color-focus: #fdba74;
+  --terminal-accent: #fdba74;
+  --glass-border: rgba(253, 186, 116, 0.24);
+}
+:root.theme-glass-rose {
+  --color-primary: #fda4c0;
+  --color-primary-hover: #fecdd3;
+  --color-focus: #fda4c0;
+  --terminal-accent: #fda4c0;
+  --glass-border: rgba(253, 164, 192, 0.24);
+}
+
+/* Glass 主題：清掉 shell 的不透明漸層與 body 底色，讓桌面穿透 */
+:root.theme-glass-dark body,
+:root.theme-glass-light body,
+:root.theme-glass-violet body,
+:root.theme-glass-emerald body,
+:root.theme-glass-amber body,
+:root.theme-glass-rose body {
+  background: transparent;
+}
+:root.theme-glass-dark .shell,
+:root.theme-glass-light .shell,
+:root.theme-glass-violet .shell,
+:root.theme-glass-emerald .shell,
+:root.theme-glass-amber .shell,
+:root.theme-glass-rose .shell {
+  background: transparent !important;
 }
 
 
@@ -2936,6 +2981,14 @@ kubernetes-session-page {
 
 .kubernetes-detail-backdrop { position: absolute; inset: 0; z-index: 20; background: rgba(5, 10, 18, 0.34); --wails-draggable: no-drag; }
 .kubernetes-detail-drawer { position: absolute; z-index: 21; top: 0; right: 0; bottom: 0; display: flex; width: min(560px, 72vw); min-width: 0; flex-direction: column; border-left: 1px solid var(--color-border); background: var(--color-panel-bg); box-shadow: -14px 0 38px rgba(0, 0, 0, 0.2); color: var(--color-text); --wails-draggable: no-drag; }
+/* 毛玻璃主題：面板變數本身極透，drawer 疊在 session 上會透出後方文字。
+   改為不透明毛玻璃 + 加強 backdrop 遮罩，確保可讀。 */
+:root[class*="theme-glass"] .kubernetes-detail-backdrop { background: rgba(5, 10, 18, 0.55); }
+:root[class*="theme-glass"] .kubernetes-detail-drawer {
+  background: rgba(15, 20, 30, 0.92);
+  backdrop-filter: blur(24px) saturate(1.4);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+}
 .kubernetes-pod-detail-drawer { width: min(920px, 82vw); }
 .kubernetes-detail-drawer > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 18px 20px; border-bottom: 1px solid var(--color-border); }
 .kubernetes-detail-drawer > header span { color: var(--color-primary); font-size: 11px; font-weight: 800; letter-spacing: 0.7px; text-transform: uppercase; }

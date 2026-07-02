@@ -9,6 +9,7 @@ import '../kubernetes/KubernetesPage';
 import { pasteSnippetToSession, runSnippetInSession, runStartupCommand } from '../snippets/SnippetRuntime';
 import { showToast } from '../../components/feedback/toast';
 import { confirmDialog } from '../../components/feedback/confirmDialog';
+import { t } from '../../i18n/index.ts';
 import {
   DEFAULT_HOST_CONFIG,
   SECRET_FIELD_DEFINITIONS,
@@ -64,7 +65,7 @@ function escapeHtml(str) {
 
 function normalizeTerminalBootstrapOutput(output) {
   const sanitized = sanitizeTerminalLogOutput(output).trim();
-  return sanitized ? `${sanitized}\n\n` : '連線建立成功。\n\n';
+  return sanitized ? `${sanitized}\n\n` : t('hostvault.connectSuccess');
 }
 
 function normalizeConnectionErrorMessage(errorMessage) {
@@ -75,10 +76,18 @@ function normalizeConnectionErrorMessage(errorMessage) {
     /(?:whoami\s*=|printf\s+['"]\\n__TERMIX_DONE_\d+__:%s\\n['"]\s+["']?\$status["']?|__TERMIX_DONE_\d+__)/.test(rawMessage);
 
   if (isLeakingSudoProbe) {
-    return 'sudo shell 啟動失敗：遠端環境未能完成 sudo 權限探測。';
+    return t('hostvault.sudoShellFailed');
   }
 
-  return sanitized || '未知錯誤';
+  // 後端回傳的常見中文連線錯誤 → 對應 i18n（後端維持不變）。
+  if (rawMessage.includes('連線已被使用者取消')) {
+    return t('hostvault.connCancelledByUser');
+  }
+  if (rawMessage.includes('連線已中斷')) {
+    return t('hostvault.connLostReconnect');
+  }
+
+  return sanitized || t('hostvault.unknownError');
 }
 
 function formatSnippetPackageName(packageId, packages) {
@@ -176,7 +185,7 @@ function renderSecretInput(field, drawerHost, extraAttrs = '') {
   return `
     <div style="display: flex; align-items: center; background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); border-radius: 6px; overflow: hidden;">
       <input class="no-drag" id="${field.inputId}" name="${field.inputId}" type="password" data-host-id="${hostId}" data-secret-field="${field.key}" ${renderSecretInputState(field, drawerHost)} ${extraAttrs} style="flex: 1; min-width: 0; background: transparent; border: none; padding: 8px 10px 8px 12px; color: var(--color-text); outline: none;">
-      <button type="button" class="no-drag secret-visibility-toggle" data-target="${field.inputId}" title="顯示密碼" aria-label="顯示密碼" style="width: 34px; align-self: stretch; border: none; border-left: 1px solid rgba(23,107,135,0.18); background: transparent; color: var(--color-subtext); cursor: pointer; display: inline-flex; align-items: center; justify-content: center;">
+      <button type="button" class="no-drag secret-visibility-toggle" data-target="${field.inputId}" title="${t('hostvault.showPassword')}" aria-label="${t('hostvault.showPassword')}" style="width: 34px; align-self: stretch; border: none; border-left: 1px solid rgba(23,107,135,0.18); background: transparent; color: var(--color-subtext); cursor: pointer; display: inline-flex; align-items: center; justify-content: center;">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"/>
           <circle cx="12" cy="12" r="3"/>
@@ -232,11 +241,11 @@ function bindSecretVisibilityToggles(root) {
             if (secret?.found) {
               input.dataset.secretRevealValue = secret.value || '';
             } else {
-              showToast('讀取密碼失敗：系統憑證儲存區找不到此密碼', { type: 'error' });
+              showToast(t('hostvault.readSecretNotFound'), { type: 'error' });
               return;
             }
           } catch (error) {
-            showToast(`讀取密碼失敗：${error.message || error}`, { type: 'error' });
+            showToast(t('hostvault.readSecretFailed', { error: error.message || error }), { type: 'error' });
             return;
           }
         }
@@ -248,7 +257,7 @@ function bindSecretVisibilityToggles(root) {
         input.value = input.dataset.secretMask;
       }
       input.type = nextType;
-      const label = nextType === 'password' ? '顯示密碼' : '隱藏密碼';
+      const label = nextType === 'password' ? t('hostvault.showPassword') : t('hostvault.hidePassword');
       btn.setAttribute('title', label);
       btn.setAttribute('aria-label', label);
       btn.style.color = nextType === 'password' ? 'var(--color-subtext)' : 'var(--color-primary)';
@@ -296,7 +305,7 @@ function findMatchingSavedHost(hosts, query) {
 
 function promptExportMode() {
   return showChoiceDialog({
-    title: '選擇匯出模式',
+    title: t('hostvault.exportModeTitle'),
     options: [
       { value: 'reference', label: 'Reference' },
       { value: 'safe', label: 'Safe' },
@@ -307,7 +316,7 @@ function promptExportMode() {
 
 function promptImportMode() {
   return showChoiceDialog({
-    title: '選擇匯入模式',
+    title: t('hostvault.importModeTitle'),
     options: [
       { value: 'reference-only', label: 'Reference Only' },
       { value: 'config-only', label: 'Config Only' },
@@ -325,7 +334,7 @@ function showChoiceDialog({ title, options }) {
       <div class="settings-dialog no-drag" style="width: min(360px, calc(100vw - 32px)); background: var(--glass-bg-strong); border: 1px solid var(--glass-border); border-radius: 8px; box-shadow: var(--glass-shadow);">
         <div class="settings-header" style="padding: 16px 18px; border-bottom: 1px solid rgba(23,107,135,0.15); display: flex; align-items: center; justify-content: space-between;">
           <h2 style="font-size: 14px; font-weight: 800; color: var(--color-text); margin: 0;">${escapeHtml(title)}</h2>
-          <button type="button" aria-label="關閉" class="no-drag choice-cancel-btn icon-btn" style="font-size: 18px; line-height: 1;">&times;</button>
+          <button type="button" aria-label="${t('common.close')}" class="no-drag choice-cancel-btn icon-btn" style="font-size: 18px; line-height: 1;">&times;</button>
         </div>
         <div style="padding: 14px; display: grid; gap: 8px;">
           ${options.map(option => `
@@ -440,7 +449,7 @@ export class HostListPage extends HTMLElement {
       );
 
       if (filteredHosts.length === 0) {
-        return `<div style="padding: 12px; text-align: center; color: var(--color-text-muted); font-size: 12px;">查無符合條件的主機。</div>`;
+        return `<div style="padding: 12px; text-align: center; color: var(--color-text-muted); font-size: 12px;">${t('hostvault.noMatchingHosts')}</div>`;
       }
 
       let html = "";
@@ -515,7 +524,7 @@ export class HostListPage extends HTMLElement {
 
     let hostsHtml = "";
     if (groupHosts.length === 0) {
-      hostsHtml = `<div style="padding: 12px; text-align: center; color: var(--color-text-muted); font-size: 12px;">該群組目前無任何主機。</div>`;
+      hostsHtml = `<div style="padding: 12px; text-align: center; color: var(--color-text-muted); font-size: 12px;">${t('hostvault.groupNoHosts')}</div>`;
     } else {
       groupHosts.forEach(host => {
         const isChecked = selectedTargetIds.has(host.id);
@@ -575,7 +584,7 @@ export class HostListPage extends HTMLElement {
     const integrationCardsHtml = integrations.map((integration) => {
       const relatedGroup = state.groups.find(group => group.id === integration.groupId);
       const integrationName = integration.name || relatedGroup?.name || 'AWS Integration';
-      const groupName = relatedGroup?.name || integration.groupId || '未關聯群組';
+      const groupName = relatedGroup?.name || integration.groupId || t('hostvault.integrationNoGroup');
       const sourceLabel = integration.importSource === 'lightsail'
         ? 'Lightsail'
         : integration.importSource === 'ec2'
@@ -588,7 +597,7 @@ export class HostListPage extends HTMLElement {
           : 'Public / Private IP';
 
       return `
-        <div class="vault-card integration-card no-drag" data-integration-group-id="${integration.groupId}" title="編輯 Integration：${escapeHtml(integrationName)}">
+        <div class="vault-card integration-card no-drag" data-integration-group-id="${integration.groupId}" title="${t('hostvault.editIntegrationTitle', { name: escapeHtml(integrationName) })}">
           <div class="vault-card-icon" style="background: linear-gradient(135deg, #ff9900, #f97316); border-radius: 8px;">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
               <polygon points="12 2 2 7 12 12 22 7 12 2"/>
@@ -598,10 +607,10 @@ export class HostListPage extends HTMLElement {
           </div>
           <div class="vault-card-info">
             <div class="vault-card-title">${escapeHtml(integrationName)}</div>
-            <div class="vault-card-details">${escapeHtml(groupName)}，${escapeHtml(integration.region || '未設定區域')}</div>
+            <div class="vault-card-details">${escapeHtml(groupName)}，${escapeHtml(integration.region || t('hostvault.integrationNoRegion'))}</div>
             <div class="vault-card-details" style="margin-top: 4px; color: var(--color-text-muted);">${escapeHtml(sourceLabel)}，${escapeHtml(ipTypeLabel)}</div>
           </div>
-          <button type="button" aria-label="編輯 Integration" class="no-drag vault-integration-edit-btn" data-integration-group-id="${integration.groupId}" title="編輯 Integration" style="background: transparent; border: none; padding: 6px; cursor: pointer; color: var(--color-subtext); display: inline-flex; align-items: center; justify-content: center; margin-left: auto;">
+          <button type="button" aria-label="${t('hostvault.editIntegration')}" class="no-drag vault-integration-edit-btn" data-integration-group-id="${integration.groupId}" title="${t('hostvault.editIntegration')}" style="background: transparent; border: none; padding: 6px; cursor: pointer; color: var(--color-subtext); display: inline-flex; align-items: center; justify-content: center; margin-left: auto;">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
               <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
@@ -615,7 +624,7 @@ export class HostListPage extends HTMLElement {
       <div class="vault-toolbar" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; gap: 12px; flex: 0 0 auto;">
         <div style="display: flex; flex-direction: column; gap: 4px; text-align: left;">
           <div style="font-size: 14px; font-weight: 700; color: var(--color-text);">Integrations</div>
-          <div style="font-size: 12px; color: var(--color-text-muted);">目前支援 AWS，後續可擴充 GCP、Azure 等雲端整合。</div>
+          <div style="font-size: 12px; color: var(--color-text-muted);">${t('hostvault.integrationsDesc')}</div>
         </div>
         <button type="button" id="newIntegrationBtn" class="no-drag primary" style="min-height: 32px; font-weight: 700; font-size: 12px; padding: 0 14px; background: var(--color-primary); border: none; border-radius: 4px; color: #fff; cursor: pointer;">+ NEW INTEGRATION</button>
       </div>
@@ -623,7 +632,7 @@ export class HostListPage extends HTMLElement {
       <div class="vault-scroll-content" style="flex: 1; min-height: 0; overflow-y: auto;">
         <div class="vault-section">
           <h3 style="font-size: 14px; font-weight: 700; color: var(--color-text-muted); margin-bottom: 12px; text-align: left; letter-spacing: 0.5px; text-transform: uppercase;">Cloud Integrations</h3>
-          <div id="vaultIntegrationsGrid" class="vault-grid">${integrationCardsHtml || '<div style="color: var(--color-text-muted); font-size: 13px;">尚無任何 Integration，請點選右上角建立新的雲端整合。</div>'}</div>
+          <div id="vaultIntegrationsGrid" class="vault-grid">${integrationCardsHtml || `<div style="color: var(--color-text-muted); font-size: 13px;">${t('hostvault.noIntegrations')}</div>`}</div>
         </div>
       </div>
     `;
@@ -636,8 +645,8 @@ export class HostListPage extends HTMLElement {
       ? state.groups.find(group => group.id === currentIntegration.groupId)
       : null;
     const secretPlaceholder = currentIntegration
-      ? '留空代表沿用已儲存的 Secret Access Key'
-      : '秘密存取金鑰';
+      ? t('hostvault.awsSecretKeep')
+      : t('hostvault.awsSecretAccessKey');
     const isExpanded = this.awsSyncSettingsExpanded || false;
     const expandedStyle = `flex-direction: column; gap: 16px; margin-top: 12px; padding: 16px; background: rgba(23, 107, 135, 0.04); border: 1px solid rgba(23, 107, 135, 0.12); border-radius: 8px; ${isExpanded ? 'display: flex;' : 'display: none;'}`;
     const authMode = currentIntegration?.authMode || 'password';
@@ -649,7 +658,7 @@ export class HostListPage extends HTMLElement {
       <div class="settings-dialog" style="width: 100% !important; height: 100% !important; max-height: 100% !important; border: none !important; box-shadow: none !important; transform: none !important; display: flex; flex-direction: column;">
         <div class="settings-header" style="padding: 16px 20px; border-bottom: 1px solid rgba(23,107,135,0.15); display: flex; justify-content: space-between; align-items: center;">
           <h2 style="font-size: 15px; font-weight: 700; color: var(--color-text); font-family: inherit;">AWS Integration</h2>
-          <button type="button" aria-label="關閉設定頁面" id="closeVaultDrawer" class="no-drag btn-icon icon-btn" title="關閉設定頁面" style="font-size: 18px;">
+          <button type="button" aria-label="${t('hostvault.closeSettings')}" id="closeVaultDrawer" class="no-drag btn-icon icon-btn" title="${t('hostvault.closeSettings')}" style="font-size: 18px;">
             &times;
           </button>
         </div>
@@ -658,19 +667,19 @@ export class HostListPage extends HTMLElement {
           <input type="hidden" id="awsCurrentGroupId" value="${escapeHtml(currentIntegration?.groupId || '')}">
           <div class="settings-body" style="padding: 20px; flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 14px;">
             <div class="section-title" style="margin-bottom: 4px;">
-              <h3 style="font-size: 11px; color: var(--color-primary); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">AWS 整合設定</h3>
+              <h3 style="font-size: 11px; color: var(--color-primary); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">${t('hostvault.awsSettingsTitle')}</h3>
             </div>
 
             <!-- 物件名稱 Label -->
             <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
-              物件名稱
-              <input class="no-drag" id="awsIntegrationName" name="awsIntegrationName" value="${escapeHtml(currentIntegration?.name || '')}" placeholder="例如：Production AWS Account" required style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text); font-weight: 600;">
+              ${t('hostvault.objectName')}
+              <input class="no-drag" id="awsIntegrationName" name="awsIntegrationName" value="${escapeHtml(currentIntegration?.name || '')}" placeholder="${t('hostvault.objectNamePlaceholder')}" required style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text); font-weight: 600;">
             </label>
 
             <!-- 群組名稱 Label -->
             <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
-              群組名稱
-              <input class="no-drag" id="awsGroupName" name="awsGroupName" list="existingGroupsList" value="${escapeHtml(relatedGroup?.name || '')}" placeholder="選擇現有群組或輸入新群組名稱" required style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text); font-weight: 600;">
+              ${t('hostvault.groupName')}
+              <input class="no-drag" id="awsGroupName" name="awsGroupName" list="existingGroupsList" value="${escapeHtml(relatedGroup?.name || '')}" placeholder="${t('hostvault.groupNamePlaceholder')}" required style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text); font-weight: 600;">
               <datalist id="existingGroupsList">
                 ${(state.groups || []).map(g => `<option value="${escapeHtml(g.name)}"></option>`).join('')}
               </datalist>
@@ -678,37 +687,37 @@ export class HostListPage extends HTMLElement {
 
             <!-- Region 區域選擇 -->
             <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
-              Region 區域選擇
+              ${t('hostvault.regionSelect')}
               <select class="no-drag" id="awsRegion" name="awsRegion" style="background: #0d121f; border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
-                <option value="ap-northeast-1" ${currentIntegration?.region === 'ap-northeast-1' ? 'selected' : ''}>ap-northeast-1 (東京)</option>
-                <option value="ap-northeast-2" ${currentIntegration?.region === 'ap-northeast-2' ? 'selected' : ''}>ap-northeast-2 (首爾)</option>
-                <option value="ap-northeast-3" ${currentIntegration?.region === 'ap-northeast-3' ? 'selected' : ''}>ap-northeast-3 (大阪)</option>
-                <option value="ap-southeast-1" ${currentIntegration?.region === 'ap-southeast-1' ? 'selected' : ''}>ap-southeast-1 (新加坡)</option>
-                <option value="ap-southeast-2" ${currentIntegration?.region === 'ap-southeast-2' ? 'selected' : ''}>ap-southeast-2 (雪梨)</option>
-                <option value="us-east-1" ${currentIntegration?.region === 'us-east-1' ? 'selected' : ''}>us-east-1 (維吉尼亞北部)</option>
-                <option value="us-east-2" ${currentIntegration?.region === 'us-east-2' ? 'selected' : ''}>us-east-2 (俄亥俄)</option>
-                <option value="us-west-1" ${currentIntegration?.region === 'us-west-1' ? 'selected' : ''}>us-west-1 (加利福尼亞)</option>
-                <option value="us-west-2" ${currentIntegration?.region === 'us-west-2' ? 'selected' : ''}>us-west-2 (奧勒岡)</option>
-                <option value="eu-west-1" ${currentIntegration?.region === 'eu-west-1' ? 'selected' : ''}>eu-west-1 (愛爾蘭)</option>
-                <option value="eu-central-1" ${currentIntegration?.region === 'eu-central-1' ? 'selected' : ''}>eu-central-1 (法蘭克福)</option>
+                <option value="ap-northeast-1" ${currentIntegration?.region === 'ap-northeast-1' ? 'selected' : ''}>${t('hostvault.regionTokyo')}</option>
+                <option value="ap-northeast-2" ${currentIntegration?.region === 'ap-northeast-2' ? 'selected' : ''}>${t('hostvault.regionSeoul')}</option>
+                <option value="ap-northeast-3" ${currentIntegration?.region === 'ap-northeast-3' ? 'selected' : ''}>${t('hostvault.regionOsaka')}</option>
+                <option value="ap-southeast-1" ${currentIntegration?.region === 'ap-southeast-1' ? 'selected' : ''}>${t('hostvault.regionSingapore')}</option>
+                <option value="ap-southeast-2" ${currentIntegration?.region === 'ap-southeast-2' ? 'selected' : ''}>${t('hostvault.regionSydney')}</option>
+                <option value="us-east-1" ${currentIntegration?.region === 'us-east-1' ? 'selected' : ''}>${t('hostvault.regionVirginia')}</option>
+                <option value="us-east-2" ${currentIntegration?.region === 'us-east-2' ? 'selected' : ''}>${t('hostvault.regionOhio')}</option>
+                <option value="us-west-1" ${currentIntegration?.region === 'us-west-1' ? 'selected' : ''}>${t('hostvault.regionCalifornia')}</option>
+                <option value="us-west-2" ${currentIntegration?.region === 'us-west-2' ? 'selected' : ''}>${t('hostvault.regionOregon')}</option>
+                <option value="eu-west-1" ${currentIntegration?.region === 'eu-west-1' ? 'selected' : ''}>${t('hostvault.regionIreland')}</option>
+                <option value="eu-central-1" ${currentIntegration?.region === 'eu-central-1' ? 'selected' : ''}>${t('hostvault.regionFrankfurt')}</option>
               </select>
             </label>
 
             <!-- 存取金鑰 ID -->
             <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
-              存取金鑰 ID (Access Key ID)
+              ${t('hostvault.accessKeyIdLabel')}
               <input class="no-drag" id="awsAccessKeyId" name="awsAccessKeyId" value="${escapeHtml(currentIntegration?.accessKeyId || '')}" placeholder="AKIA..." required style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
             </label>
 
             <!-- 秘密存取金鑰 -->
             <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
-              秘密存取金鑰 (Secret Access Key)
+              ${t('hostvault.secretAccessKeyLabel')}
               <input class="no-drag" id="awsSecretAccessKey" name="awsSecretAccessKey" type="password" placeholder="${secretPlaceholder}" ${currentIntegration ? '' : 'required'} style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
             </label>
 
             <!-- 匯入伺服器類型 -->
             <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
-              匯入伺服器類型
+              ${t('hostvault.importSourceType')}
               <select class="no-drag" id="awsImportSource" name="awsImportSource" style="background: #0d121f; border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
                 <option value="both" ${(!currentIntegration?.importSource || currentIntegration?.importSource === 'both') ? 'selected' : ''}>Both (EC2 & Lightsail)</option>
                 <option value="ec2" ${currentIntegration?.importSource === 'ec2' ? 'selected' : ''}>EC2</option>
@@ -718,7 +727,7 @@ export class HostListPage extends HTMLElement {
 
             <!-- 匯入 IP 位址類型 -->
             <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
-              匯入 IP 位址類型
+              ${t('hostvault.importIpType')}
               <select class="no-drag" id="awsIpAddressType" name="awsIpAddressType" style="background: #0d121f; border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
                 <option value="both" ${(!currentIntegration?.ipAddressType || currentIntegration?.ipAddressType === 'both') ? 'selected' : ''}>Both (Public & Private IP)</option>
                 <option value="public" ${currentIntegration?.ipAddressType === 'public' ? 'selected' : ''}>Public IP</option>
@@ -731,7 +740,7 @@ export class HostListPage extends HTMLElement {
               <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
                 <h4 style="font-size: 12px; font-weight: 700; color: var(--color-text); margin: 0; text-transform: uppercase;">Add protocols</h4>
                 <button type="button" id="toggleAwsSyncSettingsBtn" class="no-drag" style="background: transparent; border: 1px solid var(--color-primary); color: var(--color-primary); border-radius: 4px; padding: 4px 10px; font-size: 11px; font-weight: 700; cursor: pointer;">
-                  雲端同步設定 ${isExpanded ? '▲' : '▼'}
+                  ${t('hostvault.cloudSyncSettings')} ${isExpanded ? '▲' : '▼'}
                 </button>
               </div>
 
@@ -746,26 +755,26 @@ export class HostListPage extends HTMLElement {
                   <input class="no-drag" id="awsDefaultUsername" name="awsDefaultUsername" value="${escapeHtml(currentIntegration?.defaultUsername || 'root')}" required autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
                 </label>
                 <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
-                  登入方式 (AuthMode)
+                  ${t('hostvault.authMode')}
                   <select class="no-drag" id="awsAuthMode" name="awsAuthMode" style="background: #0d121f; border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
-                    <option value="password" ${(!currentIntegration?.authMode || currentIntegration?.authMode === 'password') ? 'selected' : ''}>密碼登入</option>
-                    <option value="key" ${currentIntegration?.authMode === 'key' ? 'selected' : ''}>Key 登入</option>
+                    <option value="password" ${(!currentIntegration?.authMode || currentIntegration?.authMode === 'password') ? 'selected' : ''}>${t('hostvault.authPassword')}</option>
+                    <option value="key" ${currentIntegration?.authMode === 'key' ? 'selected' : ''}>${t('hostvault.authKey')}</option>
                   </select>
                 </label>
                 <div id="awsPasswordAuth" style="${showPasswordStyle}">
                   <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
-                    預設密碼 (Default Password)
-                    <input class="no-drag" id="awsDefaultPassword" name="awsDefaultPassword" type="password" autocomplete="new-password" placeholder="留空代表不變更或無預設密碼" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
+                    ${t('hostvault.defaultPassword')}
+                    <input class="no-drag" id="awsDefaultPassword" name="awsDefaultPassword" type="password" autocomplete="new-password" placeholder="${t('hostvault.defaultPasswordPlaceholder')}" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
                   </label>
                 </div>
                 <div id="awsKeyAuth" style="${showKeyStyle}">
                   <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
-                    Private Key 路徑
-                    <input class="no-drag" id="awsPrivateKeyPath" name="awsPrivateKeyPath" value="${escapeHtml(currentIntegration?.privateKeyPath || '')}" placeholder="例如：/Users/username/.ssh/id_rsa" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
+                    ${t('hostvault.privateKeyPath')}
+                    <input class="no-drag" id="awsPrivateKeyPath" name="awsPrivateKeyPath" value="${escapeHtml(currentIntegration?.privateKeyPath || '')}" placeholder="${t('hostvault.privateKeyPathPlaceholder')}" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
                   </label>
                   <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
-                    Cert 路徑
-                    <input class="no-drag" id="awsCertPath" name="awsCertPath" value="${escapeHtml(currentIntegration?.certPath || '')}" placeholder="例如：/Users/username/.ssh/id_rsa-cert.pub" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
+                    ${t('hostvault.certPath')}
+                    <input class="no-drag" id="awsCertPath" name="awsCertPath" value="${escapeHtml(currentIntegration?.certPath || '')}" placeholder="${t('hostvault.certPathPlaceholder')}" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
                   </label>
                 </div>
               </div>
@@ -774,7 +783,7 @@ export class HostListPage extends HTMLElement {
 
           <div class="settings-footer" style="padding: 16px 20px; border-top: 1px solid rgba(23,107,135,0.15); display: flex; gap: 10px;">
             ${currentIntegration ? `<button type="button" id="awsDeleteBtn" data-integration-group-id="${escapeHtml(currentIntegration.groupId)}" class="no-drag" style="min-height: 38px; font-weight: 700; background: #e74c3c; border: none; border-radius: 6px; color: #fff; padding: 0 16px; cursor: pointer;">Delete</button>` : ''}
-            <button type="submit" id="awsSubmitBtn" class="no-drag primary" style="flex: 1; min-height: 38px; font-weight: 700; background: var(--color-primary); border: none; border-radius: 6px; color: #fff; cursor: pointer;">${currentIntegration ? '儲存並重新同步' : '儲存並同步'}</button>
+            <button type="submit" id="awsSubmitBtn" class="no-drag primary" style="flex: 1; min-height: 38px; font-weight: 700; background: var(--color-primary); border: none; border-radius: 6px; color: #fff; cursor: pointer;">${currentIntegration ? t('hostvault.saveAndResync') : t('hostvault.saveAndSync')}</button>
           </div>
         </form>
       </div>
@@ -789,20 +798,20 @@ export class HostListPage extends HTMLElement {
     const relationHtml = currentAws ? `
       <div style="display: flex; flex-direction: column; gap: 6px; padding: 12px; background: rgba(255,153,0,0.08); border: 1px solid rgba(255,153,0,0.18); border-radius: 8px; text-align: left;">
         <span style="font-size: 12px; font-weight: 700; color: var(--color-text);">${escapeHtml(currentAwsName)}</span>
-        <span style="font-size: 12px; color: var(--color-subtext);">Region：${escapeHtml(currentAws.region || '未設定')}</span>
-        <span style="font-size: 12px; color: var(--color-subtext);">Access Key：${escapeHtml(currentAws.accessKeyId ? `${currentAws.accessKeyId.slice(0, 8)}...` : '未設定')}</span>
+        <span style="font-size: 12px; color: var(--color-subtext);">${t('hostvault.regionColon', { value: escapeHtml(currentAws.region || t('hostvault.notSet')) })}</span>
+        <span style="font-size: 12px; color: var(--color-subtext);">${t('hostvault.accessKeyColon', { value: escapeHtml(currentAws.accessKeyId ? `${currentAws.accessKeyId.slice(0, 8)}...` : t('hostvault.notSet')) })}</span>
       </div>
     ` : `
       <div style="padding: 12px; background: rgba(23,107,135,0.08); border: 1px dashed rgba(23,107,135,0.25); border-radius: 8px; font-size: 12px; color: var(--color-text-muted); text-align: left;">
-        此群組目前尚未關聯任何 AWS Integration。
+        ${t('hostvault.groupNoIntegration')}
       </div>
     `;
 
     return `
       <div class="settings-dialog" style="width: 100% !important; height: 100% !important; max-height: 100% !important; border: none !important; box-shadow: none !important; transform: none !important; display: flex; flex-direction: column;">
         <div class="settings-header" style="padding: 16px 20px; border-bottom: 1px solid rgba(23,107,135,0.15); display: flex; justify-content: space-between; align-items: center;">
-          <h2 style="font-size: 15px; font-weight: 700; color: var(--color-text); font-family: inherit;">編輯群組</h2>
-          <button type="button" aria-label="關閉設定頁面" id="closeVaultDrawer" class="no-drag btn-icon icon-btn" title="關閉設定頁面" style="font-size: 18px;">
+          <h2 style="font-size: 15px; font-weight: 700; color: var(--color-text); font-family: inherit;">${t('hostvault.editGroup')}</h2>
+          <button type="button" aria-label="${t('hostvault.closeSettings')}" id="closeVaultDrawer" class="no-drag btn-icon icon-btn" title="${t('hostvault.closeSettings')}" style="font-size: 18px;">
             &times;
           </button>
         </div>
@@ -810,20 +819,20 @@ export class HostListPage extends HTMLElement {
         <form id="groupEditForm" style="display: flex; flex-direction: column; flex: 1; height: 100%; min-height: 0; margin: 0;">
           <div class="settings-body" style="padding: 20px; flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 14px;">
             <div class="section-title" style="margin-bottom: 4px;">
-               <h3 style="font-size: 11px; color: var(--color-primary); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">群組設定</h3>
+               <h3 style="font-size: 11px; color: var(--color-primary); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">${t('hostvault.groupSettings')}</h3>
             </div>
 
             <!-- 群組名稱 -->
             <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
-              群組名稱
-              <input class="no-drag" id="groupDrawerNameInput" name="groupDrawerNameInput" value="${escapeHtml(group.name)}" placeholder="例如：AWS-API" required style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text); font-weight: 600;">
+              ${t('hostvault.groupName')}
+              <input class="no-drag" id="groupDrawerNameInput" name="groupDrawerNameInput" value="${escapeHtml(group.name)}" placeholder="${t('hostvault.groupNameExample')}" required style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text); font-weight: 600;">
             </label>
 
             <!-- AWS Integration 關聯顯示 -->
             <div style="border-top: 1px solid rgba(23,107,135,0.15); margin-top: 12px; padding-top: 12px; display: flex; flex-direction: column; gap: 12px;">
               <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
-                <span style="font-size: 12px; font-weight: 700; color: var(--color-text);">AWS Integration 關聯顯示</span>
-                <button type="button" id="manageGroupAwsBtn" class="no-drag" style="min-height: 30px; font-weight: 700; font-size: 11px; border: 1px solid var(--color-primary); color: var(--color-primary); background: transparent; padding: 0 12px; border-radius: 4px; cursor: pointer;">${currentAws ? '前往管理' : '建立 Integration'}</button>
+                <span style="font-size: 12px; font-weight: 700; color: var(--color-text);">${t('hostvault.awsRelationDisplay')}</span>
+                <button type="button" id="manageGroupAwsBtn" class="no-drag" style="min-height: 30px; font-weight: 700; font-size: 11px; border: 1px solid var(--color-primary); color: var(--color-primary); background: transparent; padding: 0 12px; border-radius: 4px; cursor: pointer;">${currentAws ? t('hostvault.goManage') : t('hostvault.createIntegration')}</button>
               </div>
               ${relationHtml}
             </div>
@@ -914,7 +923,7 @@ export class HostListPage extends HTMLElement {
     const currentGroup = state.groups.find(g => g.id === activeGroupId);
     const hostVaultStatusHtml = selectedTab === 'hosts'
       ? (state.loadError
-        ? `<div style="margin-bottom: 16px; padding: 12px 14px; border: 1px solid rgba(239,68,68,0.28); border-radius: 8px; color: #fca5a5; font-size: 12.5px;">HostVault 載入失敗：${escapeHtml(state.loadError)}</div>`
+        ? `<div style="margin-bottom: 16px; padding: 12px 14px; border: 1px solid rgba(239,68,68,0.28); border-radius: 8px; color: #fca5a5; font-size: 12.5px;">${t('hostvault.loadFailed', { error: escapeHtml(state.loadError) })}</div>`
         : '')
       : '';
 
@@ -949,7 +958,7 @@ export class HostListPage extends HTMLElement {
       const groupsHtml = state.groups.map(group => {
         const count = state.hosts.filter(h => h.groupId === group.id).length;
         return `
-          <div class="vault-card group-folder" data-group-id="${group.id}" title="進入群組：${group.name}" role="button" tabindex="0" aria-label="進入群組：${group.name}">
+          <div class="vault-card group-folder" data-group-id="${group.id}" title="${t('hostvault.enterGroup', { name: group.name })}" role="button" tabindex="0" aria-label="${t('hostvault.enterGroup', { name: group.name })}">
             <div class="vault-card-icon" style="background: var(--color-primary); border-radius: 8px;">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
@@ -959,7 +968,7 @@ export class HostListPage extends HTMLElement {
               <div class="vault-card-title">${group.name}</div>
               <div class="vault-card-details">${count} Hosts</div>
             </div>
-            <button type="button" aria-label="編輯群組" class="no-drag vault-group-edit-btn" data-group-id="${group.id}" title="編輯群組" style="margin-left: auto;">
+            <button type="button" aria-label="${t('hostvault.editGroupTitle')}" class="no-drag vault-group-edit-btn" data-group-id="${group.id}" title="${t('hostvault.editGroupTitle')}" style="margin-left: auto;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                 <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
@@ -972,7 +981,7 @@ export class HostListPage extends HTMLElement {
       groupsGridHtml = `
         <div id="vaultGroupsSection" class="vault-section">
           <h3 style="font-size: 14px; font-weight: 700; color: var(--color-text-muted); margin-bottom: 12px; text-align: left; letter-spacing: 0.5px; text-transform: uppercase;">Groups</h3>
-          <div id="vaultGroupsGrid" class="vault-grid">${groupsHtml || '<div style="color: var(--color-text-muted); font-size: 13px;">尚無群組</div>'}</div>
+          <div id="vaultGroupsGrid" class="vault-grid">${groupsHtml || `<div style="color: var(--color-text-muted); font-size: 13px;">${t('hostvault.noGroups')}</div>`}</div>
         </div>
       `;
     }
@@ -995,7 +1004,7 @@ export class HostListPage extends HTMLElement {
         }
 
         return `
-          <div class="vault-card history-item" data-id="${item.id}" draggable="true" title="雙擊連線，點擊右側編輯：${item.label}" role="button" tabindex="0" aria-label="連線至 ${item.alias || item.label}">
+          <div class="vault-card history-item" data-id="${item.id}" draggable="true" title="${t('hostvault.hostCardTitle', { label: item.label })}" role="button" tabindex="0" aria-label="${t('hostvault.connectTo', { name: item.alias || item.label })}">
             <div class="vault-card-icon" style="background: ${iconBg};">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                 ${iconSvg}
@@ -1005,7 +1014,7 @@ export class HostListPage extends HTMLElement {
               <div class="vault-card-title">${item.alias || item.label}</div>
               <div class="vault-card-details">ssh, ${item.config?.username}@${item.config?.host}</div>
             </div>
-            <button type="button" aria-label="編輯主機設定" class="no-drag vault-card-edit-btn" data-id="${item.id}" title="編輯主機設定" style="background: transparent; border: none; padding: 6px; cursor: pointer; color: var(--color-subtext); display: inline-flex; align-items: center; justify-content: center; margin-left: auto;">
+            <button type="button" aria-label="${t('hostvault.editHostSettings')}" class="no-drag vault-card-edit-btn" data-id="${item.id}" title="${t('hostvault.editHostSettings')}" style="background: transparent; border: none; padding: 6px; cursor: pointer; color: var(--color-subtext); display: inline-flex; align-items: center; justify-content: center; margin-left: auto;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                 <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
@@ -1029,12 +1038,12 @@ export class HostListPage extends HTMLElement {
           </div>
         `).join('');
       } else {
-        hostsGridInnerHtml = hostsHtml || '<div style="color: var(--color-text-muted); font-size: 13px;">尚無主機，請點選上方「+ NEW HOST」建立</div>';
+        hostsGridInnerHtml = hostsHtml || `<div style="color: var(--color-text-muted); font-size: 13px;">${t('hostvault.noHosts')}</div>`;
       }
 
       hostsGridHtml = `
         <div id="vaultHostsSection" class="vault-section" style="margin-top: 24px;">
-          <h3 style="font-size: 14px; font-weight: 700; color: var(--color-text-muted); margin-bottom: 12px; text-align: left; letter-spacing: 0.5px; text-transform: uppercase;">Hosts${isInitialLoading ? '<span class="host-loading-indicator" role="status" aria-live="polite" style="margin-left: 8px; font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--color-subtext); font-size: 11px;">載入中…</span>' : ''}</h3>
+          <h3 style="font-size: 14px; font-weight: 700; color: var(--color-text-muted); margin-bottom: 12px; text-align: left; letter-spacing: 0.5px; text-transform: uppercase;">Hosts${isInitialLoading ? `<span class="host-loading-indicator" role="status" aria-live="polite" style="margin-left: 8px; font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--color-subtext); font-size: 11px;">${t('common.loading')}</span>` : ''}</h3>
           <div id="vaultHostsGrid" class="vault-grid">${hostsGridInnerHtml}</div>
         </div>
       `;
@@ -1062,14 +1071,14 @@ export class HostListPage extends HTMLElement {
               </div>
               <button class="no-drag" type="button" id="addGroupBtn" style="min-height: 32px; font-weight: 700; font-size: 12px; border: 1px solid var(--color-primary); color: var(--color-primary); background: transparent; padding: 0 14px; border-radius: 4px; cursor: pointer;">+ NEW GROUP</button>
               <div class="termix-dropdown no-drag">
-                <button class="no-drag termix-dropdown-trigger" type="button" id="exportDropdownBtn" style="min-height: 32px; font-weight: 700; font-size: 12px; border: 1px solid var(--color-primary); color: var(--color-primary); background: transparent; padding: 0 14px; border-radius: 4px; cursor: pointer;" title="將主機與群組備份匯出為 JSON 或 YAML 檔案">Export ▼</button>
+                <button class="no-drag termix-dropdown-trigger" type="button" id="exportDropdownBtn" style="min-height: 32px; font-weight: 700; font-size: 12px; border: 1px solid var(--color-primary); color: var(--color-primary); background: transparent; padding: 0 14px; border-radius: 4px; cursor: pointer;" title="${t('hostvault.exportTooltip')}">Export ▼</button>
                 <div class="termix-dropdown-menu">
                   <button type="button" class="no-drag termix-dropdown-item" id="exportHostsJsonBtn">Export JSON</button>
                   <button type="button" class="no-drag termix-dropdown-item" id="exportHostsYamlBtn">Export YAML</button>
                 </div>
               </div>
               <div class="termix-dropdown no-drag">
-                <button class="no-drag termix-dropdown-trigger" type="button" id="importDropdownBtn" style="min-height: 32px; font-weight: 700; font-size: 12px; border: 1px solid var(--color-primary); color: var(--color-primary); background: transparent; padding: 0 14px; border-radius: 4px; cursor: pointer;" title="從備份的 JSON 或 YAML 檔案匯入主機與群組">Import ▼</button>
+                <button class="no-drag termix-dropdown-trigger" type="button" id="importDropdownBtn" style="min-height: 32px; font-weight: 700; font-size: 12px; border: 1px solid var(--color-primary); color: var(--color-primary); background: transparent; padding: 0 14px; border-radius: 4px; cursor: pointer;" title="${t('hostvault.importTooltip')}">Import ▼</button>
                 <div class="termix-dropdown-menu">
                   <button type="button" class="no-drag termix-dropdown-item" id="importHostsJsonBtn">Import JSON</button>
                   <button type="button" class="no-drag termix-dropdown-item" id="importHostsYamlBtn">Import YAML</button>
@@ -1109,7 +1118,7 @@ export class HostListPage extends HTMLElement {
         return `
           <tr class="log-record-row no-drag" data-log-id="${log.id}" style="border-bottom: 1px solid rgba(23, 107, 135, 0.15); cursor: pointer; transition: background 0.2s;">
             <td style="padding: 14px 0 14px 16px; width: 36px;">
-              <input type="checkbox" class="no-drag log-select-checkbox" data-log-id="${log.id}" aria-label="選取日誌" style="width: 14px; height: 14px; cursor: pointer;">
+              <input type="checkbox" class="no-drag log-select-checkbox" data-log-id="${log.id}" aria-label="${t('hostvault.selectLog')}" style="width: 14px; height: 14px; cursor: pointer;">
             </td>
             <td style="padding: 14px 16px; white-space: pre-line; line-height: 1.4; font-weight: 500; text-align: left;">
               <span style="color: var(--color-text); font-size: 13px;">${escapeHtml(log.dateStr)}</span>
@@ -1145,17 +1154,17 @@ export class HostListPage extends HTMLElement {
       mainBoardHtml = `
           <div class="vault-toolbar" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex: 0 0 auto;">
             <div style="display: flex; gap: 8px;">
-              <button type="button" id="selectAllLogsBtn" class="no-drag" style="min-height: 32px; font-weight: 700; font-size: 12px; padding: 0 14px; background: transparent; border: 1px solid var(--color-primary); border-radius: 4px; color: var(--color-primary); cursor: pointer;">全選</button>
-              <button type="button" id="deleteSelectedLogsBtn" class="no-drag" style="min-height: 32px; font-weight: 700; font-size: 12px; padding: 0 14px; background: #ef4444; border: none; border-radius: 4px; color: #fff; cursor: pointer;">清除已選</button>
-              <button type="button" id="clearGlobalLogsBtn" class="no-drag" style="min-height: 32px; font-weight: 700; font-size: 12px; padding: 0 14px; background: #7f1d1d; border: none; border-radius: 4px; color: #fff; cursor: pointer;">清空全部</button>
+              <button type="button" id="selectAllLogsBtn" class="no-drag" style="min-height: 32px; font-weight: 700; font-size: 12px; padding: 0 14px; background: transparent; border: 1px solid var(--color-primary); border-radius: 4px; color: var(--color-primary); cursor: pointer;">${t('hostvault.selectAll')}</button>
+              <button type="button" id="deleteSelectedLogsBtn" class="no-drag" style="min-height: 32px; font-weight: 700; font-size: 12px; padding: 0 14px; background: #ef4444; border: none; border-radius: 4px; color: #fff; cursor: pointer;">${t('hostvault.deleteSelected')}</button>
+              <button type="button" id="clearGlobalLogsBtn" class="no-drag" style="min-height: 32px; font-weight: 700; font-size: 12px; padding: 0 14px; background: #7f1d1d; border: none; border-radius: 4px; color: #fff; cursor: pointer;">${t('hostvault.clearAll')}</button>
             </div>
-            <div style="font-size: 13px; font-weight: 600; color: var(--color-text-muted); text-align: right;">系統連線與執行日誌紀錄</div>
+            <div style="font-size: 13px; font-weight: 600; color: var(--color-text-muted); text-align: right;">${t('hostvault.logsSubtitle')}</div>
           </div>
 
           <div id="logsTerminalContainer" style="flex: 1; overflow-y: auto; background: rgba(12, 18, 31, 0.5); border: 1px solid rgba(23, 107, 135, 0.15); border-radius: 8px; min-height: 250px;">
             ${logs.length === 0 ? `
               <div style="padding: 40px; text-align: center; color: var(--color-text-muted); font-size: 14px;">
-                目前尚無任何連線與執行日誌紀錄。
+                ${t('hostvault.noLogs')}
               </div>
             ` : `
               <div style="overflow-x: auto; width: 100%;">
@@ -1216,7 +1225,7 @@ export class HostListPage extends HTMLElement {
       }
 
       const snippetCards = filteredSnippets.map(snippet => `
-        <div class="vault-card snippet-card" data-snippet-id="${snippet.id}" draggable="true" title="雙擊執行：${escapeHtml(snippet.name)}">
+        <div class="vault-card snippet-card" data-snippet-id="${snippet.id}" draggable="true" title="${t('hostvault.snippetDoubleClickRun', { name: escapeHtml(snippet.name) })}">
           <div class="vault-card-icon" style="background: var(--color-primary);">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
@@ -1227,8 +1236,8 @@ export class HostListPage extends HTMLElement {
             <div class="vault-card-details">${escapeHtml(formatSnippetPackageName(snippet.packageId, packages))}</div>
           </div>
           <div style="display: flex; gap: 4px; margin-left: auto;">
-            <button type="button" class="no-drag snippet-paste-btn" data-snippet-id="${snippet.id}" title="貼到目前 Terminal" style="background: transparent; border: none; padding: 6px; cursor: pointer; color: var(--color-subtext); font-size: 11px; font-weight: 800;">PASTE</button>
-            <button type="button" class="no-drag snippet-run-btn" data-snippet-id="${snippet.id}" title="在目前 Terminal 執行" style="background: var(--color-primary); border: none; padding: 6px 9px; cursor: pointer; color: #fff; border-radius: 4px; font-size: 11px; font-weight: 800;">RUN</button>
+            <button type="button" class="no-drag snippet-paste-btn" data-snippet-id="${snippet.id}" title="${t('hostvault.pasteToTerminal')}" style="background: transparent; border: none; padding: 6px; cursor: pointer; color: var(--color-subtext); font-size: 11px; font-weight: 800;">PASTE</button>
+            <button type="button" class="no-drag snippet-run-btn" data-snippet-id="${snippet.id}" title="${t('hostvault.runInTerminal')}" style="background: var(--color-primary); border: none; padding: 6px 9px; cursor: pointer; color: #fff; border-radius: 4px; font-size: 11px; font-weight: 800;">RUN</button>
           </div>
         </div>
       `).join('');
@@ -1239,7 +1248,7 @@ export class HostListPage extends HTMLElement {
         const packagesHtml = packages.map(pkg => {
           const count = snippets.filter(s => s.packageId === pkg.id).length;
           return `
-            <div class="vault-card package-folder" data-package-id="${pkg.id}" title="進入分類：${escapeHtml(pkg.name)}">
+            <div class="vault-card package-folder" data-package-id="${pkg.id}" title="${t('hostvault.enterCategory', { name: escapeHtml(pkg.name) })}">
               <div class="vault-card-icon" style="background: var(--color-primary); border-radius: 8px;">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
@@ -1249,7 +1258,7 @@ export class HostListPage extends HTMLElement {
                 <div class="vault-card-title">${escapeHtml(pkg.name)}</div>
                 <div class="vault-card-details">${count} Snippets</div>
               </div>
-              <button type="button" aria-label="編輯分類" class="no-drag snippet-package-edit-btn" data-package-id="${pkg.id}" title="編輯分類" style="background: transparent; border: none; padding: 6px; cursor: pointer; color: var(--color-subtext); display: inline-flex; align-items: center; justify-content: center; margin-left: auto;">
+              <button type="button" aria-label="${t('hostvault.editCategory')}" class="no-drag snippet-package-edit-btn" data-package-id="${pkg.id}" title="${t('hostvault.editCategory')}" style="background: transparent; border: none; padding: 6px; cursor: pointer; color: var(--color-subtext); display: inline-flex; align-items: center; justify-content: center; margin-left: auto;">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                   <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
@@ -1262,7 +1271,7 @@ export class HostListPage extends HTMLElement {
         packagesGridHtml = `
           <div id="vaultPackagesSection" class="vault-section">
             <h3 style="font-size: 14px; font-weight: 700; color: var(--color-text-muted); margin-bottom: 12px; text-align: left; letter-spacing: 0.5px; text-transform: uppercase;">Packages</h3>
-            <div id="vaultPackagesGrid" class="vault-grid">${packagesHtml || '<div style="color: var(--color-text-muted); font-size: 13px;">尚無分類</div>'}</div>
+            <div id="vaultPackagesGrid" class="vault-grid">${packagesHtml || `<div style="color: var(--color-text-muted); font-size: 13px;">${t('hostvault.noCategories')}</div>`}</div>
           </div>
         `;
       }
@@ -1275,11 +1284,11 @@ export class HostListPage extends HTMLElement {
             <h3 style="font-size: 14px; font-weight: 700; color: var(--color-text-muted); margin: 0; letter-spacing: 0.5px; text-transform: uppercase;">Snippets</h3>
             ${isTopLevelNoSearch ? `
               <button type="button" id="toggleShowAllSnippetsBtn" class="no-drag" style="background: transparent; border: 1px solid var(--color-primary); color: var(--color-primary); padding: 4px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: 700;">
-                ${showAll ? '顯示未分類' : '顯示全部'}
+                ${showAll ? t('hostvault.showUncategorized') : t('hostvault.showAll')}
               </button>
             ` : ''}
           </div>
-          <div id="vaultSnippetsGrid" class="vault-grid">${snippetCards || '<div style="color: var(--color-text-muted); font-size: 13px;">尚無 Snippet，請點選上方「+ NEW SNIPPET」建立。</div>'}</div>
+          <div id="vaultSnippetsGrid" class="vault-grid">${snippetCards || `<div style="color: var(--color-text-muted); font-size: 13px;">${t('hostvault.noSnippets')}</div>`}</div>
         </div>
       `;
 
@@ -1298,7 +1307,7 @@ export class HostListPage extends HTMLElement {
               <span id="breadcrumbPackageName" style="color: var(--color-text);">${currentPackage ? escapeHtml(currentPackage.name) : ''}</span>
             </div>
           </div>
-          <div style="font-size: 13px; font-weight: 600; color: var(--color-text-muted); text-align: right;">Shell 腳本庫與批次執行</div>
+          <div style="font-size: 13px; font-weight: 600; color: var(--color-text-muted); text-align: right;">${t('hostvault.snippetsSubtitle')}</div>
         </div>
 
         <div style="display: flex; flex-direction: column; flex: 1; min-height: 0; width: 100%; overflow-y: auto;">
@@ -1311,7 +1320,7 @@ export class HostListPage extends HTMLElement {
         <div class="settings-dialog" style="width: 100% !important; height: 100% !important; max-height: 100% !important; border: none !important; box-shadow: none !important; transform: none !important; display: flex; flex-direction: column;">
           <div class="settings-header" style="padding: 16px 20px; border-bottom: 1px solid rgba(23,107,135,0.15); display: flex; justify-content: space-between; align-items: center;">
             <h2 id="modalTitle" style="font-size: 15px; font-weight: 700; color: var(--color-text);">${selectedSnippet.id ? 'Edit Snippet' : 'New Snippet'}</h2>
-            <button type="button" aria-label="關閉設定頁面" id="closeVaultDrawer" class="no-drag btn-icon icon-btn" title="關閉設定頁面" style="font-size: 18px;">
+            <button type="button" aria-label="${t('hostvault.closeSettings')}" id="closeVaultDrawer" class="no-drag btn-icon icon-btn" title="${t('hostvault.closeSettings')}" style="font-size: 18px;">
               &times;
             </button>
           </div>
@@ -1320,7 +1329,7 @@ export class HostListPage extends HTMLElement {
             <div class="settings-body" style="padding: 20px; flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;">
               <label style="display: flex; flex-direction: column; gap: 6px; text-align: left; font-size: 12px; color: var(--color-subtext);">
                 Name
-                <input id="snippetNameInput" class="no-drag" value="${escapeHtml(selectedSnippet.name || '')}" placeholder="例如：Check Disk Usage" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
+                <input id="snippetNameInput" class="no-drag" value="${escapeHtml(selectedSnippet.name || '')}" placeholder="${t('hostvault.snippetNamePlaceholder')}" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
               </label>
               <label style="display: flex; flex-direction: column; gap: 6px; text-align: left; font-size: 12px; color: var(--color-subtext);">
                 Package
@@ -1331,7 +1340,7 @@ export class HostListPage extends HTMLElement {
               </label>
               <label style="display: flex; flex-direction: column; gap: 6px; text-align: left; font-size: 12px; color: var(--color-subtext);">
                 Description
-                <input id="snippetDescriptionInput" class="no-drag" value="${escapeHtml(selectedSnippet.description || '')}" placeholder="例如：檢查磁碟容量" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
+                <input id="snippetDescriptionInput" class="no-drag" value="${escapeHtml(selectedSnippet.description || '')}" placeholder="${t('hostvault.snippetDescPlaceholder')}" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
               </label>
               <label style="display: flex; flex-direction: column; gap: 6px; text-align: left; font-size: 12px; color: var(--color-subtext);">
                 Script
@@ -1350,9 +1359,9 @@ export class HostListPage extends HTMLElement {
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                   <span style="font-size: 12px; color: var(--color-subtext); font-weight: 700;">Batch targets</span>
                 </div>
-                <input type="text" id="batchTargetsSearchInput" placeholder="搜尋主機別名或 IP..." style="width: 100%; background: var(--input-bg); border: 1px solid rgba(23, 107, 135, 0.2); padding: 6px 10px; border-radius: 6px; color: var(--color-text); font-size: 12px; box-sizing: border-box;" class="no-drag">
+                <input type="text" id="batchTargetsSearchInput" placeholder="${t('hostvault.batchSearchPlaceholder')}" style="width: 100%; background: var(--input-bg); border: 1px solid rgba(23, 107, 135, 0.2); padding: 6px 10px; border-radius: 6px; color: var(--color-text); font-size: 12px; box-sizing: border-box;" class="no-drag">
                 <div style="height: 250px; overflow-y: auto; padding-right: 4px; border: 1px solid rgba(23, 107, 135, 0.15); border-radius: 6px; padding: 8px; background: rgba(0, 0, 0, 0.15);">
-                  ${targetRows || '<div style="color: var(--color-text-muted); font-size: 12.5px; text-align: left;">尚無可選主機。</div>'}
+                  ${targetRows || `<div style="color: var(--color-text-muted); font-size: 12.5px; text-align: left;">${t('hostvault.noSelectableHosts')}</div>`}
                 </div>
               </div>
             </div>
@@ -1370,7 +1379,7 @@ export class HostListPage extends HTMLElement {
         <div class="settings-dialog" style="width: 100% !important; height: 100% !important; max-height: 100% !important; border: none !important; box-shadow: none !important; transform: none !important; display: flex; flex-direction: column;">
           <div class="settings-header" style="padding: 16px 20px; border-bottom: 1px solid rgba(23,107,135,0.15); display: flex; justify-content: space-between; align-items: center;">
             <h2 style="font-size: 15px; font-weight: 700; color: var(--color-text);">${selectedPackage.id ? 'Edit Package' : 'New Package'}</h2>
-            <button type="button" aria-label="關閉設定頁面" id="closeVaultDrawer" class="no-drag btn-icon icon-btn" title="關閉設定頁面" style="font-size: 18px;">
+            <button type="button" aria-label="${t('hostvault.closeSettings')}" id="closeVaultDrawer" class="no-drag btn-icon icon-btn" title="${t('hostvault.closeSettings')}" style="font-size: 18px;">
               &times;
             </button>
           </div>
@@ -1381,7 +1390,7 @@ export class HostListPage extends HTMLElement {
               </div>
               <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
                 Name
-                <input class="no-drag" id="snippetPackageNameInput" value="${escapeHtml(selectedPackage.name || '')}" placeholder="例如：AWS-Scripts" required style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
+                <input class="no-drag" id="snippetPackageNameInput" value="${escapeHtml(selectedPackage.name || '')}" placeholder="${t('hostvault.packageNamePlaceholder')}" required style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
               </label>
             </div>
             <div class="settings-footer" style="padding: 16px 20px; border-top: 1px solid rgba(23,107,135,0.15); display: flex; gap: 8px; justify-content: flex-end; align-items: center;">
@@ -1400,7 +1409,7 @@ export class HostListPage extends HTMLElement {
           <td style="padding: 14px 16px; text-align: left; font-size: 11px; color: var(--color-text-muted); font-family: monospace;">${escapeHtml(k.fingerprint)}</td>
           <td style="padding: 14px 16px; text-align: left; font-size: 12.5px; color: var(--color-text-muted);">${escapeHtml(k.comment)}</td>
           <td style="padding: 14px 16px; text-align: right;">
-            <button type="button" aria-label="移除此金鑰" class="no-drag delete-key-btn icon-btn danger" data-id="${k.id}" style="font-size: 18px; display: inline-flex;" title="移除此金鑰">&times;</button>
+            <button type="button" aria-label="${t('hostvault.removeKey')}" class="no-drag delete-key-btn icon-btn danger" data-id="${k.id}" style="font-size: 18px; display: inline-flex;" title="${t('hostvault.removeKey')}">&times;</button>
           </td>
         </tr>
       `).join('');
@@ -1410,13 +1419,13 @@ export class HostListPage extends HTMLElement {
             <div style="display: flex; gap: 8px;">
               <button type="button" id="addNewKeyBtn" class="no-drag primary" style="min-height: 32px; font-weight: 700; font-size: 12px; padding: 0 14px; background: var(--color-primary); border: none; border-radius: 4px; color: #fff; cursor: pointer;">+ NEW KEY</button>
             </div>
-            <div style="font-size: 13px; font-weight: 600; color: var(--color-text-muted); text-align: right;">Keychain SSH 密鑰憑證保管箱</div>
+            <div style="font-size: 13px; font-weight: 600; color: var(--color-text-muted); text-align: right;">${t('hostvault.keychainSubtitle')}</div>
           </div>
 
           <div style="flex: 1; overflow-y: auto; background: rgba(12, 18, 31, 0.5); border: 1px solid rgba(23, 107, 135, 0.15); border-radius: 8px; min-height: 250px;">
             ${keys.length === 0 ? `
               <div style="padding: 40px; text-align: center; color: var(--color-text-muted); font-size: 14px;">
-                目前尚無任何 SSH 私鑰或證書紀錄。
+                ${t('hostvault.noKeys')}
               </div>
             ` : `
               <div style="overflow-x: auto; width: 100%;">
@@ -1446,20 +1455,20 @@ export class HostListPage extends HTMLElement {
           <td style="padding: 14px 16px; text-align: left; font-size: 12.5px; color: var(--color-text-muted);">${escapeHtml(h.type)}</td>
           <td style="padding: 14px 16px; text-align: left; font-size: 11px; color: var(--color-text-muted); font-family: monospace;">${escapeHtml(h.fingerprint)}</td>
           <td style="padding: 14px 16px; text-align: right;">
-            <button type="button" aria-label="移除此指紋" class="no-drag delete-kh-btn icon-btn danger" data-id="${h.id}" style="font-size: 18px; display: inline-flex;" title="移除此指紋">&times;</button>
+            <button type="button" aria-label="${t('hostvault.removeFingerprint')}" class="no-drag delete-kh-btn icon-btn danger" data-id="${h.id}" style="font-size: 18px; display: inline-flex;" title="${t('hostvault.removeFingerprint')}">&times;</button>
           </td>
         </tr>
       `).join('');
 
       mainBoardHtml = `
           <div class="vault-toolbar" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex: 0 0 auto;">
-            <div style="font-size: 13px; font-weight: 600; color: var(--color-text-muted); text-align: right;">已信任 SSH 主機指紋庫 (Known Hosts)</div>
+            <div style="font-size: 13px; font-weight: 600; color: var(--color-text-muted); text-align: right;">${t('hostvault.knownHostsSubtitle')}</div>
           </div>
 
           <div style="flex: 1; overflow-y: auto; background: rgba(12, 18, 31, 0.5); border: 1px solid rgba(23, 107, 135, 0.15); border-radius: 8px; min-height: 250px;">
             ${hosts.length === 0 ? `
               <div style="padding: 40px; text-align: center; color: var(--color-text-muted); font-size: 14px;">
-                目前尚無任何已信任的主機指紋紀錄。
+                ${t('hostvault.noKnownHosts')}
               </div>
             ` : `
               <div style="overflow-x: auto; width: 100%;">
@@ -1483,7 +1492,7 @@ export class HostListPage extends HTMLElement {
     } else {
       mainBoardHtml = `
         <div style="flex: 1; display: flex; align-items: center; justify-content: center; height: 300px; color: var(--color-text-muted); font-size: 14px;">
-          ${selectedTab.toUpperCase()} 模組正在努力重寫對接中，敬請期待。
+          ${t('hostvault.moduleComingSoon', { name: selectedTab.toUpperCase() })}
         </div>
       `;
     }
@@ -1532,15 +1541,15 @@ export class HostListPage extends HTMLElement {
             : !state.selectedHost && !state.drawerOpen ? `
               <div id="vaultEmptyState" class="vault-empty-state" style="flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px; color: var(--color-text-muted); text-align: center;">
                 <div>
-                  <h3 style="margin-bottom: 8px; color: var(--color-text);">Host 倉庫</h3>
-                  <p style="font-size: 12.5px;">請點選任何主機卡片右方的編輯按鈕進行編輯，或點選 <strong>「+ NEW HOST」</strong> 建立新的設定。</p>
+                  <h3 style="margin-bottom: 8px; color: var(--color-text);">${t('hostvault.hostVaultTitle')}</h3>
+                  <p style="font-size: 12.5px;">${t('hostvault.emptyStateDesc')}</p>
                 </div>
               </div>
             ` : `
             <div class="settings-dialog" style="width: 100% !important; height: 100% !important; max-height: 100% !important; border: none !important; box-shadow: none !important; transform: none !important; display: flex; flex-direction: column;">
               <div class="settings-header" style="padding: 16px 20px; border-bottom: 1px solid rgba(23,107,135,0.15); display: flex; justify-content: space-between; align-items: center;">
                 <h2 id="modalTitle" style="font-size: 15px; font-weight: 700; color: var(--color-text);">${state.selectedHost?.id ? 'Edit Host' : 'New Host'}</h2>
-                <button type="button" aria-label="關閉設定頁面" id="closeVaultDrawer" class="no-drag btn-icon icon-btn" title="關閉設定頁面" style="font-size: 18px;">
+                <button type="button" aria-label="${t('hostvault.closeSettings')}" id="closeVaultDrawer" class="no-drag btn-icon icon-btn" title="${t('hostvault.closeSettings')}" style="font-size: 18px;">
                   &times;
                 </button>
               </div>
@@ -1559,8 +1568,8 @@ export class HostListPage extends HTMLElement {
                     <h3 style="font-size: 11px; color: var(--color-primary); font-weight: 700; text-transform: uppercase;">General</h3>
                   </div>
                   <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext); margin-bottom: 12px;">
-                    連線別名
-                    <input class="no-drag" id="alias" name="alias" value="${drawerHost.alias || ''}" placeholder="例如：測試環境 A" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
+                    ${t('hostvault.connectionAlias')}
+                    <input class="no-drag" id="alias" name="alias" value="${drawerHost.alias || ''}" placeholder="${t('hostvault.aliasPlaceholder')}" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
                   </label>
 
                   <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px;">
@@ -1569,10 +1578,10 @@ export class HostListPage extends HTMLElement {
                       <input class="no-drag" id="port" name="port" type="number" min="1" max="65535" value="${drawerHost.config?.port || 22}" required style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
                     </label>
                     <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
-                      登入方式
+                      ${t('hostvault.loginMethod')}
                       <select class="no-drag" id="authMode" name="authMode" style="background: #0d121f; border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
-                        <option value="password" ${drawerHost.config?.authMode === 'password' ? 'selected' : ''}>密碼登入</option>
-                        <option value="key" ${drawerHost.config?.authMode === 'key' ? 'selected' : ''}>Key 登入</option>
+                        <option value="password" ${drawerHost.config?.authMode === 'password' ? 'selected' : ''}>${t('hostvault.authPassword')}</option>
+                        <option value="key" ${drawerHost.config?.authMode === 'key' ? 'selected' : ''}>${t('hostvault.authKey')}</option>
                       </select>
                     </label>
                   </div>
@@ -1588,7 +1597,7 @@ export class HostListPage extends HTMLElement {
                   <div id="passwordAuth" style="display: ${drawerHost.config?.authMode === 'password' ? 'block' : 'none'}; margin-top: 10px;">
                     <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
                       SSH Password
-                      ${renderSecretInput(SECRET_FIELD_DEFINITIONS[0], drawerHost, 'autocomplete="current-password" placeholder="留空代表沿用系統鑰匙圈中的值"')}
+                      ${renderSecretInput(SECRET_FIELD_DEFINITIONS[0], drawerHost, `autocomplete="current-password" placeholder="${t('hostvault.secretKeepPlaceholder')}"`)}
                       ${renderSecretStatusBadge(SECRET_FIELD_DEFINITIONS[0], drawerHost)}
                     </label>
                   </div>
@@ -1598,19 +1607,19 @@ export class HostListPage extends HTMLElement {
                       Private Key
                       <div style="display: flex; gap: 8px;">
                         <input class="no-drag" id="privateKeyPath" name="privateKeyPath" value="${drawerHost.config?.privateKeyPath || ''}" style="flex: 1; background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
-                        <button type="button" id="browseKeyBtn" class="no-drag" style="background: transparent; border: 1px solid var(--color-primary); color: var(--color-primary); padding: 0 12px; border-radius: 6px; cursor: pointer;">瀏覽</button>
+                        <button type="button" id="browseKeyBtn" class="no-drag" style="background: transparent; border: 1px solid var(--color-primary); color: var(--color-primary); padding: 0 12px; border-radius: 6px; cursor: pointer;">${t('hostvault.browse')}</button>
                       </div>
                     </label>
                     <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
                       Cert
                       <div style="display: flex; gap: 8px;">
                         <input class="no-drag" id="certPath" name="certPath" value="${drawerHost.config?.certPath || ''}" style="flex: 1; background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
-                        <button type="button" id="browseCertBtn" class="no-drag" style="background: transparent; border: 1px solid var(--color-primary); color: var(--color-primary); padding: 0 12px; border-radius: 6px; cursor: pointer;">瀏覽</button>
+                        <button type="button" id="browseCertBtn" class="no-drag" style="background: transparent; border: 1px solid var(--color-primary); color: var(--color-primary); padding: 0 12px; border-radius: 6px; cursor: pointer;">${t('hostvault.browse')}</button>
                       </div>
                     </label>
                     <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext); margin-bottom: 12px;">
-                      Key Passphrase（選填）
-                      ${renderSecretInput(SECRET_FIELD_DEFINITIONS[1], drawerHost, 'placeholder="留空代表沿用系統鑰匙圈中的值"')}
+                      ${t('hostvault.keyPassphraseOptional')}
+                      ${renderSecretInput(SECRET_FIELD_DEFINITIONS[1], drawerHost, `placeholder="${t('hostvault.secretKeepPlaceholder')}"`)}
                       ${renderSecretStatusBadge(SECRET_FIELD_DEFINITIONS[1], drawerHost)}
                     </label>
                   </div>
@@ -1618,8 +1627,8 @@ export class HostListPage extends HTMLElement {
                   <!-- SSH Sudo 提權密碼 -->
                   <div style="margin-top: 12px; border-top: 1px dashed rgba(23,107,135,0.15); padding-top: 12px;">
                     <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
-                      SSH Sudo Password (選填)
-                      ${renderSecretInput(SECRET_FIELD_DEFINITIONS[2], drawerHost, 'placeholder="若填寫此欄位連線後將自動提權 sudo"')}
+                      ${t('hostvault.sudoPasswordOptional')}
+                      ${renderSecretInput(SECRET_FIELD_DEFINITIONS[2], drawerHost, `placeholder="${t('hostvault.sudoPlaceholder')}"`)}
                       ${renderSecretStatusBadge(SECRET_FIELD_DEFINITIONS[2], drawerHost)}
                     </label>
                   </div>
@@ -1630,40 +1639,40 @@ export class HostListPage extends HTMLElement {
                   </div>
                   <div id="startupCommandWrapper" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px;">
                     <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
-                      啟動模式
+                      ${t('hostvault.startupMode')}
                       <select class="no-drag" id="startupCommandMode" style="background: #0d121f; border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
-                        <option value="none" ${startupCommandDefaults.startupCommandMode === 'none' ? 'selected' : ''}>不執行</option>
-                        <option value="snippet" ${startupCommandDefaults.startupCommandMode === 'snippet' ? 'selected' : ''}>使用 Snippet</option>
-                        <option value="manual" ${startupCommandDefaults.startupCommandMode === 'manual' ? 'selected' : ''}>手動命令</option>
+                        <option value="none" ${startupCommandDefaults.startupCommandMode === 'none' ? 'selected' : ''}>${t('hostvault.startupNone')}</option>
+                        <option value="snippet" ${startupCommandDefaults.startupCommandMode === 'snippet' ? 'selected' : ''}>${t('hostvault.startupSnippet')}</option>
+                        <option value="manual" ${startupCommandDefaults.startupCommandMode === 'manual' ? 'selected' : ''}>${t('hostvault.startupManual')}</option>
                       </select>
                     </label>
                     <label id="startupSnippetField" style="display: ${startupCommandDefaults.startupCommandMode === 'snippet' ? 'flex' : 'none'}; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
                       Startup Snippet
                       <select class="no-drag" id="startupSnippetSelect" style="background: #0d121f; border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
-                        <option value="">請選擇 Snippet</option>
+                        <option value="">${t('hostvault.selectSnippet')}</option>
                         ${startupSnippetOptions}
                       </select>
                     </label>
                     <label id="startupManualField" style="display: ${startupCommandDefaults.startupCommandMode === 'manual' ? 'flex' : 'none'}; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
                       Startup Command
-                      <textarea class="no-drag" id="startupCommandText" spellcheck="false" placeholder="例如：cd /srv/app && docker compose ps" style="min-height: 88px; resize: vertical; background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 10px 12px; border-radius: 6px; color: var(--color-text); font-family: monospace; line-height: 1.5;">${escapeHtml(startupCommandDefaults.startupCommandText)}</textarea>
+                      <textarea class="no-drag" id="startupCommandText" spellcheck="false" placeholder="${t('hostvault.startupCommandPlaceholder')}" style="min-height: 88px; resize: vertical; background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 10px 12px; border-radius: 6px; color: var(--color-text); font-family: monospace; line-height: 1.5;">${escapeHtml(startupCommandDefaults.startupCommandText)}</textarea>
                     </label>
                     ${allSnippets.length === 0 ? `
-                      <div style="color: var(--color-text-muted); font-size: 12.5px; text-align: left; padding: 4px 0;">尚未建立任何 Snippet，可切換成手動命令或先至 Snippets 分頁建立。</div>
+                      <div style="color: var(--color-text-muted); font-size: 12.5px; text-align: left; padding: 4px 0;">${t('hostvault.noSnippetHint')}</div>
                     ` : ''}
                   </div>
 
                   <!-- 控制面板組件自訂掛載 -->
                   <div class="settings-title-panel" style="margin-top: 20px; margin-bottom: 12px; text-align: left;">
-                    <h3 style="font-size: 11px; color: var(--color-primary); font-weight: 700; text-transform: uppercase;">控制面板組件掛載</h3>
+                    <h3 style="font-size: 11px; color: var(--color-primary); font-weight: 700; text-transform: uppercase;">${t('hostvault.controlPanelMount')}</h3>
                   </div>
                   <label style="display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--color-text); cursor: pointer; text-align: left; width: 100%; min-width: 0; margin: 0 0 12px 0;">
                     <input type="checkbox" class="no-drag" id="showSnippetsInControlPanel" ${drawerHost.config?.showSnippetsInControlPanel !== false ? 'checked' : ''} style="width: 16px; height: 16px; min-height: auto; min-width: auto; flex-shrink: 0; cursor: pointer; accent-color: var(--color-primary); margin: 0;">
-                    <span style="font-weight: 600;">在控制面板顯示 Snippets</span>
+                    <span style="font-weight: 600;">${t('hostvault.showSnippetsInPanel')}</span>
                   </label>
                   <div id="controlPanelComponentsWrapper" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px;">
                     ${availableComps.length === 0 ? `
-                      <div style="color: var(--color-text-muted); font-size: 12.5px; text-align: left; padding: 4px 0;">系統中尚未建立任何自訂控制面板組件。</div>
+                      <div style="color: var(--color-text-muted); font-size: 12.5px; text-align: left; padding: 4px 0;">${t('hostvault.noCustomComps')}</div>
                     ` : availableComps.map(comp => {
                       const isChecked = enabledCompIds.has(comp.id) ? 'checked' : '';
                       return `
@@ -1695,14 +1704,14 @@ export class HostListPage extends HTMLElement {
       <!-- New Group Modal -->
       <div id="groupModal" class="modal-overlay hidden" style="position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 2000;">
         <div class="modal-dialog" style="width: 320px; background: #0c121f; border: 1px solid rgba(23,107,135,0.25); border-radius: 8px; padding: 20px; color: var(--color-text);">
-          <h2 id="groupModalTitle" style="font-size: 14px; font-weight: 700; margin-bottom: 12px; text-align: left;">新建群組</h2>
+          <h2 id="groupModalTitle" style="font-size: 14px; font-weight: 700; margin-bottom: 12px; text-align: left;">${t('hostvault.newGroup')}</h2>
           <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext); margin-bottom: 20px;">
-            群組名稱
-            <input class="no-drag" id="groupNameInput" placeholder="例如：AWS-API" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
+            ${t('hostvault.groupName')}
+            <input class="no-drag" id="groupNameInput" placeholder="${t('hostvault.groupNameExample')}" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
           </label>
           <div style="display: flex; justify-content: flex-end; gap: 8px;">
-            <button type="button" id="cancelGroupModal" class="no-drag" style="padding: 6px 14px; border: 1px solid rgba(255,255,255,0.2); background: transparent; color: var(--color-text); border-radius: 4px; cursor: pointer;">取消</button>
-            <button type="button" id="saveGroupModal" class="no-drag primary" style="padding: 6px 14px; background: var(--color-primary); border: none; color: #fff; border-radius: 4px; cursor: pointer;">儲存</button>
+            <button type="button" id="cancelGroupModal" class="no-drag" style="padding: 6px 14px; border: 1px solid rgba(255,255,255,0.2); background: transparent; color: var(--color-text); border-radius: 4px; cursor: pointer;">${t('common.cancel')}</button>
+            <button type="button" id="saveGroupModal" class="no-drag primary" style="padding: 6px 14px; background: var(--color-primary); border: none; color: #fff; border-radius: 4px; cursor: pointer;">${t('common.save')}</button>
           </div>
         </div>
       </div>
@@ -1714,8 +1723,8 @@ export class HostListPage extends HTMLElement {
           <div style="display: flex; justify-content: center; margin-bottom: 20px;">
             <div id="progressSpinner" class="spinner-telemetry" style="width: 38px; height: 38px; border: 3px solid rgba(23,107,135,0.15); border-top: 3px solid var(--color-primary); border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
           </div>
-          <h3 id="progressModalTitle" style="font-size: 14px; font-weight: 700; color: var(--color-text); margin: 0 0 8px 0; text-align: center; letter-spacing: 0.5px;">正在建立連線</h3>
-          <p id="progressModalMessage" style="font-size: 12.5px; color: var(--color-text-muted); margin: 0 0 24px 0; line-height: 1.5; text-align: center;">正在初始化連線設定...</p>
+          <h3 id="progressModalTitle" style="font-size: 14px; font-weight: 700; color: var(--color-text); margin: 0 0 8px 0; text-align: center; letter-spacing: 0.5px;">${t('hostvault.establishingConnection')}</h3>
+          <p id="progressModalMessage" style="font-size: 12.5px; color: var(--color-text-muted); margin: 0 0 24px 0; line-height: 1.5; text-align: center;">${t('hostvault.initializingConnection')}</p>
           <div style="display: flex; justify-content: center;">
             <button type="button" id="cancelConnectionBtn" class="no-drag" style="min-height: 34px; padding: 0 20px; font-weight: 700; font-size: 11px; border: 1px solid #ef4444; color: #ef4444; background: transparent; border-radius: 6px; cursor: pointer; transition: all 0.2s; letter-spacing: 1px;">
               CANCEL
@@ -1727,11 +1736,11 @@ export class HostListPage extends HTMLElement {
       <!-- Vault Confirm Modal -->
       <div id="vaultConfirmModal" class="modal-overlay hidden" style="position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 2000;">
         <div class="modal-dialog" style="width: 340px; background: #0c121f; border: 1px solid rgba(23,107,135,0.25); border-radius: 8px; padding: 20px; color: var(--color-text);">
-          <h2 id="confirmModalTitle" style="font-size: 14px; font-weight: 700; margin-bottom: 12px; text-align: left;">確認操作</h2>
+          <h2 id="confirmModalTitle" style="font-size: 14px; font-weight: 700; margin-bottom: 12px; text-align: left;">${t('hostvault.confirmAction')}</h2>
           <p id="confirmModalMessage" style="font-size: 12.5px; color: var(--color-subtext); line-height: 1.6; margin-bottom: 20px; text-align: left;"></p>
           <div style="display: flex; justify-content: flex-end; gap: 8px;">
-            <button type="button" id="cancelConfirmModal" class="no-drag" style="padding: 6px 14px; border: 1px solid rgba(255,255,255,0.2); background: transparent; color: var(--color-text); border-radius: 4px; cursor: pointer;">取消</button>
-            <button type="button" id="okConfirmModal" class="no-drag" style="padding: 6px 14px; background: #a13d3d; border: none; color: #fff; border-radius: 4px; cursor: pointer;">確定</button>
+            <button type="button" id="cancelConfirmModal" class="no-drag" style="padding: 6px 14px; border: 1px solid rgba(255,255,255,0.2); background: transparent; color: var(--color-text); border-radius: 4px; cursor: pointer;">${t('common.cancel')}</button>
+            <button type="button" id="okConfirmModal" class="no-drag" style="padding: 6px 14px; background: #a13d3d; border: none; color: #fff; border-radius: 4px; cursor: pointer;">${t('common.confirm')}</button>
           </div>
         </div>
       </div>
@@ -1867,7 +1876,7 @@ export class HostListPage extends HTMLElement {
         if (syncSettingsContent) {
           syncSettingsContent.style.display = this.awsSyncSettingsExpanded ? 'flex' : 'none';
         }
-        toggleAwsSyncSettingsBtn.textContent = `雲端同步設定 ${this.awsSyncSettingsExpanded ? '▲' : '▼'}`;
+        toggleAwsSyncSettingsBtn.textContent = `${t('hostvault.cloudSyncSettings')} ${this.awsSyncSettingsExpanded ? '▲' : '▼'}`;
       });
     }
 
@@ -1895,7 +1904,7 @@ export class HostListPage extends HTMLElement {
     if (privateKeyPathInput) {
       privateKeyPathInput.addEventListener('click', async () => {
         try {
-          const selected = await HostAPI.selectFile('選擇 Private Key 檔案', '*');
+          const selected = await HostAPI.selectFile(t('hostvault.selectPrivateKeyFile'), '*');
           if (selected) {
             privateKeyPathInput.value = selected;
           }
@@ -1910,7 +1919,7 @@ export class HostListPage extends HTMLElement {
     if (certPathInput) {
       certPathInput.addEventListener('click', async () => {
         try {
-          const selected = await HostAPI.selectFile('選擇 Private Key 檔案', '*');
+          const selected = await HostAPI.selectFile(t('hostvault.selectPrivateKeyFile'), '*');
           if (selected) {
             certPathInput.value = selected;
           }
@@ -1943,12 +1952,12 @@ export class HostListPage extends HTMLElement {
         const defaultPassword = this.querySelector('#awsDefaultPassword')?.value || '';
 
         if (!integrationName) {
-          showToast('請輸入物件名稱', { type: 'error' });
+          showToast(t('hostvault.enterObjectName'), { type: 'error' });
           return;
         }
 
         if (!groupName) {
-          showToast('請輸入群組名稱', { type: 'error' });
+          showToast(t('hostvault.enterGroupName'), { type: 'error' });
           return;
         }
 
@@ -2035,7 +2044,7 @@ export class HostListPage extends HTMLElement {
             await HostAPI.syncAWSIntegration(groupId);
           } catch (syncErr) {
             console.error('[TermiX] AWS 同步主機失敗：', syncErr);
-            showToast(`AWS 整合已儲存，但同步主機失敗：${syncErr.message || syncErr}`, { type: 'error', title: 'AWS 同步失敗' });
+            showToast(t('hostvault.awsSyncFailed', { error: syncErr.message || syncErr }), { type: 'error', title: t('hostvault.awsSyncFailedTitle') });
           }
 
           // 5. 關閉 Drawer
@@ -2045,11 +2054,11 @@ export class HostListPage extends HTMLElement {
           // 6. 重新載入主機與群組，並重新整理 UI
           await state.loadFromBackend();
 
-          showToast('AWS 整合儲存與同步完成！', { type: 'success' });
+          showToast(t('hostvault.awsSaveSyncDone'), { type: 'success' });
 
         } catch (err) {
           console.error('[TermiX] AWS 整合儲存失敗：', err);
-          showToast(`儲存 AWS 整合失敗：${err.message || err}`, { type: 'error' });
+          showToast(t('hostvault.awsSaveFailed', { error: err.message || err }), { type: 'error' });
         }
       });
     }
@@ -2061,7 +2070,7 @@ export class HostListPage extends HTMLElement {
         e.stopPropagation();
         const targetGroupId = awsDeleteBtn.getAttribute('data-integration-group-id') || this.querySelector('#awsCurrentGroupId')?.value.trim() || '';
         if (!targetGroupId) {
-          showToast('找不到目前要刪除的 AWS Integration。', { type: 'error' });
+          showToast(t('hostvault.awsDeleteNotFound'), { type: 'error' });
           return;
         }
 
@@ -2074,15 +2083,15 @@ export class HostListPage extends HTMLElement {
             await hostStore.getState().loadFromBackend();
           } catch (err) {
             console.error('[TermiX] 刪除 AWS 整合失敗：', err);
-            showToast(`刪除 AWS 整合失敗：${err.message || err}`, { type: 'error' });
+            showToast(t('hostvault.awsDeleteFailed', { error: err.message || err }), { type: 'error' });
           }
         };
 
         const confirmModal = this.querySelector('#vaultConfirmModal');
         const confirmTitle = this.querySelector('#confirmModalTitle');
         const confirmMsg = this.querySelector('#confirmModalMessage');
-        if (confirmTitle) confirmTitle.textContent = '確認刪除 AWS 整合';
-        if (confirmMsg) confirmMsg.innerHTML = '確定要刪除此 AWS Integration 嗎？相關雲端同步設定與主機物件將一併移除。';
+        if (confirmTitle) confirmTitle.textContent = t('hostvault.confirmDeleteAws');
+        if (confirmMsg) confirmMsg.innerHTML = t('hostvault.confirmDeleteAwsMsg');
         if (confirmModal) confirmModal.classList.remove('hidden');
       });
     }
@@ -2166,7 +2175,7 @@ export class HostListPage extends HTMLElement {
           if (host) {
             hostStore.getState().updateHost(hostId, { groupId }).catch((err) => {
               console.error('[TermiX] 更新 Host 群組失敗', err);
-              showToast(`更新群組失敗：${err.message || err}`, { type: 'error' });
+              showToast(t('hostvault.updateGroupFailed', { error: err.message || err }), { type: 'error' });
             });
           }
         }
@@ -2197,7 +2206,7 @@ export class HostListPage extends HTMLElement {
       deleteBtn.addEventListener('click', () => {
         const targetHost = hostStore.getState().selectedHost;
         if (!targetHost?.id) return;
-        const hostAlias = targetHost.alias || targetHost.label || targetHost.config?.host || '此主機';
+        const hostAlias = targetHost.alias || targetHost.label || targetHost.config?.host || t('hostvault.thisHost');
 
         // 破壞性操作二次確認：走既有的通用確認彈窗，訊息含主機別名與「不可復原」提示。
         this.confirmModalCallback = async () => {
@@ -2206,15 +2215,15 @@ export class HostListPage extends HTMLElement {
             hostStore.getState().setDrawerOpen(false);
             hostStore.getState().setSelectedHost(null);
           } catch (err) {
-            showToast(`刪除 Host 失敗：${err.message || err}`, { type: 'error' });
+            showToast(t('hostvault.deleteHostFailed', { error: err.message || err }), { type: 'error' });
           }
         };
 
         const confirmModal = this.querySelector('#vaultConfirmModal');
         const confirmTitle = this.querySelector('#confirmModalTitle');
         const confirmMsg = this.querySelector('#confirmModalMessage');
-        if (confirmTitle) confirmTitle.textContent = '確認刪除主機';
-        if (confirmMsg) confirmMsg.innerHTML = `確定要刪除主機「<strong>${escapeHtml(hostAlias)}</strong>」嗎？<br>此操作將一併移除其儲存的認證資訊，且<strong>不可復原</strong>。`;
+        if (confirmTitle) confirmTitle.textContent = t('hostvault.confirmDeleteHost');
+        if (confirmMsg) confirmMsg.innerHTML = t('hostvault.confirmDeleteHostMsg', { name: escapeHtml(hostAlias) });
         if (confirmModal) confirmModal.classList.remove('hidden');
       });
     }
@@ -2247,7 +2256,7 @@ export class HostListPage extends HTMLElement {
     if (browseKeyBtn) {
       browseKeyBtn.addEventListener('click', async () => {
         try {
-          const path = await HostAPI.selectFile('選擇 Private Key 檔案', '*');
+          const path = await HostAPI.selectFile(t('hostvault.selectPrivateKeyFile'), '*');
           if (path) {
             const input = this.querySelector('#privateKeyPath');
             if (input) input.value = path;
@@ -2262,7 +2271,7 @@ export class HostListPage extends HTMLElement {
     if (browseCertBtn) {
       browseCertBtn.addEventListener('click', async () => {
         try {
-          const path = await HostAPI.selectFile('選擇 Cert 檔案', '*');
+          const path = await HostAPI.selectFile(t('hostvault.selectCertFile'), '*');
           if (path) {
             const input = this.querySelector('#certPath');
             if (input) input.value = path;
@@ -2345,7 +2354,7 @@ export class HostListPage extends HTMLElement {
             displayConfig: savedHost.config
           }, savedHost.alias || savedHost.label);
         } catch (err) {
-          showToast(`儲存並連線失敗：${err.message || err}`, { type: 'error' });
+          showToast(t('hostvault.saveAndConnectFailed', { error: err.message || err }), { type: 'error' });
         }
       });
 
@@ -2361,9 +2370,9 @@ export class HostListPage extends HTMLElement {
             await persistHostFromForm();
             hostStore.getState().setDrawerOpen(false);
             hostStore.getState().setSelectedHost(null);
-            showToast('設定儲存成功！', { type: 'success' });
+            showToast(t('hostvault.saveSuccess'), { type: 'success' });
           } catch (err) {
-            showToast(`儲存失敗：${err.message || err}`, { type: 'error' });
+            showToast(t('hostvault.saveFailed', { error: err.message || err }), { type: 'error' });
           }
         });
       }
@@ -2416,8 +2425,8 @@ export class HostListPage extends HTMLElement {
         const resolvedTarget = `${username}@${host}:${port}`;
         const extraNote = userExplicit
           ? ''
-          : '\n（您未指定帳號，將以預設帳號連線；如需其他帳號請使用 user@host 格式）';
-        if (!(await confirmDialog(`找不到符合的已儲存主機。\n\n即將建立全新連線至：\n${resolvedTarget}${extraNote}\n\n確定要連線嗎？`, { title: '確認建立新連線' }))) {
+          : t('hostvault.noSavedHostNote');
+        if (!(await confirmDialog(t('hostvault.noSavedHostConfirm', { target: resolvedTarget, note: extraNote }), { title: t('hostvault.confirmNewConnection') }))) {
           return;
         }
 
@@ -2449,7 +2458,7 @@ export class HostListPage extends HTMLElement {
         const input = this.querySelector('#groupNameInput');
         this.groupModalMode = 'create';
         this.groupModalTargetGroupId = null;
-        if (title) title.textContent = '新建群組';
+        if (title) title.textContent = t('hostvault.newGroup');
         if (modal) {
           if (input) input.value = '';
           modal.classList.remove('hidden');
@@ -2483,7 +2492,7 @@ export class HostListPage extends HTMLElement {
         const input = this.querySelector('#groupNameInput');
         const name = input ? input.value.trim() : '';
         if (!name) {
-          showToast('群組名稱不能為空。', { type: 'error' });
+          showToast(t('hostvault.groupNameEmpty'), { type: 'error' });
           return;
         }
         try {
@@ -2494,7 +2503,7 @@ export class HostListPage extends HTMLElement {
           const modal = this.querySelector('#groupModal');
           if (modal) modal.classList.add('hidden');
         } catch (err) {
-          showToast(`建立群組失敗：${err.message || err}`, { type: 'error' });
+          showToast(t('hostvault.createGroupFailed', { error: err.message || err }), { type: 'error' });
         }
       });
     }
@@ -2539,7 +2548,7 @@ export class HostListPage extends HTMLElement {
         const input = this.querySelector('#groupDrawerNameInput');
         const name = input ? input.value.trim() : '';
         if (!name) {
-          showToast('群組名稱不能為空。', { type: 'error' });
+          showToast(t('hostvault.groupNameEmpty'), { type: 'error' });
           return;
         }
 
@@ -2554,7 +2563,7 @@ export class HostListPage extends HTMLElement {
             this.selectedGroup = null;
           } catch (err) {
             console.error('更新群組失敗：', err);
-            showToast(`更新群組失敗：${err.message}`, { type: 'error' });
+            showToast(t('hostvault.updateGroupFailed', { error: err.message }), { type: 'error' });
           }
         }
       });
@@ -2572,9 +2581,9 @@ export class HostListPage extends HTMLElement {
 
         let message = '';
         if (count > 0) {
-          message = `此群組內有 ${count} 個主機物件，是否要一併清除？\n確認將會連同主機物件一起刪除，取消則不進行任何動作。`;
+          message = t('hostvault.groupHasHostsMsg', { count });
         } else {
-          message = '確定要刪除此空群組嗎？';
+          message = t('hostvault.confirmDeleteEmptyGroup');
         }
 
         this.confirmModalCallback = async () => {
@@ -2589,14 +2598,14 @@ export class HostListPage extends HTMLElement {
             this.selectedGroup = null;
           } catch (err) {
             console.error('刪除群組失敗：', err);
-            showToast(`刪除群組失敗：${err.message}`, { type: 'error' });
+            showToast(t('hostvault.deleteGroupFailed', { error: err.message }), { type: 'error' });
           }
         };
 
         const confirmModal = this.querySelector('#vaultConfirmModal');
         const confirmTitle = this.querySelector('#confirmModalTitle');
         const confirmMsg = this.querySelector('#confirmModalMessage');
-        if (confirmTitle) confirmTitle.textContent = '確認刪除群組';
+        if (confirmTitle) confirmTitle.textContent = t('hostvault.confirmDeleteGroup');
         if (confirmMsg) confirmMsg.innerHTML = message.replace(/\n/g, '<br>');
         if (confirmModal) confirmModal.classList.remove('hidden');
       });
@@ -2696,7 +2705,7 @@ export class HostListPage extends HTMLElement {
             ? snippetStore.getState().packages.find((pkg) => pkg.id === this.selectedPackage.id)
             : null;
           if (!currentPackage) return;
-          if (!(await confirmDialog(`確定要刪除 Package「${currentPackage.name}」嗎？其中的 Snippet 會改為未分類。`, { title: '確認刪除 Package', danger: true }))) return;
+          if (!(await confirmDialog(t('hostvault.confirmDeletePackage', { name: currentPackage.name }), { title: t('hostvault.confirmDeletePackageTitle'), danger: true }))) return;
           snippetStore.getState().deletePackage(currentPackage.id);
           if (this.activePackageId === currentPackage.id) this.activePackageId = 'all';
           const currentSnippet = snippetStore.getState().selectedSnippet;
@@ -2728,7 +2737,7 @@ export class HostListPage extends HTMLElement {
         });
         card.addEventListener('dblclick', async () => {
           const snippet = snippetStore.getState().snippets.find(item => item.id === snippetId);
-          if (snippet && (await confirmDialog(`確定要在目前活動的 Terminal session 執行 Snippet「${snippet.name}」嗎？`, { title: '確認執行 Snippet' }))) {
+          if (snippet && (await confirmDialog(t('hostvault.confirmRunSnippet', { name: snippet.name }), { title: t('hostvault.confirmRunSnippetTitle') }))) {
             this.runSnippetOnActiveSession(snippet);
           }
         });
@@ -2961,7 +2970,7 @@ export class HostListPage extends HTMLElement {
           boxes.forEach(cb => {
             cb.checked = shouldSelect;
           });
-          selectAllBtn.textContent = shouldSelect ? '取消全選' : '全選';
+          selectAllBtn.textContent = shouldSelect ? t('hostvault.deselectAll') : t('hostvault.selectAll');
         });
       }
 
@@ -3006,9 +3015,9 @@ export class HostListPage extends HTMLElement {
       const addNewKeyBtn = this.querySelector('#addNewKeyBtn');
       if (addNewKeyBtn) {
         addNewKeyBtn.addEventListener('click', () => {
-          const name = prompt('請輸入新憑證金鑰的別名 (例如: my-github-ssh):');
+          const name = prompt(t('hostvault.promptKeyName'));
           if (!name) return;
-          const comment = prompt('請輸入金鑰描述備註 (選填):') || 'Custom uploaded key';
+          const comment = prompt(t('hostvault.promptKeyComment')) || 'Custom uploaded key';
           const keys = getKeychains();
           const newKey = {
             id: 'key_' + Date.now().toString(),
@@ -3028,7 +3037,7 @@ export class HostListPage extends HTMLElement {
         btn.addEventListener('click', async (e) => {
           e.stopPropagation();
           const keyId = btn.getAttribute('data-id');
-          if (await confirmDialog('確定要永久刪除此 SSH 連線金鑰憑證嗎？此動作不可逆。', { title: '確認刪除金鑰', danger: true })) {
+          if (await confirmDialog(t('hostvault.confirmDeleteKey'), { title: t('hostvault.confirmDeleteKeyTitle'), danger: true })) {
             const keys = getKeychains().filter(k => k.id !== keyId);
             localStorage.setItem('termix-keychains', JSON.stringify(keys));
             this.render();
@@ -3044,7 +3053,7 @@ export class HostListPage extends HTMLElement {
         btn.addEventListener('click', async (e) => {
           e.stopPropagation();
           const khId = btn.getAttribute('data-id');
-          if (await confirmDialog('確定要撤銷對此 SSH 主機 Key 指紋的信任嗎？下次連線將重新進行 Fingerprint 驗證。', { title: '確認撤銷信任', danger: true })) {
+          if (await confirmDialog(t('hostvault.confirmRevokeTrust'), { title: t('hostvault.confirmRevokeTrustTitle'), danger: true })) {
             const hosts = getKnownHosts().filter(h => h.id !== khId);
             localStorage.setItem('termix-known-hosts', JSON.stringify(hosts));
             this.render();
@@ -3203,11 +3212,11 @@ export class HostListPage extends HTMLElement {
         if (!mode) return;
 
         if (!['safe', 'reference', 'full'].includes(mode)) {
-          throw new Error('不支援的匯出模式');
+          throw new Error(t('hostvault.unsupportedExportMode'));
         }
 
         if (mode === 'full') {
-          if (!(await confirmDialog('Full export 會包含 secret 明文，具高度風險。是否確定繼續？', { title: '高風險匯出確認', danger: true }))) {
+          if (!(await confirmDialog(t('hostvault.fullExportConfirm'), { title: t('hostvault.fullExportConfirmTitle'), danger: true }))) {
             return;
           }
           const exportData = await HostAPI.exportHostsBackup({ format: 'json', mode: 'full' });
@@ -3217,10 +3226,10 @@ export class HostListPage extends HTMLElement {
             format
           );
           if (res && res.success) {
-            showToast('完整備份匯出成功，備份檔案已儲存。', { type: 'success', title: '匯出成功' });
+            showToast(t('hostvault.fullBackupExported'), { type: 'success', title: t('hostvault.exportSuccessTitle') });
             return;
           }
-          throw new Error(res?.error || '未知錯誤');
+          throw new Error(res?.error || t('hostvault.unknownError'));
         }
 
         const currentState = hostStore.getState();
@@ -3237,12 +3246,12 @@ export class HostListPage extends HTMLElement {
           format
         );
         if (res && res.success) {
-          showToast('主機設定匯出成功，備份檔案已儲存。', { type: 'success', title: '匯出成功' });
+          showToast(t('hostvault.hostConfigExported'), { type: 'success', title: t('hostvault.exportSuccessTitle') });
           return;
         }
-        throw new Error(res?.error || '未知錯誤');
+        throw new Error(res?.error || t('hostvault.unknownError'));
       } catch (err) {
-        showToast('匯出設定失敗：' + err.message, { type: 'error' });
+        showToast(t('hostvault.exportFailed', { error: err.message }), { type: 'error' });
       }
     };
 
@@ -3251,22 +3260,22 @@ export class HostListPage extends HTMLElement {
         const importMode = await promptImportMode();
         if (!importMode) return;
         if (!['config-only', 'reference-only', 'reference+secret'].includes(importMode)) {
-          throw new Error('不支援的匯入模式');
+          throw new Error(t('hostvault.unsupportedImportMode'));
         }
 
         const res = await HostAPI.readBackupFile(format);
         if (!res || !res.success) {
-          showToast('讀取備份檔案失敗：' + (res ? res.error : '未知錯誤'), { type: 'error' });
+          showToast(t('hostvault.readBackupFailed', { error: res ? res.error : t('hostvault.unknownError') }), { type: 'error' });
           return;
         }
 
         const data = JSON.parse(res.output);
         if (!data || !data.hosts) {
-          showToast('無效的備份檔案格式（必須包含 hosts 主機設定）！', { type: 'error' });
+          showToast(t('hostvault.invalidBackupFormat'), { type: 'error' });
           return;
         }
 
-        if (!(await confirmDialog('匯入將會與現有 Host / Group 合併並覆蓋同 ID 設定。是否確定繼續？', { title: '確認匯入' }))) {
+        if (!(await confirmDialog(t('hostvault.importMergeConfirm'), { title: t('hostvault.confirmImport') }))) {
           return;
         }
 
@@ -3294,10 +3303,10 @@ export class HostListPage extends HTMLElement {
         snippetStore.getState().setSnippets(mergedSnippets);
         snippetStore.getState().setPackages(mergedPackages);
 
-        showToast(`主機與群組設定匯入成功！Hosts: ${importResult?.hostsImported ?? 0}、Groups: ${importResult?.groupsImported ?? 0}、Secrets: ${importResult?.secretsWritten ?? 0}`, { type: 'success', title: '匯入成功' });
+        showToast(t('hostvault.importSuccess', { hosts: importResult?.hostsImported ?? 0, groups: importResult?.groupsImported ?? 0, secrets: importResult?.secretsWritten ?? 0 }), { type: 'success', title: t('hostvault.importSuccessTitle') });
         await hostStore.getState().refreshHosts();
       } catch (err) {
-        showToast('匯入設定失敗：' + err.message, { type: 'error' });
+        showToast(t('hostvault.importFailed', { error: err.message }), { type: 'error' });
       }
     };
 
@@ -3395,7 +3404,7 @@ export class HostListPage extends HTMLElement {
           cancelBtn.style.opacity = '0.6';
 
           const liveMessage = this.querySelector('#progressModalMessage');
-          if (liveMessage) liveMessage.textContent = '正在向遠端發送中斷訊號...';
+          if (liveMessage) liveMessage.textContent = t('hostvault.sendingDisconnect');
 
           if (this.activeConnectionTarget) {
             try {
@@ -3412,34 +3421,34 @@ export class HostListPage extends HTMLElement {
   async runSnippetOnActiveSession(snippet) {
     const activeKey = terminalStore.getState().activePaneSessionKey;
     if (!activeKey) {
-      showToast('目前沒有活動中的 Terminal session。', { type: 'error' });
+      showToast(t('hostvault.noActiveSession'), { type: 'error' });
       return;
     }
     const res = await runSnippetInSession(activeKey, snippet);
     if (!res.success) {
-      showToast(`Snippet 執行失敗：${res.error || '未知錯誤'}`, { type: 'error' });
+      showToast(t('hostvault.snippetRunFailed', { error: res.error || t('hostvault.unknownError') }), { type: 'error' });
     }
   }
 
   async pasteSnippetOnActiveSession(snippet) {
     const activeKey = terminalStore.getState().activePaneSessionKey;
     if (!activeKey) {
-      showToast('目前沒有活動中的 Terminal session。', { type: 'error' });
+      showToast(t('hostvault.noActiveSession'), { type: 'error' });
       return;
     }
     const res = await pasteSnippetToSession(activeKey, snippet);
     if (!res.success) {
-      showToast(`Snippet 貼上失敗：${res.error || '未知錯誤'}`, { type: 'error' });
+      showToast(t('hostvault.snippetPasteFailed', { error: res.error || t('hostvault.unknownError') }), { type: 'error' });
     }
   }
 
   async runSnippetOnHosts(snippet, hosts) {
     if (!snippet?.script) {
-      showToast('Snippet script 不可空白。', { type: 'error' });
+      showToast(t('hostvault.snippetScriptEmpty'), { type: 'error' });
       return;
     }
     if (!Array.isArray(hosts) || hosts.length === 0) {
-      showToast('請先選擇至少一台目標 Host。', { type: 'error' });
+      showToast(t('hostvault.selectAtLeastOneHost'), { type: 'error' });
       return;
     }
 
@@ -3457,7 +3466,7 @@ export class HostListPage extends HTMLElement {
       try {
         const res = await TerminalAPI.connectTarget(connectionTarget);
         if (!res.success) {
-          failures.push(`${label}: ${normalizeConnectionErrorMessage(res.error || '連線失敗')}`);
+          failures.push(`${label}: ${normalizeConnectionErrorMessage(res.error || t('hostvault.connectionFailed'))}`);
           continue;
         }
         terminalStore.getState().addSession(res.sessionKey, {
@@ -3500,7 +3509,7 @@ export class HostListPage extends HTMLElement {
     }
 
     if (failures.length > 0) {
-      showToast(`部分 Host 執行失敗（${failures.length} 台），詳見主控台日誌。`, { type: 'error', title: 'Snippet 批次執行' });
+      showToast(t('hostvault.partialBatchFailed', { count: failures.length }), { type: 'error', title: t('hostvault.snippetBatchRun') });
     }
   }
 
@@ -3525,7 +3534,7 @@ export class HostListPage extends HTMLElement {
         isLocal: true, // 避免觸發控制面板
         isLogView: true
       },
-      outputHtml: logRecord.outputHtml || '日誌內容為空。\n',
+      outputHtml: logRecord.outputHtml || t('hostvault.logContentEmpty'),
       isLogView: true,
       isSudo: false
     });
@@ -3583,10 +3592,10 @@ export class HostListPage extends HTMLElement {
     if (progressModal) {
       if (progressSpinner) progressSpinner.style.display = 'block';
       if (progressTitle) {
-        progressTitle.textContent = `正在連線至 ${label}`;
+        progressTitle.textContent = t('hostvault.connectingTo', { label });
         progressTitle.style.color = 'var(--color-text)';
       }
-      if (progressMessage) progressMessage.textContent = '正在準備建立安全連線通道...';
+      if (progressMessage) progressMessage.textContent = t('hostvault.preparingConnection');
       if (cancelBtn) {
         cancelBtn.textContent = 'CANCEL';
         cancelBtn.disabled = false;
@@ -3600,15 +3609,18 @@ export class HostListPage extends HTMLElement {
     // 2. 註冊 Wails 實時進度事件監聽器
     const progressListenerOff = onWailsEvent("connection-progress", (data) => {
       const liveMessage = this.querySelector('#progressModalMessage');
-      if (liveMessage && data && data.message && !isErrorState) {
-        liveMessage.textContent = data.message;
+      if (liveMessage && data && !isErrorState) {
+        // 後端以 step 代碼標記連線階段；優先用代碼查 i18n，缺對應時回退後端 message。
+        const key = data.step ? `hostvault.progress.${data.step}` : '';
+        const translated = key ? t(key) : '';
+        liveMessage.textContent = (translated && translated !== key) ? translated : (data.message || '');
       }
     });
 
     // 3. 輔助函數：將 CANCEL 轉化為 CLOSE 關閉對話框
     const setupCloseBehavior = (errorMessage) => {
       isErrorState = true;
-      const rawErrorMessage = String(errorMessage || '未知錯誤');
+      const rawErrorMessage = String(errorMessage || t('hostvault.unknownError'));
       const normalizedErrorMessage = normalizeConnectionErrorMessage(rawErrorMessage);
 
       const liveSpinner = this.querySelector('#progressSpinner');
@@ -3618,7 +3630,7 @@ export class HostListPage extends HTMLElement {
 
       if (liveSpinner) liveSpinner.style.display = 'none';
       if (liveTitle) {
-        liveTitle.textContent = '連線失敗';
+        liveTitle.textContent = t('hostvault.connectionFailed');
         liveTitle.style.color = '#ef4444';
       }
       if (liveMessage) {
@@ -3626,27 +3638,27 @@ export class HostListPage extends HTMLElement {
           // 首次連線未知主機：後端回傳 UNKNOWN_HOST_KEY: <host:port> (SHA256:xxxx...)。
           // 顯示指紋與主機，請使用者確認信任後呼叫 ConfirmUnknownHostKey(host, port) 再重連。
           const fpMatch = rawErrorMessage.match(/SHA256:[A-Za-z0-9+/=]+/);
-          const fingerprint = fpMatch ? fpMatch[0] : '（未取得指紋）';
+          const fingerprint = fpMatch ? fpMatch[0] : t('hostvault.noFingerprint');
           const hostMatch = rawErrorMessage.match(/UNKNOWN_HOST_KEY:\s*([^\s()]+)/);
           const hostPortText = hostMatch ? hostMatch[1] : `${displayConfig.host || ''}:${displayConfig.port || 22}`;
 
           liveMessage.innerHTML = `
             <div style="text-align: left; background: rgba(234, 179, 8, 0.1); border: 1px solid rgba(234, 179, 8, 0.3); border-radius: 8px; padding: 12px; margin-bottom: 16px;">
-              <div style="font-weight: 700; color: #eab308; margin-bottom: 6px; font-size: 13px;">未知主機指紋 (Unknown Host Key)</div>
+              <div style="font-weight: 700; color: #eab308; margin-bottom: 6px; font-size: 13px;">${t('hostvault.unknownHostKey')}</div>
               <div style="font-size: 11.5px; line-height: 1.5; color: var(--color-text-muted);">
-                這是您首次連線至 <code>${escapeHtml(hostPortText)}</code>，系統尚未信任其 SSH 金鑰指紋。請核對下列指紋是否與伺服器端相符，確認無誤後再選擇信任並連線。
+                ${t('hostvault.unknownHostKeyDesc', { host: escapeHtml(hostPortText) })}
               </div>
               <div style="margin-top: 8px; font-family: monospace; font-size: 11px; color: var(--color-text); word-break: break-all; background: rgba(0,0,0,0.25); border-radius: 4px; padding: 6px;">${escapeHtml(fingerprint)}</div>
             </div>
             <button type="button" id="trustUnknownHostBtn" class="no-drag" style="width: 100%; min-height: 34px; margin-bottom: 12px; background: #eab308; color: #1a1a1a; border: none; border-radius: 6px; font-weight: 700; font-size: 12px; cursor: pointer; transition: background 0.2s;">
-              信任此指紋並連線
+              ${t('hostvault.trustAndConnect')}
             </button>
           `;
 
           const trustBtn = this.querySelector('#trustUnknownHostBtn');
           if (trustBtn) {
             trustBtn.addEventListener('click', async () => {
-              trustBtn.textContent = '正在信任並重新連線...';
+              trustBtn.textContent = t('hostvault.trustingReconnect');
               trustBtn.disabled = true;
               try {
                 // 解析 host:port（優先用後端回傳字串，否則回退至 displayConfig）。
@@ -3664,7 +3676,7 @@ export class HostListPage extends HTMLElement {
                 }
                 const confirmResult = await TerminalAPI.confirmUnknownHostKey(confirmHost, Number(confirmPort));
                 if (confirmResult && confirmResult.success === false) {
-                  throw new Error(confirmResult.error || '信任主機指紋失敗');
+                  throw new Error(confirmResult.error || t('hostvault.trustFailed'));
                 }
                 // 信任成功，關閉診斷對話框並重試連線。
                 const liveModal = this.querySelector('#connectionProgressModal');
@@ -3672,45 +3684,45 @@ export class HostListPage extends HTMLElement {
                 this.connectToHost(connectionTarget, label);
               } catch (err) {
                 console.error(err);
-                trustBtn.textContent = '信任失敗，請重試';
+                trustBtn.textContent = t('hostvault.trustFailedRetry');
                 trustBtn.disabled = false;
                 trustBtn.style.background = '#7f8c8d';
-                showToast('信任主機指紋失敗：' + (err.message || err), { type: 'error' });
+                showToast(t('hostvault.trustFingerprintFailed', { error: err.message || err }), { type: 'error' });
               }
             });
           }
         } else if (rawErrorMessage.includes('knownhosts: key mismatch')) {
           liveMessage.innerHTML = `
             <div style="text-align: left; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.25); border-radius: 8px; padding: 12px; margin-bottom: 16px;">
-              <div style="font-weight: 700; color: #ef4444; margin-bottom: 6px; font-size: 13px;">主機金鑰指紋不符 (Key Mismatch)</div>
+              <div style="font-weight: 700; color: #ef4444; margin-bottom: 6px; font-size: 13px;">${t('hostvault.keyMismatch')}</div>
               <div style="font-size: 11.5px; line-height: 1.5; color: var(--color-text-muted);">
-                此主機的 SSH 金鑰指紋與您系統 <code>~/.ssh/known_hosts</code> 中記錄的舊指紋不相符。這通常發生在伺服器重建或金鑰更換時。為了安全，系統已拒絕連線。
+                ${t('hostvault.keyMismatchDesc')}
               </div>
             </div>
             <button type="button" id="fixKnownHostsBtn" class="no-drag" style="width: 100%; min-height: 34px; margin-bottom: 12px; background: #e74c3c; color: #fff; border: none; border-radius: 6px; font-weight: 700; font-size: 12px; cursor: pointer; transition: background 0.2s;">
-              重置此主機指紋 (撤銷舊信任)
+              ${t('hostvault.resetFingerprint')}
             </button>
           `;
 
           const fixBtn = this.querySelector('#fixKnownHostsBtn');
           if (fixBtn) {
             fixBtn.addEventListener('click', async () => {
-                fixBtn.textContent = '正在重置...';
+                fixBtn.textContent = t('hostvault.resetting');
               fixBtn.disabled = true;
               try {
                 await HostAPI.removeKnownHost(displayConfig.host, displayConfig.port || 22);
-                fixBtn.textContent = '重置成功！';
+                fixBtn.textContent = t('hostvault.resetSuccess');
                 fixBtn.style.background = '#2ecc71';
 
                 const desc = liveMessage.querySelector('div > div:last-child');
                 if (desc) {
-                  desc.innerHTML = '<span style="color: #2ecc71; font-weight: 700;">已成功清除本機 known_hosts 中的舊衝突指紋。您現在可以安全地關閉此視窗，並重新嘗試連線。</span>';
+                  desc.innerHTML = `<span style="color: #2ecc71; font-weight: 700;">${t('hostvault.resetDoneDesc')}</span>`;
                 }
               } catch (err) {
                 console.error(err);
-                fixBtn.textContent = '重置失敗';
+                fixBtn.textContent = t('hostvault.resetFailedBtn');
                 fixBtn.style.background = '#7f8c8d';
-                showToast('重置失敗：' + err, { type: 'error' });
+                showToast(t('hostvault.resetFailed', { error: err }), { type: 'error' });
               }
             });
           }
@@ -3743,7 +3755,7 @@ export class HostListPage extends HTMLElement {
       } catch (err) {
         console.error('[TermiX] Failed to cancel connection on timeout', err);
       }
-      setupCloseBehavior('連線失敗：建立 TCP 連線時間過長，已自動中斷。');
+      setupCloseBehavior(t('hostvault.tcpTimeout'));
     }, timeoutDuration);
 
     try {
@@ -3811,7 +3823,7 @@ export class HostListPage extends HTMLElement {
         }, 300);
       } else {
         // 進入非阻斷診斷模式
-        setupCloseBehavior(res.error || '未知錯誤');
+        setupCloseBehavior(res.error || t('hostvault.unknownError'));
       }
     } catch (e) {
       if (!hasTimedOut) {

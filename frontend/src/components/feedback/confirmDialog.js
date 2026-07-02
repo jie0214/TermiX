@@ -2,6 +2,8 @@
 // 直接 appendChild 到 document.body，避免被 App 的 innerHTML 重繪清掉。
 // 用法：if (!(await confirmDialog('確定要刪除嗎？', { danger: true }))) return;
 
+import { t } from '../../i18n/index.ts';
+
 function escapeHtml(value) {
   return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
@@ -20,9 +22,9 @@ export function confirmDialog(message, options = {}) {
     }
 
     const {
-      title = '確認操作',
-      confirmText = '確定',
-      cancelText = '取消',
+      title = t('misc.confirmDialog.title'),
+      confirmText = t('common.confirm'),
+      cancelText = t('common.cancel'),
       danger = false
     } = options;
 

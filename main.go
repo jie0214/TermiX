@@ -23,6 +23,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
+	"github.com/wailsapp/wails/v2/pkg/options/windows"
 	"go.uber.org/fx"
 )
 
@@ -106,7 +107,9 @@ func main() {
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
-		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
+		// A:0 = 視窗背景完全透明；實際底色改由 CSS body 控制。
+		// 非透明主題的 body 為不透明色會正常遮蔽；毛玻璃主題 body 透明時可透出桌面。
+		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 0},
 		OnStartup:        app.Startup,
 		Bind: []interface{}{
 			app,
@@ -118,6 +121,13 @@ func main() {
 			TitleBar:             mac.TitleBarHiddenInset(),
 			WebviewIsTransparent: true,
 			WindowIsTranslucent:  true,
+		},
+		// Windows：以 Acrylic 背景搭配透明 Webview，使毛玻璃主題可透出桌面。
+		// 非透明主題的 body 不透明會正常遮蔽。Win11 效果最佳；舊版可能降級。
+		Windows: &windows.Options{
+			WebviewIsTransparent: true,
+			WindowIsTranslucent:  true,
+			BackdropType:         windows.Acrylic,
 		},
 	})
 

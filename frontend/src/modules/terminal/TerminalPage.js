@@ -13,6 +13,7 @@ import {
 import { confirmDialog } from '../../components/feedback/confirmDialog';
 import { themeStore } from '../../stores/ThemeStore';
 import { Terminal } from '@xterm/xterm';
+import { t } from '../../i18n/index.ts';
 
 /**
  * 從 CSS 自訂屬性讀取目前主題的終端機配色，生成 xterm.js theme 物件。
@@ -401,21 +402,21 @@ export class TerminalPage extends HTMLElement {
     overlay.style.display = 'flex';
 
     if (uiState === 'connecting') {
-      msgEl.textContent = `與「${label}」的連線已中斷，正在重新連線…`;
+      msgEl.textContent = t('terminal.reconnectConnecting', { name: label });
       actionsEl.innerHTML = `
-        <button type="button" class="no-drag reconnect-btn-abort" data-session-key="${sessionKey}" style="${btnBase}">關閉</button>
+        <button type="button" class="no-drag reconnect-btn-abort" data-session-key="${sessionKey}" style="${btnBase}">${t('common.close')}</button>
       `;
     } else if (uiState === 'failed') {
-      msgEl.textContent = `無法重新連線到「${label}」。`;
+      msgEl.textContent = t('terminal.reconnectFailed', { name: label });
       actionsEl.innerHTML = `
-        <button type="button" class="no-drag reconnect-btn-retry" data-session-key="${sessionKey}" style="${btnPrimary}">重新連線</button>
-        <button type="button" class="no-drag reconnect-btn-abort" data-session-key="${sessionKey}" style="${btnBase}">關閉</button>
+        <button type="button" class="no-drag reconnect-btn-retry" data-session-key="${sessionKey}" style="${btnPrimary}">${t('terminal.reconnectRetry')}</button>
+        <button type="button" class="no-drag reconnect-btn-abort" data-session-key="${sessionKey}" style="${btnBase}">${t('common.close')}</button>
       `;
     } else if (uiState === 'pending') {
-      msgEl.textContent = '已重新連線。斷線期間有待送出的輸入，是否送出？';
+      msgEl.textContent = t('terminal.reconnectPending');
       actionsEl.innerHTML = `
-        <button type="button" class="no-drag reconnect-btn-flush" data-session-key="${sessionKey}" style="${btnPrimary}">送出待輸入</button>
-        <button type="button" class="no-drag reconnect-btn-discard" data-session-key="${sessionKey}" style="${btnBase}">捨棄</button>
+        <button type="button" class="no-drag reconnect-btn-flush" data-session-key="${sessionKey}" style="${btnPrimary}">${t('terminal.reconnectFlush')}</button>
+        <button type="button" class="no-drag reconnect-btn-discard" data-session-key="${sessionKey}" style="${btnBase}">${t('terminal.reconnectDiscard')}</button>
       `;
     }
 
@@ -490,7 +491,7 @@ export class TerminalPage extends HTMLElement {
     if (!ws) {
       this.innerHTML = `
         <div style="flex: 1; display: flex; align-items: center; justify-content: center; height: 100%; color: var(--color-text-muted); font-size: 14px;">
-          請從左側 Hosts 點擊連線開啟終端分頁，或點選頂部「+」新增本機終端。
+          ${t('terminal.emptyHint')}
         </div>
       `;
       return;
@@ -525,7 +526,7 @@ export class TerminalPage extends HTMLElement {
           }
         </style>
         <div class="snippet-batch-sidebar" style="width: 180px; flex: 0 0 180px; border-right: 1px solid rgba(36, 54, 65, 0.5); background: #070a10; display: flex; flex-direction: column; min-height: 0; overflow-y: auto; padding-top: 8px;">
-          <div style="padding: 8px 16px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted);">Batch Targets</div>
+          <div style="padding: 8px 16px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted);">${t('terminal.batchTargets')}</div>
           <div class="batch-targets-list" style="display: flex; flex-direction: column; gap: 2px; flex: 1; min-height: 0;">
             ${targetsHtml}
           </div>
@@ -548,12 +549,12 @@ export class TerminalPage extends HTMLElement {
               <span class="pane-title" style="font-size: 11.5px; font-weight: 700; color: ${isPaneActive ? 'var(--color-primary)' : 'var(--color-text-muted)'};">${session.label} ~</span>
               <div style="display: flex; align-items: center; gap: 8px;">
                 <span class="pane-status-dot" style="width: 6px; height: 6px; border-radius: 50%; background: ${session.isSudo ? '#ef4444' : '#2ecc71'};"></span>
-                <button type="button" aria-label="Broadcast input" class="no-drag pane-broadcast-toggle ${isBroadcasting ? 'active' : ''} ${session.isLogView ? 'hidden' : ''}" data-session-key="${pane.sessionKey}" title="Broadcast input" aria-pressed="${isBroadcasting ? 'true' : 'false'}">
+                <button type="button" aria-label="${t('terminal.broadcastInput')}" class="no-drag pane-broadcast-toggle ${isBroadcasting ? 'active' : ''} ${session.isLogView ? 'hidden' : ''}" data-session-key="${pane.sessionKey}" title="${t('terminal.broadcastInput')}" aria-pressed="${isBroadcasting ? 'true' : 'false'}">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M4 10v4"/><path d="M8 7v10"/><path d="M12 4v16"/><path d="M16 7v10"/><path d="M20 10v4"/>
                   </svg>
                 </button>
-                <button type="button" class="no-drag close-pane" data-session-key="${pane.sessionKey}" style="cursor: pointer; font-size: 14px; font-weight: bold; color: var(--color-subtext); line-height: 1; padding: 2px 4px; background: transparent; border: none; transition: color 0.2s;" title="關閉此視窗" aria-label="關閉此視窗">&times;</button>
+                <button type="button" class="no-drag close-pane" data-session-key="${pane.sessionKey}" style="cursor: pointer; font-size: 14px; font-weight: bold; color: var(--color-subtext); line-height: 1; padding: 2px 4px; background: transparent; border: none; transition: color 0.2s;" title="${t('terminal.closePane')}" aria-label="${t('terminal.closePane')}">&times;</button>
               </div>
             </div>
             
@@ -562,7 +563,7 @@ export class TerminalPage extends HTMLElement {
             <pre class="pane-output traditional-ui-pane ${session.isLogView ? '' : 'hidden'}" data-session-key="${pane.sessionKey}" style="flex: 1; overflow-y: auto; margin: 0; padding: 0 0 10px 0; color: #d7e0e5; background: transparent; border: none; line-height: 1.6; white-space: pre-wrap; font-family: monospace; font-size: ${terminalTextSize}px; text-align: left;">${escapeHtml(session.outputHtml || "")}</pre>
             <div class="pane-input-line traditional-ui-pane hidden" style="${session.isLogView ? 'display: none !important;' : 'display: flex;'} align-items: center; gap: 8px; border-top: 1px solid rgba(36, 54, 65, 0.5); padding-top: 6px; margin-top: 6px; flex: 0 0 auto;">
               <span class="pane-prompt ${session.isSudo ? 'sudo' : 'user'}" data-session-key="${pane.sessionKey}" style="font-weight: 700; font-family: monospace; font-size: ${terminalTextSize}px; color: ${session.isSudo ? '#ef4444' : '#73d391'};">${session.isSudo ? '#' : '$'}</span>
-              <input class="no-drag pane-input" data-session-key="${pane.sessionKey}" autocomplete="off" spellcheck="false" placeholder="輸入指令..." style="flex: 1; border: none !important; outline: none !important; background: transparent !important; color: var(--terminal-foreground) !important; padding: 0 !important; font-family: monospace; font-size: ${terminalTextSize}px; min-height: auto;" value="">
+              <input class="no-drag pane-input" data-session-key="${pane.sessionKey}" autocomplete="off" spellcheck="false" placeholder="${t('terminal.inputPlaceholder')}" style="flex: 1; border: none !important; outline: none !important; background: transparent !important; color: var(--terminal-foreground) !important; padding: 0 !important; font-family: monospace; font-size: ${terminalTextSize}px; min-height: auto;" value="">
             </div>
 
             <!-- 四向拖放高亮 Overlay -->
@@ -982,16 +983,16 @@ export class TerminalPage extends HTMLElement {
           overlay.style.opacity = '1';
           if (direction === 'left') {
             overlay.style.clipPath = 'inset(0 50% 0 0)';
-            overlay.textContent = '合併至左側';
+            overlay.textContent = t('terminal.mergeLeft');
           } else if (direction === 'right') {
             overlay.style.clipPath = 'inset(0 0 0 50%)';
-            overlay.textContent = '合併至右側';
+            overlay.textContent = t('terminal.mergeRight');
           } else if (direction === 'top') {
             overlay.style.clipPath = 'inset(0 0 50% 0)';
-            overlay.textContent = '合併至上方';
+            overlay.textContent = t('terminal.mergeTop');
           } else if (direction === 'bottom') {
             overlay.style.clipPath = 'inset(50% 0 0 0)';
-            overlay.textContent = '合併至下方';
+            overlay.textContent = t('terminal.mergeBottom');
           }
           overlay.setAttribute('data-drag-direction', direction);
         }
@@ -1064,7 +1065,7 @@ export class TerminalPage extends HTMLElement {
     if (isActiveSession) {
       const cfg = session.config || {};
       const sessionLabel = cfg.alias || session.label || cfg.host || sessionKey;
-      if (!(await confirmDialog(`此窗格仍有連線中的 Session「${sessionLabel}」。\n關閉後將中斷該連線，確定要關閉嗎？`, { title: '確認關閉窗格', danger: true }))) {
+      if (!(await confirmDialog(t('terminal.closeConfirmMessage', { name: sessionLabel }), { title: t('terminal.closeConfirmTitle'), danger: true }))) {
         return;
       }
     }

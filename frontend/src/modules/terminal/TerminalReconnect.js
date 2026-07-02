@@ -1,6 +1,7 @@
 import { terminalStore } from './TerminalStore';
 import { TerminalAPI } from './TerminalAPI';
 import { cleanupFrontendSession, consumeUserClosed } from './TerminalLifecycle';
+import { t } from '../../i18n/index.ts';
 
 // ============================================================================
 // L3：SSH session 異常斷線的自動 / 一鍵重連 + 輸入暫存
@@ -281,7 +282,7 @@ function finalizeReconnect(ctx, res) {
   const keyChanged = newKey !== oldKey;
 
   // 1. 建立新 session 記錄，沿用舊 config / label；outputHtml 接續舊鏡像 + 重連橫幅 + 新 boot 輸出。
-  const banner = '\r\n\x1b[32m[TermiX] 已重新連線。\x1b[0m\r\n';
+  const banner = '\r\n\x1b[32m' + t('terminal.reconnectedBanner') + '\x1b[0m\r\n';
   const bootOutput = res.output || '';
   const mergedOutput = (oldSession.outputHtml || '') + banner + bootOutput;
 

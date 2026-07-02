@@ -1,13 +1,15 @@
 import { createStore } from 'zustand/vanilla';
 import { HostAPI } from '../modules/hostvault/HostAPI';
+import { LOCALES, DEFAULT_LOCALE, setActiveLocale } from '../i18n/index.ts';
 
 const GLOBAL_SETTINGS_KEY = 'termix-global-settings';
 const DEFAULT_SETTINGS = {
   theme: 'dark',
   terminalTextSize: 12.5,
-  localTerminalPath: '/bin/zsh'
+  localTerminalPath: '/bin/zsh',
+  locale: DEFAULT_LOCALE
 };
-const THEME_OPTIONS = ['system', 'light', 'dark', 'purple-dark', 'termix', 'tahoe', 'graphite', 'forest', 'copper', 'aurora', 'tahoe-glacier', 'tahoe-sunset', 'tahoe-nebula', 'tahoe-forest'];
+const THEME_OPTIONS = ['system', 'light', 'dark', 'purple-dark', 'termix', 'tahoe', 'graphite', 'forest', 'copper', 'aurora', 'tahoe-glacier', 'tahoe-sunset', 'tahoe-nebula', 'tahoe-forest', 'glass-light', 'glass-dark', 'glass-violet', 'glass-emerald', 'glass-amber', 'glass-rose'];
 
 export function normalizeTerminalTextSize(value) {
   const parsed = Number(value);
@@ -19,7 +21,8 @@ function normalizeSettings(settings = {}) {
   return {
     theme: THEME_OPTIONS.includes(settings.theme) ? settings.theme : DEFAULT_SETTINGS.theme,
     terminalTextSize: normalizeTerminalTextSize(settings.terminalTextSize ?? DEFAULT_SETTINGS.terminalTextSize),
-    localTerminalPath: String(settings.localTerminalPath || DEFAULT_SETTINGS.localTerminalPath).trim() || DEFAULT_SETTINGS.localTerminalPath
+    localTerminalPath: String(settings.localTerminalPath || DEFAULT_SETTINGS.localTerminalPath).trim() || DEFAULT_SETTINGS.localTerminalPath,
+    locale: LOCALES.includes(settings.locale) ? settings.locale : DEFAULT_SETTINGS.locale
   };
 }
 
@@ -36,6 +39,7 @@ export const themeStore = createStore((set, get) => ({
   theme: DEFAULT_SETTINGS.theme,
   terminalTextSize: DEFAULT_SETTINGS.terminalTextSize,
   localTerminalPath: DEFAULT_SETTINGS.localTerminalPath,
+  locale: DEFAULT_SETTINGS.locale,
   settingsModalOpen: false,
 
   loadSettings: async () => {
@@ -44,16 +48,32 @@ export const themeStore = createStore((set, get) => ({
       saveSettings(settings);
       set(settings);
       applyTheme(settings.theme);
+      setActiveLocale(settings.locale);
     } catch (backendError) {
       try {
         const settings = readLocalSettings();
         set(settings);
         applyTheme(settings.theme);
+        setActiveLocale(settings.locale);
       } catch (localError) {
         set(DEFAULT_SETTINGS);
         applyTheme(DEFAULT_SETTINGS.theme);
+        setActiveLocale(DEFAULT_SETTINGS.locale);
       }
     }
+  },
+
+  setLocale: async (locale) => {
+    const next = normalizeSettings({ ...get(), locale });
+    set(next);
+    saveSettings(next);
+    try {
+      await HostAPI.saveAppSettings(next);
+    } catch (e) {
+      console.error('[TermiX] SaveAppSettings(locale) 失敗，已暫存於本機', e);
+    }
+    // 語言切換影響所有已渲染 UI，reload 以套用（t() 於載入時讀取新 locale）
+    window.location.reload();
   },
 
   setTheme: async (theme) => {
@@ -133,21 +153,10 @@ function applyTheme(theme) {
 
 function applyThemeClass(normalizedTheme) {
   const root = document.documentElement;
-  root.classList.remove(
-    'dark-theme',
-    'theme-system-dark',
-    'theme-purple-dark',
-    'theme-termix',
-    'theme-tahoe',
-    'theme-graphite',
-    'theme-forest',
-    'theme-copper',
-    'theme-aurora',
-    'theme-tahoe-glacier',
-    'theme-tahoe-sunset',
-    'theme-tahoe-nebula',
-    'theme-tahoe-forest'
-  );
+  // 動態清除既有主題 class（含 dark-theme 與所有 theme-*），避免新增主題時漏改硬編碼清單
+  [...root.classList]
+    .filter((c) => c === 'dark-theme' || c.startsWith('theme-'))
+    .forEach((c) => root.classList.remove(c));
   root.classList.toggle('dark-theme', normalizedTheme !== 'light');
   if (normalizedTheme !== 'light' && normalizedTheme !== 'dark') {
     root.classList.add(`theme-${normalizedTheme}`);

@@ -3,6 +3,7 @@ import type {
   WailsAppContract,
   WailsAppMethodName,
 } from './contracts';
+import { t } from '../../i18n/index.ts';
 
 export function getAppBindings(): WailsAppBindings | undefined {
   return globalThis.window?.go?.app?.App;
@@ -32,7 +33,7 @@ export function requireAppBinding(
 ): (...args: any[]) => any {
   const binding = getAppBinding(methodName);
   if (!binding) {
-    throw new Error(`缺少後端 API：${methodName}`);
+    throw new Error(t('misc.wails.missingBinding', { name: methodName }));
   }
   return binding;
 }

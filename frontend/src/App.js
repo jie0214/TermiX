@@ -42,6 +42,7 @@ import { showToast } from './components/feedback/toast';
 import { confirmDialog } from './components/feedback/confirmDialog';
 import { getControlPanelDropPosition, getControlPanelThemeStyle, reorderControlPanelComponents } from './modules/controlpanel/ControlPanelLayout';
 import { themeStore } from './stores/ThemeStore';
+import { t } from './i18n/index.ts';
 import { hostStore } from './modules/hostvault/HostStore';
 import { snippetStore } from './modules/snippets/SnippetStore';
 import { pasteSnippetToSession, runSnippetInSession } from './modules/snippets/SnippetRuntime';
@@ -73,10 +74,10 @@ function extractInfoBoxValue(itemKey, output) {
   for (const line of lines) {
     const match = line.match(/^([^=]+)=(.*)$/);
     if (match && match[1].trim() === itemKey) {
-      return match[2].trim() || '無輸出';
+      return match[2].trim() || t('common.noOutput');
     }
   }
-  return cleaned || '無輸出';
+  return cleaned || t('common.noOutput');
 }
 
 function getSwitchState(comp, output) {
@@ -252,6 +253,7 @@ export class TermixApp extends HTMLElement {
     this.unsubscribeTheme = themeStore.subscribe((state) => {
       const modal = this.querySelector('#globalSettingsModal');
       const themeSelect = this.querySelector('#themeSelect');
+      const localeSelect = this.querySelector('#localeSelect');
       const textSizeInput = this.querySelector('#terminalTextSizeInput');
       const localTerminalPathInput = this.querySelector('#localTerminalPathInput');
       if (modal) {
@@ -263,15 +265,18 @@ export class TermixApp extends HTMLElement {
               const logs = JSON.parse(localStorage.getItem('termix-tab-debug') || '[]');
               logsContainer.innerHTML = logs.map((log, idx) => {
                 return `[${idx+1}] [${log.time}] val: ${log.value}\n   action: ${log.action}\n   stack: ${log.stack}`;
-              }).join('\n\n') || '無調試紀錄';
+              }).join('\n\n') || t('app.settings.noDebugLogs');
             } catch (e) {
-              logsContainer.innerHTML = '讀取日誌出錯: ' + e.message;
+              logsContainer.innerHTML = t('app.settings.logReadError', { msg: e.message });
             }
           }
         }
       }
       if (themeSelect) {
         themeSelect.value = state.theme;
+      }
+      if (localeSelect) {
+        localeSelect.value = state.locale;
       }
       if (textSizeInput && document.activeElement !== textSizeInput) {
         textSizeInput.value = String(state.terminalTextSize);
@@ -379,7 +384,7 @@ export class TermixApp extends HTMLElement {
 
   render() {
     const sidebarEditMode = this.controlSidebarTab === 'snippets' ? this.snippetPanelEditMode : this.controlPanelEditMode;
-    const sidebarEditTitle = sidebarEditMode ? '完成排列編輯' : '編輯方塊排列';
+    const sidebarEditTitle = sidebarEditMode ? t('app.sidebar.finishArrange') : t('app.sidebar.editArrange');
     this.innerHTML = `
       <main class="shell" style="display: flex; flex-direction: column; height: 100vh; width: 100vw; overflow: hidden; background: var(--bg-main);">
         <!-- 頂部 TOPBAR -->
@@ -391,7 +396,7 @@ export class TermixApp extends HTMLElement {
             <!-- 加大拖曳視窗的範圍：右側自適應空白拖曳區 -->
             <div class="topbar-drag-handle" style="flex: 1 1 auto; height: 100%; min-width: 20px; --wails-draggable: drag; cursor: default;"></div>
           </div>
-          <button type="button" id="toggleControlSidebar" class="no-drag session-bar-control-btn" title="展開/摺疊控制面板" style="background: transparent; border: none; color: var(--color-subtext); cursor: pointer; padding: 6px; display: flex; align-items: center; justify-content: center; margin: 0; --wails-draggable: no-drag;">
+          <button type="button" id="toggleControlSidebar" class="no-drag session-bar-control-btn" title="${t('app.topbar.toggleControlPanel')}" style="background: transparent; border: none; color: var(--color-subtext); cursor: pointer; padding: 6px; display: flex; align-items: center; justify-content: center; margin: 0; --wails-draggable: no-drag;">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="3" y="3" width="18" height="18" rx="2" />
               <line x1="15" y1="3" x2="15" y2="21" />
@@ -407,7 +412,7 @@ export class TermixApp extends HTMLElement {
           <!-- 側邊欄 (Layout 核心一體，預設 collapsed，由 style.css 控制寬度與動畫) -->
           <section id="controlSidebar" class="panel control-panel collapsed" style="display: flex; flex-direction: column;">
             <div class="control-sidebar-header" style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; border-bottom: 1px solid var(--color-border); margin-bottom: 10px; flex: 0 0 auto;">
-              <h2 style="font-size: 13px; font-weight: 700; color: var(--color-text); margin: 0;">控制台</h2>
+              <h2 style="font-size: 13px; font-weight: 700; color: var(--color-text); margin: 0;">${t('app.sidebar.console')}</h2>
               <button type="button" id="toggleControlPanelEditMode" class="no-drag control-panel-edit-btn ${sidebarEditMode ? 'active' : ''}" title="${sidebarEditTitle}" aria-pressed="${sidebarEditMode ? 'true' : 'false'}" style="background: transparent; border: none; padding: 6px; border-radius: 4px; color: ${sidebarEditMode ? 'var(--color-primary)' : 'var(--color-subtext)'}; display: inline-flex; align-items: center; justify-content: center; cursor: pointer;">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
@@ -421,7 +426,7 @@ export class TermixApp extends HTMLElement {
             </div>
             <!-- 主機自訂資訊卡 -->
             <div id="hostCustomInfoContainer" class="hidden" style="border: 1px solid var(--color-border); border-radius: 6px; padding: 12px 14px; background: color-mix(in srgb, var(--color-primary) 5%, transparent); margin-bottom: 14px; flex: 0 0 auto;">
-              <h3 style="font-size: 12px; font-weight: 700; color: var(--color-primary); margin: 0 0 10px 0; text-transform: uppercase; letter-spacing: 0.5px; text-align: left;">主機資訊 (Host Info)</h3>
+              <h3 style="font-size: 12px; font-weight: 700; color: var(--color-primary); margin: 0 0 10px 0; text-transform: uppercase; letter-spacing: 0.5px; text-align: left;">${t('app.sidebar.hostInfo')}</h3>
               <div id="hostCustomInfoFields" style="display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; font-size: 12px; color: var(--color-text);">
                 <!-- 動態解析 Key-Value -->
               </div>
@@ -437,7 +442,7 @@ export class TermixApp extends HTMLElement {
       <div id="globalSettingsModal" class="settings-modal hidden" role="dialog" aria-modal="true" style="position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 99999;">
         <div class="settings-dialog" style="width: min(420px, 100%); background: var(--dialog-bg); border: 1px solid var(--color-border); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column;">
           <div class="settings-header" style="padding: 16px 20px; border-bottom: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center;">
-            <h2 style="font-weight: 700; font-size: 14px; color: var(--color-text); margin: 0;">Settings</h2>
+            <h2 style="font-weight: 700; font-size: 14px; color: var(--color-text); margin: 0;">${t('app.settings.title')}</h2>
             <button type="button" id="closeGlobalSettings" class="no-drag btn-xs" style="background: transparent; border: none; cursor: pointer; color: var(--color-subtext); font-size: 16px;">&times;</button>
           </div>
           <div class="settings-body" style="padding: 20px;">
@@ -446,23 +451,40 @@ export class TermixApp extends HTMLElement {
             </div>
             <div style="display: grid; gap: 16px;">
               <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
-                外觀主題
+                ${t('app.settings.themeLabel')}
                 <select class="no-drag" id="themeSelect" style="background: var(--input-bg); border: 1px solid var(--input-border, var(--color-border)); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
-                  <option value="system">跟隨系統配色 (System)</option>
-                  <option value="light">明亮風格 (Light)</option>
-                  <option value="dark" selected>深色風格 (Dark)</option>
-                  <option value="purple-dark">紫黑色風格 (Purple Dark)</option>
-                  <option value="termix">TermiX 風格 (TermiX Style)</option>
-                  <option value="tahoe">Tahoe 玻璃風格 (Tahoe Glass)</option>
-                  <option value="graphite">石墨風格 (Graphite)</option>
-                  <option value="forest">森林風格 (Forest)</option>
-                  <option value="copper">銅色風格 (Copper)</option>
-                  <option value="aurora">極光風格 (Aurora)</option>
-                  <option value="tahoe-glacier">太浩冰川 (Tahoe Glacier)</option>
-                  <option value="tahoe-sunset">太浩落日 (Tahoe Sunset)</option>
-                  <option value="tahoe-nebula">太浩星雲 (Tahoe Nebula)</option>
-                  <option value="tahoe-forest">太浩深林 (Tahoe Forest)</option>
+                  <option value="system">${t('app.theme.system')}</option>
+                  <option value="light">${t('app.theme.light')}</option>
+                  <option value="dark" selected>${t('app.theme.dark')}</option>
+                  <option value="termix">${t('app.theme.termix')}</option>
+                  <option value="graphite">${t('app.theme.graphite')}</option>
+                  <option value="forest">${t('app.theme.forest')}</option>
+                  <option value="copper">${t('app.theme.copper')}</option>
+                  <option value="aurora">${t('app.theme.aurora')}</option>
+                  <optgroup label="${t('app.theme.group.tahoe')}">
+                    <option value="tahoe">${t('app.theme.tahoe')}</option>
+                    <option value="tahoe-glacier">${t('app.theme.tahoeGlacier')}</option>
+                    <option value="tahoe-sunset">${t('app.theme.tahoeSunset')}</option>
+                    <option value="tahoe-nebula">${t('app.theme.tahoeNebula')}</option>
+                    <option value="tahoe-forest">${t('app.theme.tahoeForest')}</option>
+                  </optgroup>
+                  <optgroup label="${t('app.theme.group.glass')}">
+                    <option value="glass-light">${t('app.theme.glassLight')}</option>
+                    <option value="glass-violet">${t('app.theme.glassViolet')}</option>
+                    <option value="glass-emerald">${t('app.theme.glassEmerald')}</option>
+                    <option value="glass-amber">${t('app.theme.glassAmber')}</option>
+                    <option value="glass-rose">${t('app.theme.glassRose')}</option>
+                    <option value="glass-dark">${t('app.theme.glassDark')}</option>
+                  </optgroup>
 
+                </select>
+              </label>
+              <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
+                ${t('app.settings.language')}
+                <select class="no-drag" id="localeSelect" style="background: var(--input-bg); border: 1px solid var(--input-border, var(--color-border)); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
+                  <option value="en">English</option>
+                  <option value="zh-Hant">繁體中文</option>
+                  <option value="ja">日本語</option>
                 </select>
               </label>
               <div style="display: flex; flex-direction: column; text-align: left; gap: 8px; font-size: 12px; color: var(--color-subtext);">
@@ -479,18 +501,18 @@ export class TermixApp extends HTMLElement {
                 <datalist id="localTerminalPathOptions">
                   ${['/bin/bash', '/bin/csh', '/bin/dash', '/bin/ksh', '/bin/sh', '/bin/tcsh', '/bin/zsh'].map(path => `<option value="${path}"></option>`).join('')}
                 </datalist>
-                <small style="color: var(--color-text-muted);">可直接輸入 Shell 的絕對路徑，或從右側下拉選單選擇。</small>
+                <small style="color: var(--color-text-muted);">${t('app.settings.localShellHint')}</small>
               </label>
               <div style="margin-top: 12px; border-top: 1px dashed var(--color-border); padding-top: 12px;">
                 <div style="font-size: 11px; font-weight: 700; color: var(--color-primary); margin-bottom: 6px; text-transform: uppercase;">Tab Debug Logs</div>
                 <div id="tabDebugLogsContainer" style="font-family: monospace; font-size: 10px; color: var(--color-text-muted); max-height: 80px; overflow-y: auto; background: var(--input-bg); padding: 8px; border-radius: 4px; border: 1px solid var(--color-border); white-space: pre-wrap; word-break: break-all;">
-                  無調試紀錄
+                  ${t('app.settings.noDebugLogs')}
                 </div>
               </div>
             </div>
           </div>
           <div class="settings-footer" style="padding: 16px 20px; border-top: 1px solid var(--color-border); display: flex; justify-content: flex-end;">
-            <button type="button" id="saveGlobalSettings" class="no-drag primary" style="padding: 6px 14px; background: var(--color-primary); border: none; color: #fff; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 12px;">儲存設定</button>
+            <button type="button" id="saveGlobalSettings" class="no-drag primary" style="padding: 6px 14px; background: var(--color-primary); border: none; color: #fff; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 12px;">${t('app.settings.save')}</button>
           </div>
         </div>
       </div>
@@ -537,7 +559,7 @@ export class TermixApp extends HTMLElement {
             <path d="M12 2.5 20 7v10l-8 4.5L4 17V7l8-4.5z"/><circle cx="12" cy="12" r="2.5"/>
           </svg>
           <span>${escapeHtml(clusterLabel)}</span>
-          <button type="button" class="no-drag close-tab kubernetes-close-tab" data-workspace-id="${KUBERNETES_SESSION_ID}" title="關閉 Kubernetes 分頁">&times;</button>
+          <button type="button" class="no-drag close-tab kubernetes-close-tab" data-workspace-id="${KUBERNETES_SESSION_ID}" title="${t('app.tab.closeKubernetes')}">&times;</button>
         </div>
       `;
     }
@@ -546,16 +568,16 @@ export class TermixApp extends HTMLElement {
     workspaces.forEach((ws) => {
       const isActive = ws.id === activeWorkspaceId;
       tabsHtml += `
-        <div class="session-tab no-drag ${isActive ? 'active' : ''}" data-workspace-id="${ws.id}" title="分頁: ${ws.label}" draggable="true">
+        <div class="session-tab no-drag ${isActive ? 'active' : ''}" data-workspace-id="${ws.id}" title="${t('app.tab.title', { label: ws.label })}" draggable="true">
           <span>${ws.label}</span>
-          <button type="button" class="no-drag close-tab" data-workspace-id="${ws.id}" title="關閉分頁">&times;</button>
+          <button type="button" class="no-drag close-tab" data-workspace-id="${ws.id}" title="${t('app.tab.closeWorkspace')}">&times;</button>
         </div>
       `;
     });
 
     // 3. 新增 Local Terminal 的 '+' 按鈕 (移除 inline樣式覆蓋，套用 style.css 經典 dashed邊框)
     tabsHtml += `
-      <button type="button" id="addLocalTerminalTab" class="no-drag session-tab session-tab-add" title="新增 Local Terminal" aria-label="新增 Local Terminal">
+      <button type="button" id="addLocalTerminalTab" class="no-drag session-tab session-tab-add" title="${t('app.tab.addLocalTerminal')}" aria-label="${t('app.tab.addLocalTerminal')}">
         <span>+</span>
       </button>
     `;
@@ -811,7 +833,7 @@ export class TermixApp extends HTMLElement {
       editBtn.style.color = activeEditMode ? 'var(--color-primary)' : 'var(--color-subtext)';
       editBtn.classList.toggle('active', activeEditMode);
       editBtn.setAttribute('aria-pressed', activeEditMode ? 'true' : 'false');
-      editBtn.setAttribute('title', activeEditMode ? '完成排列編輯' : '編輯方塊排列');
+      editBtn.setAttribute('title', activeEditMode ? t('app.sidebar.finishArrange') : t('app.sidebar.editArrange'));
     }
   }
 
@@ -820,6 +842,7 @@ export class TermixApp extends HTMLElement {
     const cancelBtn = this.querySelector('#cancelGlobalSettings');
     const saveBtn = this.querySelector('#saveGlobalSettings');
     const select = this.querySelector('#themeSelect');
+    const localeSelect = this.querySelector('#localeSelect');
     const textSizeInput = this.querySelector('#terminalTextSizeInput');
     const localTerminalPathInput = this.querySelector('#localTerminalPathInput');
     const textSizeMinus = this.querySelector('#terminalTextSizeMinus');
@@ -842,6 +865,14 @@ export class TermixApp extends HTMLElement {
 
     if (closeBtn) closeBtn.addEventListener('click', close);
     if (cancelBtn) cancelBtn.addEventListener('click', close);
+    // 語言切換：立即套用（setLocale 會 reload）
+    if (localeSelect) {
+      localeSelect.addEventListener('change', () => {
+        if (localeSelect.value !== themeStore.getState().locale) {
+          themeStore.getState().setLocale(localeSelect.value);
+        }
+      });
+    }
     if (textSizeMinus) textSizeMinus.addEventListener('click', () => stepTextSize(-0.5));
     if (textSizePlus) textSizePlus.addEventListener('click', () => stepTextSize(0.5));
     if (textSizeInput) {
@@ -880,14 +911,14 @@ export class TermixApp extends HTMLElement {
     const activeKey = state.activePaneSessionKey;
 
     if (!activeKey || !state.sessions[activeKey]) {
-      container.innerHTML = `<div style="padding: 24px; text-align: center; color: var(--color-text-muted); font-size: 12.5px;">未建立活動連線。</div>`;
+      container.innerHTML = `<div style="padding: 24px; text-align: center; color: var(--color-text-muted); font-size: 12.5px;">${t('app.sidebar.noActiveConnection')}</div>`;
       if (infoContainer) infoContainer.classList.add('hidden');
       return;
     }
 
     const session = state.sessions[activeKey];
     if (session.isLogView) {
-      container.innerHTML = `<div style="padding: 24px; text-align: center; color: var(--color-text-muted); font-size: 12.5px;">歷史日誌回放分頁不支援控制面板。</div>`;
+      container.innerHTML = `<div style="padding: 24px; text-align: center; color: var(--color-text-muted); font-size: 12.5px;">${t('app.sidebar.logViewUnsupported')}</div>`;
       if (infoContainer) infoContainer.classList.add('hidden');
       return;
     }
@@ -895,9 +926,9 @@ export class TermixApp extends HTMLElement {
     const showSnippetsInControlPanel = session.isLocal || session.config?.showSnippetsInControlPanel !== false;
     if (this.controlSidebarTab === 'snippets') {
       if (!showSnippetsInControlPanel) {
-        container.innerHTML = `<div style="padding: 24px; text-align: center; color: var(--color-text-muted); font-size: 12.5px;">此主機未啟用 Snippets 控制台顯示。請至 Edit Host 開啟。</div>`;
+        container.innerHTML = `<div style="padding: 24px; text-align: center; color: var(--color-text-muted); font-size: 12.5px;">${t('app.sidebar.snippetsDisabled')}</div>`;
       } else {
-        container.innerHTML = this.renderSidebarSnippetsHtml() || `<div style="padding: 24px; text-align: center; color: var(--color-text-muted); font-size: 12.5px;">尚未建立 Snippet。</div>`;
+        container.innerHTML = this.renderSidebarSnippetsHtml() || `<div style="padding: 24px; text-align: center; color: var(--color-text-muted); font-size: 12.5px;">${t('app.sidebar.noSnippets')}</div>`;
       }
       if (infoContainer) infoContainer.classList.add('hidden');
       this.setupSidebarComponentListeners();
@@ -905,7 +936,7 @@ export class TermixApp extends HTMLElement {
     }
 
     if (session.isLocal) {
-      container.innerHTML = `<div style="padding: 24px; text-align: center; color: var(--color-text-muted); font-size: 12.5px;">Local Terminal 不支援 Control Panel，請切換至 Snippets 頁籤。</div>`;
+      container.innerHTML = `<div style="padding: 24px; text-align: center; color: var(--color-text-muted); font-size: 12.5px;">${t('app.sidebar.localUnsupported')}</div>`;
       if (infoContainer) infoContainer.classList.add('hidden');
       return;
     }
@@ -932,7 +963,7 @@ export class TermixApp extends HTMLElement {
     });
 
     if (activeComponents.length === 0) {
-      container.innerHTML = `<div style="padding: 24px; text-align: center; color: var(--color-text-muted); font-size: 12.5px;">此主機未勾選任何側邊欄顯示組件。請至 Control Panel 勾選。</div>`;
+      container.innerHTML = `<div style="padding: 24px; text-align: center; color: var(--color-text-muted); font-size: 12.5px;">${t('app.sidebar.noComponents')}</div>`;
       this.setupSidebarComponentListeners();
       return;
     }
@@ -1011,7 +1042,7 @@ export class TermixApp extends HTMLElement {
               <span style="font-size: 10.5px; color: var(--color-text-muted); display: block; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${comp.localCommand || comp.remoteCommand || ''}</span>
               </div>
             </div>
-            <button type="button" class="no-drag run-function-btn" data-id="${comp.id}" style="${theme.actionButtonStyle}; padding: 4px 12px; border-radius: 4px; font-size: 11px; font-weight: 700; cursor: pointer; margin-left: 10px;">執行</button>
+            <button type="button" class="no-drag run-function-btn" data-id="${comp.id}" style="${theme.actionButtonStyle}; padding: 4px 12px; border-radius: 4px; font-size: 11px; font-weight: 700; cursor: pointer; margin-left: 10px;">${t('app.sidebar.run')}</button>
           </div>
         `;
       }
@@ -1036,7 +1067,7 @@ export class TermixApp extends HTMLElement {
 
     return `
       <section id="sidebarSnippetsSection" style="display: flex; flex-direction: column; gap: 10px; border-bottom: 1px solid color-mix(in srgb, var(--color-primary) 15%, transparent); padding-bottom: 14px;">
-        ${listHtml || '<div style="color: var(--color-text-muted); font-size: 12.5px; text-align: left;">尚未建立 Snippet。</div>'}
+        ${listHtml || `<div style="color: var(--color-text-muted); font-size: 12.5px; text-align: left;">${t('app.sidebar.noSnippets')}</div>`}
       </section>
     `;
   }
@@ -1064,7 +1095,7 @@ export class TermixApp extends HTMLElement {
     if (session.customInfo) {
       const keys = Object.keys(session.customInfo);
       if (keys.length === 0) {
-        fieldsContainer.innerHTML = `<div style="grid-column: span 2; color: var(--color-text-muted); font-style: italic; font-size: 11px; padding: 4px 0;">無自訂查詢欄位。</div>`;
+        fieldsContainer.innerHTML = `<div style="grid-column: span 2; color: var(--color-text-muted); font-style: italic; font-size: 11px; padding: 4px 0;">${t('app.sidebar.noCustomQueryFields')}</div>`;
       } else {
         fieldsContainer.innerHTML = keys.map(key => {
           return `
@@ -1074,7 +1105,7 @@ export class TermixApp extends HTMLElement {
         }).join('');
       }
     } else {
-      fieldsContainer.innerHTML = `<div style="grid-column: span 2; display: flex; align-items: center; gap: 6px; color: var(--color-text-muted); font-size: 11px;"><div class="spinner-mini" style="width: 10px; height: 10px;"></div>正在讀取...</div>`;
+      fieldsContainer.innerHTML = `<div style="grid-column: span 2; display: flex; align-items: center; gap: 6px; color: var(--color-text-muted); font-size: 11px;"><div class="spinner-mini" style="width: 10px; height: 10px;"></div>${t('app.sidebar.loading')}</div>`;
       // 發起非同步自訂查詢
       this.triggerHostCustomQuery(activeKey);
     }
@@ -1121,7 +1152,7 @@ export class TermixApp extends HTMLElement {
 
       try {
         const res = await TerminalAPI.executeSessionCommandIsolated(sessionKey, item.command);
-        let val = '無輸出';
+        let val = t('common.noOutput');
         if (res.success && res.output) {
           val = extractInfoBoxValue(item.key, res.output);
         }
@@ -1233,17 +1264,17 @@ export class TermixApp extends HTMLElement {
           const result = await executeFunctionBox(comp, activeKey);
           if (!result.success) {
             const message = result.phase === 'remote'
-              ? `遠端執行失敗: ${result.error}`
+              ? t('app.functionBox.remoteFailed', { error: result.error })
               : result.phase === 'export'
-                ? `變數解析失敗: ${result.error}`
-                : `安全沙箱阻攔或執行失敗: ${result.error}`;
-            showToast(message, { type: 'error', title: 'FunctionBox 執行失敗' });
+                ? t('app.functionBox.exportFailed', { error: result.error })
+                : t('app.functionBox.sandboxFailed', { error: result.error });
+            showToast(message, { type: 'error', title: t('app.functionBox.failTitle') });
             return;
           }
           // 過長輸出不塞進 toast，僅顯示完成摘要（輸出已寫入既有日誌/終端）。
-          showToast(`FunctionBox「${comp.title || comp.name || comp.id}」執行完成`, { type: 'success' });
+          showToast(t('app.functionBox.done', { name: comp.title || comp.name || comp.id }), { type: 'success' });
         } catch (e) {
-          showToast(`執行出錯: ${String(e)}`, { type: 'error', title: 'FunctionBox 執行失敗' });
+          showToast(t('app.functionBox.error', { error: String(e) }), { type: 'error', title: t('app.functionBox.failTitle') });
         }
       });
     });
@@ -1271,20 +1302,20 @@ export class TermixApp extends HTMLElement {
         if (!activeKey || !comp) return;
         const command = target === 'A' ? comp.stateA?.command : comp.stateB?.command;
         if (!command) {
-          showToast('此狀態尚未設定切換指令。', { type: 'error', title: 'SwitchBox' });
+          showToast(t('app.switchBox.noCommand'), { type: 'error', title: 'SwitchBox' });
           return;
         }
         btn.disabled = true;
         try {
           const res = await TerminalAPI.executeSessionCommandIsolated(activeKey, command);
           if (!res.success) {
-            showToast(`SwitchBox 切換失敗：${res.error || '未知錯誤'}`, { type: 'error', title: 'SwitchBox' });
+            showToast(t('app.switchBox.failed', { error: res.error || t('app.unknownError') }), { type: 'error', title: 'SwitchBox' });
             return;
           }
           this.setSwitchBoxState(activeKey, comp.id, 'loading');
           await this.refreshSwitchBoxState(activeKey, comp);
         } catch (e) {
-          showToast(`SwitchBox 切換出錯：${String(e)}`, { type: 'error', title: 'SwitchBox' });
+          showToast(t('app.switchBox.error', { error: String(e) }), { type: 'error', title: 'SwitchBox' });
         } finally {
           btn.disabled = false;
         }
@@ -1298,7 +1329,7 @@ export class TermixApp extends HTMLElement {
         const snippet = snippetStore.getState().snippets.find(item => item.id === btn.getAttribute('data-snippet-id'));
         if (!activeKey || !snippet) return;
         const res = await pasteSnippetToSession(activeKey, snippet);
-        if (!res.success) showToast(`Snippet 貼上失敗：${res.error || '未知錯誤'}`, { type: 'error', title: 'Snippet' });
+        if (!res.success) showToast(t('app.snippet.pasteFailed', { error: res.error || t('app.unknownError') }), { type: 'error', title: 'Snippet' });
       });
     });
 
@@ -1309,7 +1340,7 @@ export class TermixApp extends HTMLElement {
         const snippet = snippetStore.getState().snippets.find(item => item.id === btn.getAttribute('data-snippet-id'));
         if (!activeKey || !snippet) return;
         const res = await runSnippetInSession(activeKey, snippet);
-        if (!res.success) showToast(`Snippet 執行失敗：${res.error || '未知錯誤'}`, { type: 'error', title: 'Snippet' });
+        if (!res.success) showToast(t('app.snippet.runFailed', { error: res.error || t('app.unknownError') }), { type: 'error', title: 'Snippet' });
       });
     });
 
@@ -1525,10 +1556,10 @@ export class TermixApp extends HTMLElement {
 
         window.location.hash = '#/terminal';
       } else {
-        showToast(res.error || '建立本機終端機失敗。', { type: 'error', title: '建立失敗' });
+        showToast(res.error || t('app.localTerminal.createFailed'), { type: 'error', title: t('app.localTerminal.createFailTitle') });
       }
     } catch (e) {
-      showToast(`錯誤: ${String(e)}`, { type: 'error' });
+      showToast(t('app.errorWith', { error: String(e) }), { type: 'error' });
     }
   }
 
@@ -1551,7 +1582,7 @@ export class TermixApp extends HTMLElement {
     });
     if (activeSessions.length > 0) {
       const list = activeSessions.join('、');
-      if (!(await confirmDialog(`此分頁仍有 ${activeSessions.length} 個連線中的 Session（${list}）。\n關閉後將中斷這些連線，確定要關閉嗎？`, { title: '確認關閉分頁', danger: true }))) {
+      if (!(await confirmDialog(t('app.closeWorkspace.confirm', { count: activeSessions.length, list }), { title: t('app.closeWorkspace.confirmTitle'), danger: true }))) {
         return;
       }
     }
@@ -1615,9 +1646,9 @@ export class TermixApp extends HTMLElement {
   // 遠端斷線提示：沿用通用 toast helper，顯示在右下角，3.5 秒後自動消失。
   // toast 直接掛在 document.body，避免受 App innerHTML 重繪影響。
   showDisconnectNotice(hostLabel) {
-    showToast(`與主機 ${hostLabel} 的連線已被遠端關閉或意外斷線。`, {
+    showToast(t('app.disconnect.notice', { host: hostLabel }), {
       type: 'error',
-      title: '連線已中斷'
+      title: t('app.disconnect.title')
     });
   }
 

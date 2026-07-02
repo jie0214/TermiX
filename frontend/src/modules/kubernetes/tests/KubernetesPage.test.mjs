@@ -44,7 +44,7 @@ test('Drawer 表單提供需求指定的所有欄位', () => {
 test('頁面包含載入、錯誤、空資料及搜尋狀態', () => {
   assert.match(pageSource, /state\.isLoading/);
   assert.match(pageSource, /state\.loadError/);
-  assert.match(pageSource, /尚未找到 Kubernetes Cluster/);
+  assert.match(pageSource, /k8s\.page\.noClusters/);
   assert.match(pageSource, /kubernetesSearchInput/);
   assert.match(pageSource, /reloadClusters\(\)/);
 });

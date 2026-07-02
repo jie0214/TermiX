@@ -4,13 +4,14 @@ import { createRoot } from 'react-dom/client';
 import './app.css';
 import { App } from './ReactApp';
 import { initializeApplication } from './runtime/initializeApplication';
+import { t } from './i18n/index.ts';
 
 await initializeApplication();
 
 const rootElement = document.getElementById('app');
 
 if (!rootElement) {
-  throw new Error('找不到 TermiX 前端根節點「#app」。');
+  throw new Error(t('misc.app.rootNotFound'));
 }
 
 createRoot(rootElement).render(

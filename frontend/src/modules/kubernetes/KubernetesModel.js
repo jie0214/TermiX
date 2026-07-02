@@ -1,3 +1,5 @@
+import { t } from '../../i18n/index.ts';
+
 export const DEFAULT_KUBERNETES_CLUSTER = Object.freeze({
   id: '',
   displayName: '',
@@ -34,7 +36,7 @@ export function normalizeKubernetesCluster(cluster = {}) {
     ...DEFAULT_KUBERNETES_CLUSTER,
     ...cluster,
     id,
-    displayName: text(cluster.displayName || cluster.name) || contextName || clusterName || '未命名叢集',
+    displayName: text(cluster.displayName || cluster.name) || contextName || clusterName || t('k8s.model.unnamedCluster'),
     contextName,
     clusterName,
     server: text(cluster.server),
@@ -83,25 +85,25 @@ export function validateKubernetesCluster(cluster = {}) {
   const normalized = normalizeKubernetesCluster(cluster);
   const errors = {};
 
-  if (!normalized.displayName) errors.displayName = '請輸入顯示名稱。';
-  if (!normalized.contextName) errors.contextName = '請輸入 Context 名稱。';
-  if (!normalized.clusterName) errors.clusterName = '請輸入 Cluster 名稱。';
+  if (!normalized.displayName) errors.displayName = t('k8s.model.errDisplayName');
+  if (!normalized.contextName) errors.contextName = t('k8s.model.errContextName');
+  if (!normalized.clusterName) errors.clusterName = t('k8s.model.errClusterName');
   if (!normalized.server) {
-    errors.server = '請輸入 Kubernetes API Server 位址。';
+    errors.server = t('k8s.model.errServerRequired');
   } else {
     try {
       const url = new URL(normalized.server);
       if (!['https:', 'http:'].includes(url.protocol)) {
-        errors.server = 'Kubernetes API Server 位址必須使用 HTTP 或 HTTPS。';
+        errors.server = t('k8s.model.errServerScheme');
       }
     } catch (e) {
-      errors.server = 'Kubernetes API Server 位址格式不正確。';
+      errors.server = t('k8s.model.errServerFormat');
     }
   }
-  if (!normalized.userName) errors.userName = '請選擇或輸入 kubeconfig User。';
-  if (!normalized.kubeconfigPath) errors.kubeconfigPath = '請輸入 kubeconfig 路徑。';
+  if (!normalized.userName) errors.userName = t('k8s.model.errUserName');
+  if (!normalized.kubeconfigPath) errors.kubeconfigPath = t('k8s.model.errKubeconfigPath');
   if (normalized.certificateAuthority && normalized.insecureSkipTLSVerify) {
-    errors.insecureSkipTLSVerify = 'Certificate Authority 與略過 TLS 驗證不可同時啟用。';
+    errors.insecureSkipTLSVerify = t('k8s.model.errCaAndInsecure');
   }
 
   return {

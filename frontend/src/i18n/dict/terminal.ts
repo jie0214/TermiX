@@ -1,0 +1,70 @@
+import type { DictBundle } from '../index';
+
+// terminal 模組字串（由 i18n 遷移填入）。
+export const terminal: DictBundle = {
+  en: {
+    'terminal.emptyHint':
+      'Click a host on the left to open a terminal tab, or press the top “+” to add a local terminal.',
+    'terminal.batchTargets': 'Batch Targets',
+    'terminal.broadcastInput': 'Broadcast input',
+    'terminal.closePane': 'Close this pane',
+    'terminal.inputPlaceholder': 'Enter a command…',
+    'terminal.mergeLeft': 'Merge to left',
+    'terminal.mergeRight': 'Merge to right',
+    'terminal.mergeTop': 'Merge to top',
+    'terminal.mergeBottom': 'Merge to bottom',
+    'terminal.reconnectConnecting': 'Connection to “{name}” was lost. Reconnecting…',
+    'terminal.reconnectFailed': 'Unable to reconnect to “{name}”.',
+    'terminal.reconnectRetry': 'Reconnect',
+    'terminal.reconnectPending':
+      'Reconnected. There is pending input from the disconnection. Send it?',
+    'terminal.reconnectFlush': 'Send pending input',
+    'terminal.reconnectDiscard': 'Discard',
+    'terminal.reconnectedBanner': '[TermiX] Reconnected.',
+    'terminal.closeConfirmMessage':
+      'This pane still has a live session “{name}”.\nClosing it will disconnect the session. Close anyway?',
+    'terminal.closeConfirmTitle': 'Confirm closing pane',
+  },
+  zhHant: {
+    'terminal.emptyHint': '請從左側 Hosts 點擊連線開啟終端分頁，或點選頂部「+」新增本機終端。',
+    'terminal.batchTargets': 'Batch Targets',
+    'terminal.broadcastInput': '廣播輸入',
+    'terminal.closePane': '關閉此視窗',
+    'terminal.inputPlaceholder': '輸入指令...',
+    'terminal.mergeLeft': '合併至左側',
+    'terminal.mergeRight': '合併至右側',
+    'terminal.mergeTop': '合併至上方',
+    'terminal.mergeBottom': '合併至下方',
+    'terminal.reconnectConnecting': '與「{name}」的連線已中斷，正在重新連線…',
+    'terminal.reconnectFailed': '無法重新連線到「{name}」。',
+    'terminal.reconnectRetry': '重新連線',
+    'terminal.reconnectPending': '已重新連線。斷線期間有待送出的輸入，是否送出？',
+    'terminal.reconnectFlush': '送出待輸入',
+    'terminal.reconnectDiscard': '捨棄',
+    'terminal.reconnectedBanner': '[TermiX] 已重新連線。',
+    'terminal.closeConfirmMessage': '此窗格仍有連線中的 Session「{name}」。\n關閉後將中斷該連線，確定要關閉嗎？',
+    'terminal.closeConfirmTitle': '確認關閉窗格',
+  },
+  ja: {
+    'terminal.emptyHint':
+      '左側の Hosts をクリックしてターミナルタブを開くか、上部の「+」でローカルターミナルを追加してください。',
+    'terminal.batchTargets': 'Batch Targets',
+    'terminal.broadcastInput': '入力をブロードキャスト',
+    'terminal.closePane': 'このペインを閉じる',
+    'terminal.inputPlaceholder': 'コマンドを入力…',
+    'terminal.mergeLeft': '左側に結合',
+    'terminal.mergeRight': '右側に結合',
+    'terminal.mergeTop': '上側に結合',
+    'terminal.mergeBottom': '下側に結合',
+    'terminal.reconnectConnecting': '「{name}」との接続が切断されました。再接続しています…',
+    'terminal.reconnectFailed': '「{name}」に再接続できません。',
+    'terminal.reconnectRetry': '再接続',
+    'terminal.reconnectPending': '再接続しました。切断中に送信待ちの入力があります。送信しますか？',
+    'terminal.reconnectFlush': '送信待ちの入力を送る',
+    'terminal.reconnectDiscard': '破棄',
+    'terminal.reconnectedBanner': '[TermiX] 再接続しました。',
+    'terminal.closeConfirmMessage':
+      'このペインにはまだ接続中のセッション「{name}」があります。\n閉じると接続が切断されます。閉じてもよろしいですか？',
+    'terminal.closeConfirmTitle': 'ペインを閉じる確認',
+  },
+};

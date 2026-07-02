@@ -7,6 +7,7 @@ import {
   normalizeKubernetesCluster,
   normalizeKubernetesClusters
 } from './KubernetesModel.js';
+import { t } from '../../i18n/index.ts';
 
 function resolveSavedCluster(result, fallback) {
   if (result && typeof result === 'object') {
@@ -84,7 +85,7 @@ export const kubernetesStore = createStore((set, get) => ({
   saveCluster: async (profile) => get().save(profile),
 
   delete: async (id) => {
-    if (!id) throw new Error('缺少要刪除的 Kubernetes Cluster ID。');
+    if (!id) throw new Error(t('k8s.err.missingDeleteClusterId'));
     await KubernetesAPI.deleteCluster(id);
     const clusters = get().clusters.filter(cluster => cluster.id !== id);
     const availableUsers = getAvailableKubernetesUsers(clusters);
@@ -102,9 +103,9 @@ export const kubernetesStore = createStore((set, get) => ({
 
   switch: async (clusterId) => {
     const targetId = String(clusterId || '').trim();
-    if (!targetId) throw new Error('缺少要切換的 Kubernetes Cluster ID。');
+    if (!targetId) throw new Error(t('k8s.err.missingSwitchClusterId'));
     const cluster = get().clusters.find(item => item.id === targetId);
-    if (!cluster) throw new Error(`找不到 Kubernetes Cluster「${targetId}」。`);
+    if (!cluster) throw new Error(t('k8s.err.clusterNotFound', { id: targetId }));
     set({ switchingContext: targetId, loadError: '' });
     try {
       await KubernetesAPI.switchContext({

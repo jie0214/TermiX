@@ -1,5 +1,6 @@
 import { getAppBinding } from '../platform/wails';
 import { confirmDialog } from '../components/feedback/confirmDialog';
+import { t } from '../i18n/index.ts';
 
 // 記錄使用者已「稍後再說」的版本，避免每次啟動都重複提示同一版本。
 const DISMISS_KEY = 'termix-update-dismissed-version';
@@ -22,11 +23,14 @@ export async function checkForUpdateAndNotify(): Promise<void> {
     if (localStorage.getItem(DISMISS_KEY) === info.latestVersion) return;
 
     const goDownload = await confirmDialog(
-      `TermiX ${info.latestVersion} 已發佈（目前為 ${info.currentVersion}），是否前往下載頁面更新？\n\n若透過 Homebrew 安裝，可執行 brew upgrade --cask termix。`,
+      t('misc.update.message', {
+        latest: info.latestVersion,
+        current: info.currentVersion,
+      }),
       {
-        title: '有新版本可用',
-        confirmText: '前往下載',
-        cancelText: '稍後再說',
+        title: t('misc.update.title'),
+        confirmText: t('misc.update.confirm'),
+        cancelText: t('misc.update.cancel'),
       },
     );
 

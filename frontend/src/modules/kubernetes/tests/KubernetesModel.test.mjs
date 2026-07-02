@@ -8,6 +8,7 @@ import {
   normalizeKubernetesClusters,
   validateKubernetesCluster
 } from '../KubernetesModel.js';
+import { t } from '../../../i18n/index.ts';
 
 test('正規化後端欄位與預設值', () => {
   const cluster = normalizeKubernetesCluster({
@@ -56,9 +57,9 @@ test('從卡片推導不重複的可用 User', () => {
 test('驗證必要欄位與 API Server 格式', () => {
   const result = validateKubernetesCluster({ server: 'ssh://cluster' });
   assert.equal(result.valid, false);
-  assert.equal(result.errors.contextName, '請輸入 Context 名稱。');
-  assert.equal(result.errors.server, 'Kubernetes API Server 位址必須使用 HTTP 或 HTTPS。');
-  assert.throws(() => assertValidKubernetesCluster(result.value), /請輸入 Context 名稱/);
+  assert.equal(result.errors.contextName, t('k8s.model.errContextName'));
+  assert.equal(result.errors.server, t('k8s.model.errServerScheme'));
+  assert.throws(() => assertValidKubernetesCluster(result.value), new RegExp(t('k8s.model.errContextName')));
 });
 
 test('拒絕同時設定 CA 與略過 TLS 驗證', () => {
@@ -72,5 +73,5 @@ test('拒絕同時設定 CA 與略過 TLS 驗證', () => {
     insecureSkipTLSVerify: true
   });
   assert.equal(result.valid, false);
-  assert.match(result.errors.insecureSkipTLSVerify, /不可同時啟用/);
+  assert.equal(result.errors.insecureSkipTLSVerify, t('k8s.model.errCaAndInsecure'));
 });

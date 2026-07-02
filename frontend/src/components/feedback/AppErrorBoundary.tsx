@@ -5,6 +5,7 @@ import {
 } from 'react';
 
 import { DEFAULT_ROUTE_PATH } from '../../routing/routes';
+import { t } from '../../i18n/index.ts';
 
 interface AppErrorBoundaryProps {
   children: ReactNode;
@@ -49,21 +50,21 @@ export class AppErrorBoundary extends Component<
     return (
       <main className="react-error-boundary no-drag" role="alert">
         <section className="react-error-boundary__panel">
-          <p className="react-error-boundary__eyebrow">REACT RENDER ERROR</p>
-          <h1>此畫面無法繼續顯示</h1>
+          <p className="react-error-boundary__eyebrow">{t('misc.errorBoundary.eyebrow')}</p>
+          <h1>{t('misc.errorBoundary.heading')}</h1>
           <p>
-            React 元件發生未處理錯誤。終端連線或背景工作階段不會由此畫面自動關閉。
+            {t('misc.errorBoundary.description')}
           </p>
           <details>
-            <summary>查看錯誤內容</summary>
-            <pre>{error.message || '未知的 React 執行期錯誤。'}</pre>
+            <summary>{t('misc.errorBoundary.details')}</summary>
+            <pre>{error.message || t('misc.errorBoundary.unknownError')}</pre>
           </details>
           <div className="react-error-boundary__actions">
             <button type="button" onClick={this.reloadApplication}>
-              重新載入應用程式
+              {t('misc.errorBoundary.reload')}
             </button>
             <button type="button" onClick={this.returnToHosts}>
-              返回主機管理
+              {t('misc.errorBoundary.backToHosts')}
             </button>
           </div>
         </section>

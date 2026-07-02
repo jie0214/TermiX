@@ -1,9 +1,11 @@
+import { t } from '../../i18n/index.ts';
+
 interface LoadingStateProps {
   label?: string;
 }
 
 export function LoadingState({
-  label = '正在載入 TermiX 工作區',
+  label = t('misc.loading.workspace'),
 }: LoadingStateProps) {
   return (
     <div

@@ -1,3 +1,5 @@
+import { t } from '../i18n/index.ts';
+
 function valueToText(value: unknown): string {
   if (value instanceof Error) {
     return value.stack || value.message;
@@ -23,16 +25,19 @@ export function showGlobalErrorOverlay(
 
   const title = createTextElement(
     'h1',
-    'TermiX 前端執行期致命錯誤（JavaScript Uncaught Exception）',
+    t('misc.globalError.title'),
   );
   const summary = createTextElement(
     'div',
-    `Error：${message}\nSource：${source}:${lineNumber}:${columnNumber}`,
+    t('misc.globalError.summary', {
+      message,
+      source: `${source}:${lineNumber}:${columnNumber}`,
+    }),
   );
-  const stackTitle = createTextElement('div', 'Stack Trace：');
+  const stackTitle = createTextElement('div', t('misc.globalError.stackTitle'));
   const stack = createTextElement('pre', valueToText(error));
   const closeButton = document.createElement('button');
-  closeButton.textContent = '關閉此提示';
+  closeButton.textContent = t('misc.globalError.close');
   closeButton.type = 'button';
   closeButton.addEventListener('click', () => container.remove());
 

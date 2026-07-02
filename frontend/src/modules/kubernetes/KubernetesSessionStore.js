@@ -2,6 +2,7 @@ import { createStore } from 'zustand/vanilla';
 import { KubernetesAPI } from './KubernetesAPI.js';
 import { createResourceTemplate, KUBERNETES_CREATE_RESOURCE_TYPES } from './KubernetesResourceTemplates.js';
 import { showToast } from '../../components/feedback/toast.js';
+import { t } from '../../i18n/index.ts';
 
 export const KUBERNETES_SESSION_ID = 'kubernetes-tab';
 
@@ -56,13 +57,13 @@ const INITIAL_STATE = Object.freeze({
 });
 
 function errorMessage(error) {
-  return error?.message || String(error) || 'Kubernetes 連線失敗。';
+  return error?.message || String(error) || t('k8s.err.connectFailed');
 }
 
 function createConnectRequest(cluster) {
   const source = cluster && typeof cluster === 'object' ? cluster : {};
   const clusterId = String(source.clusterId || source.id || '').trim();
-  if (!clusterId) throw new Error('缺少要連接的 Kubernetes Cluster ID。');
+  if (!clusterId) throw new Error(t('k8s.err.missingClusterId'));
 
   return {
     clusterId,
@@ -91,8 +92,8 @@ function resourceIdentity(kind, item) {
   const namespace = String(source.namespace || metadata.namespace || '').trim();
   // apiVersion：優先取傳入 item 的 apiVersion（列點擊會帶入），否則沿用 source 內既有值。
   const apiVersion = String(source.apiVersion || metadata.apiVersion || '').trim();
-  if (!normalizedKind) throw new Error('缺少 Kubernetes 資源類型。');
-  if (!name) throw new Error('缺少 Kubernetes 資源名稱。');
+  if (!normalizedKind) throw new Error(t('k8s.err.missingKind'));
+  if (!name) throw new Error(t('k8s.err.missingName'));
   return { ...source, kind: normalizedKind, name, namespace, apiVersion };
 }
 
@@ -100,12 +101,12 @@ function normalizeLogOptions(options, selectedResource, selectedNamespace) {
   const source = options && typeof options === 'object' ? options : {};
   const resource = selectedResource && typeof selectedResource === 'object' ? selectedResource : {};
   const podName = String(source.podName || resource.name || '').trim();
-  if (!podName) throw new Error('缺少要讀取 Logs 的 Pod 名稱。');
+  if (!podName) throw new Error(t('k8s.err.missingLogsPodName'));
   const tailLines = source.tailLines === undefined || source.tailLines === null || source.tailLines === ''
     ? 200
     : Number(source.tailLines);
   if (!Number.isInteger(tailLines) || tailLines < 1 || tailLines > 1000) {
-    throw new Error('Pod Logs 行數必須是 1 到 1000 的整數。');
+    throw new Error(t('k8s.err.tailLinesRange'));
   }
   return {
     namespace: String(source.namespace || resource.namespace || selectedNamespace || 'default').trim(),
@@ -125,7 +126,7 @@ function logsContent(payload) {
 function podRequest(state) {
   const resource = state.selectedResource || {};
   if (String(resource.kind || '').toLowerCase() !== 'pod' || !resource.name) {
-    throw new Error('目前未選取 Pod。');
+    throw new Error(t('k8s.err.noPodSelected'));
   }
   return {
     namespace: String(resource.namespace || state.selectedNamespace || 'default').trim(),
@@ -137,7 +138,7 @@ function resourceDeleteRequest(state) {
   const resource = state.selectedResource || {};
   const kind = String(resource.kind || state.resourceDetail?.kind || '').trim().toLowerCase();
   const name = String(resource.name || state.resourceDetail?.name || '').trim();
-  if (!kind || !name) throw new Error('目前未選取 Kubernetes 資源。');
+  if (!kind || !name) throw new Error(t('k8s.err.noResourceSelected'));
   return {
     kind,
     name,
@@ -225,7 +226,7 @@ export function createKubernetesSessionStore(api = KubernetesAPI) {
       set({ connectionStatus: 'connecting', loadError: '' });
       try {
         const session = normalizeSession(await api.connectCluster(request));
-        if (!session) throw new Error('後端未回傳 Kubernetes Session。');
+        if (!session) throw new Error(t('k8s.err.noSession'));
         if (requestVersion !== sessionRequestVersion) return session;
         dashboardRequestVersion += 1;
         invalidateResourceRequests();
@@ -355,14 +356,14 @@ export function createKubernetesSessionStore(api = KubernetesAPI) {
     },
 
     loadDashboard: async (namespace = get().selectedNamespace) => {
-      if (!get().connectedCluster) throw new Error('尚未連接 Kubernetes Cluster。');
+      if (!get().connectedCluster) throw new Error(t('k8s.err.notConnected'));
       const targetNamespace = String(namespace || get().connectedCluster.namespace || 'default');
       const requestVersion = ++dashboardRequestVersion;
       set({ dashboardLoading: true, dashboardError: '' });
       try {
         const dashboard = await api.getDashboard(targetNamespace);
         if (!dashboard || typeof dashboard !== 'object') {
-          throw new Error('後端未回傳 Kubernetes Dashboard。');
+          throw new Error(t('k8s.err.noDashboard'));
         }
         if (requestVersion !== dashboardRequestVersion) return dashboard;
         // 保留現有多選狀態。selectedNamespace（相容欄位）：
@@ -440,7 +441,7 @@ export function createKubernetesSessionStore(api = KubernetesAPI) {
     openPodLogsView: async (pod, container) => {
       const selectedResource = resourceIdentity('pod', pod);
       const containerName = String(container || selectedResource.containers?.[0]?.name || '').trim();
-      if (!containerName) throw new Error('Pod 沒有可讀取 Logs 的 Container。');
+      if (!containerName) throw new Error(t('k8s.err.noLogsContainer'));
       set({
         selectedResource,
         podActionView: { type: 'logs', container: containerName },
@@ -453,7 +454,7 @@ export function createKubernetesSessionStore(api = KubernetesAPI) {
     openPodShellView: (pod, container) => {
       const selectedResource = resourceIdentity('pod', pod);
       const containerName = String(container || selectedResource.containers?.[0]?.name || '').trim();
-      if (!containerName) throw new Error('Pod 沒有可開啟 Shell 的 Container。');
+      if (!containerName) throw new Error(t('k8s.err.noShellContainer'));
       set({ selectedResource, podActionView: { type: 'shell', container: containerName } });
     },
 
@@ -471,7 +472,7 @@ export function createKubernetesSessionStore(api = KubernetesAPI) {
     },
 
     openResource: async (kind, item) => {
-      if (!get().connectedCluster) throw new Error('尚未連接 Kubernetes Cluster。');
+      if (!get().connectedCluster) throw new Error(t('k8s.err.notConnected'));
       let selectedResource;
       try {
         selectedResource = resourceIdentity(kind, item);
@@ -513,7 +514,7 @@ export function createKubernetesSessionStore(api = KubernetesAPI) {
           apiVersion: selectedResource.apiVersion || ''
         });
         if (!detail || typeof detail !== 'object') {
-          throw new Error('後端未回傳 Kubernetes 資源明細。');
+          throw new Error(t('k8s.err.noResourceDetail'));
         }
         if (requestVersion !== detailRequestVersion) return detail;
         set({ resourceDetail: detail, detailLoading: false, detailError: '' });
@@ -557,7 +558,7 @@ export function createKubernetesSessionStore(api = KubernetesAPI) {
     },
 
     openCreateResource: () => {
-      if (!get().connectedCluster) throw new Error('尚未連接 Kubernetes Cluster。');
+      if (!get().connectedCluster) throw new Error(t('k8s.err.notConnected'));
       invalidateResourceRequests();
       const namespace = get().selectedNamespace === '*' ? 'default' : (get().selectedNamespace || 'default');
       set({
@@ -585,7 +586,7 @@ export function createKubernetesSessionStore(api = KubernetesAPI) {
     selectCreateResourceType: (resourceType) => {
       const type = String(resourceType || '');
       if (!KUBERNETES_CREATE_RESOURCE_TYPES.includes(type)) {
-        set({ createError: '不支援此 Kubernetes 資源類型。' });
+        set({ createError: t('k8s.err.unsupportedType') });
         return;
       }
       createRequestVersion += 1;
@@ -604,12 +605,12 @@ export function createKubernetesSessionStore(api = KubernetesAPI) {
     saveCreateResourceYAML: async (yamlContent) => {
       const content = String(yamlContent ?? get().createResourceYAML).trim();
       if (!content) {
-        const error = new Error('Kubernetes Resource YAML 不可為空。');
+        const error = new Error(t('k8s.err.yamlEmpty'));
         set({ createSaveError: error.message });
         throw error;
       }
       if (new TextEncoder().encode(content).length > 1024 * 1024) {
-        const error = new Error('Kubernetes Resource YAML 不可超過 1 MiB。');
+        const error = new Error(t('k8s.err.yamlTooLarge'));
         set({ createSaveError: error.message });
         throw error;
       }
@@ -639,12 +640,12 @@ export function createKubernetesSessionStore(api = KubernetesAPI) {
     applyCreateResource: async (yamlContent) => {
       const content = String(yamlContent ?? get().createResourceYAML).trim();
       if (!content) {
-        const error = new Error('Kubernetes Resource YAML 不可為空。');
+        const error = new Error(t('k8s.err.yamlEmpty'));
         set({ createError: error.message });
         throw error;
       }
       if (new TextEncoder().encode(content).length > 1024 * 1024) {
-        const error = new Error('Kubernetes Resource YAML 不可超過 1 MiB。');
+        const error = new Error(t('k8s.err.yamlTooLarge'));
         set({ createError: error.message });
         throw error;
       }
@@ -660,7 +661,7 @@ export function createKubernetesSessionStore(api = KubernetesAPI) {
         const result = await api.createResource(request);
         if (requestVersion !== createRequestVersion) return result;
         set({ ...CREATE_RESOURCE_INITIAL_STATE });
-        showToast(`已套用 ${request.resourceType}（namespace: ${namespace}）`, { type: 'success', title: 'Kubernetes Apply' });
+        showToast(t('k8s.toast.applied', { type: request.resourceType, namespace }), { type: 'success', title: t('k8s.toast.applyTitle') });
         get().refreshDashboard().catch(() => {});
         return result;
       } catch (error) {
@@ -672,7 +673,7 @@ export function createKubernetesSessionStore(api = KubernetesAPI) {
     },
 
     loadPodLogs: async (options = {}) => {
-      if (!get().connectedCluster) throw new Error('尚未連接 Kubernetes Cluster。');
+      if (!get().connectedCluster) throw new Error(t('k8s.err.notConnected'));
       let request;
       try {
         request = normalizeLogOptions(options, get().selectedResource, get().selectedNamespace);
@@ -740,7 +741,7 @@ export function createKubernetesSessionStore(api = KubernetesAPI) {
         };
         if (!Number.isInteger(request.localPort) || request.localPort < 0 || request.localPort > 65535 ||
             !Number.isInteger(request.remotePort) || request.remotePort < 1 || request.remotePort > 65535) {
-          throw new Error('Port Forward 連接埠格式不正確。');
+          throw new Error(t('k8s.err.portFormat'));
         }
       } catch (error) {
         set({ forwardsError: errorMessage(error) });
@@ -767,7 +768,7 @@ export function createKubernetesSessionStore(api = KubernetesAPI) {
 
     stopPodPortForward: async (id) => {
       const value = String(id || '').trim();
-      if (!value) throw new Error('缺少 Port Forward ID。');
+      if (!value) throw new Error(t('k8s.err.missingForwardId'));
       const requestVersion = ++forwardRequestVersion;
       set({ forwardsLoading: true, forwardsError: '' });
       try {
@@ -802,10 +803,10 @@ export function createKubernetesSessionStore(api = KubernetesAPI) {
         } else if (request.kind === 'pod') {
           await api.deletePod({ namespace: request.namespace, podName: request.name, uid: request.uid });
         } else {
-          throw new Error('缺少後端 API：DeleteKubernetesResource');
+          throw new Error(t('k8s.err.missingDeleteApi'));
         }
         const deletedId = `${request.kind}${request.namespace ? `/${request.namespace}` : ''}/${request.name}`;
-        showToast(`已刪除 ${deletedId}`, { type: 'success', title: 'Kubernetes Delete' });
+        showToast(t('k8s.toast.deleted', { id: deletedId }), { type: 'success', title: t('k8s.toast.deleteTitle') });
 
         // 刪除成功後，立即從本地 dashboard 快照移除被刪除的資源
         const dashboard = get().dashboard;
@@ -849,12 +850,12 @@ export function createKubernetesSessionStore(api = KubernetesAPI) {
     applyResourceYAML: async (yamlText) => {
       const content = String(yamlText ?? '').trim();
       if (!content) {
-        const error = new Error('Kubernetes Resource YAML 不可為空。');
+        const error = new Error(t('k8s.err.yamlEmpty'));
         set({ updateError: error.message });
         throw error;
       }
       if (new TextEncoder().encode(content).length > 1024 * 1024) {
-        const error = new Error('Kubernetes Resource YAML 不可超過 1 MiB。');
+        const error = new Error(t('k8s.err.yamlTooLarge'));
         set({ updateError: error.message });
         throw error;
       }
@@ -864,7 +865,7 @@ export function createKubernetesSessionStore(api = KubernetesAPI) {
       try {
         const result = await api.updateResource({ namespace, yaml: content });
         set({ updateLoading: false, updateError: '' });
-        showToast(`已套用 ${selected.kind || 'resource'}/${selected.name || ''}`, { type: 'success', title: 'Kubernetes Apply' });
+        showToast(t('k8s.toast.appliedResource', { resource: `${selected.kind || 'resource'}/${selected.name || ''}` }), { type: 'success', title: t('k8s.toast.applyTitle') });
         // 重載 detail 以取得更新後的 resourceVersion / YAML；沿用既有 openResource 流程。
         if (selected.kind && selected.name) {
           get().openResource(selected.kind, selected).catch(() => {});

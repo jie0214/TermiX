@@ -1,6 +1,7 @@
 import { createStore } from 'zustand/vanilla';
 import { HostAPI } from './HostAPI';
 import { confirmDialog } from '../../components/feedback/confirmDialog';
+import { t } from '../../i18n/index.ts';
 import {
   createHostProfile,
   ensureSecretRefs,
@@ -71,7 +72,7 @@ async function shouldMigrateLegacySecrets(hosts = []) {
   if (typeof document === 'undefined' || !document.body) {
     return true;
   }
-  return confirmDialog('偵測到舊版 Host 資料含明文密碼。是否將這些密碼轉存到系統憑證儲存區？選擇取消時只會遷移一般設定與 reference。', { title: '舊版密碼遷移' });
+  return confirmDialog(t('hostvault.legacyMigrateConfirm'), { title: t('hostvault.legacyMigrateTitle') });
 }
 
 function buildSecretMutation(ref, value) {

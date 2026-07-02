@@ -1,3 +1,5 @@
+import { t } from '../../i18n/index.ts';
+
 const CUSTOM_COMPONENTS_KEY = 'termix-custom-components';
 
 export const SECRET_FIELD_DEFINITIONS = [
@@ -175,14 +177,14 @@ export function getSecretStatusLabel(status) {
   const statusValue = typeof status === 'object' && status ? status.status : status;
   switch (statusValue) {
     case 'stored':
-      return '已儲存於系統鑰匙圈';
+      return t('hostvault.secretStored');
     case 'updated':
-      return '本次更新';
+      return t('hostvault.secretUpdated');
     case 'cleared':
-      return '已清除';
+      return t('hostvault.secretCleared');
     case 'unset':
     default:
-      return '未設定';
+      return t('hostvault.secretUnset');
   }
 }
 

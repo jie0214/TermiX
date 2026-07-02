@@ -2,6 +2,7 @@ import { kubernetesStore } from './KubernetesStore.js';
 import { createKubernetesClusterDraft, validateKubernetesCluster } from './KubernetesModel.js';
 import { kubernetesSessionStore, KUBERNETES_SESSION_ID } from './KubernetesSessionStore.js';
 import { terminalStore } from '../terminal/TerminalStore.js';
+import { t } from '../../i18n/index.ts';
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -149,22 +150,22 @@ export class KubernetesPage extends HTMLElement {
           <div class="vault-card-info kubernetes-card-info">
             <div class="kubernetes-card-heading">
               <div class="vault-card-title" title="${escapeHtml(cluster.displayName)}">${escapeHtml(cluster.displayName)}</div>
-              ${cluster.isCurrent ? '<span class="kubernetes-current-badge">目前使用中</span>' : ''}
+              ${cluster.isCurrent ? `<span class="kubernetes-current-badge">${t('k8s.page.currentBadge')}</span>` : ''}
             </div>
-            <div class="kubernetes-card-context" title="${escapeHtml(cluster.contextName)}">Context：${escapeHtml(cluster.contextName)}</div>
+            <div class="kubernetes-card-context" title="${escapeHtml(cluster.contextName)}">${t('k8s.page.contextPrefix')}${escapeHtml(cluster.contextName)}</div>
             <dl class="kubernetes-card-details">
               <div><dt>Cluster</dt><dd title="${escapeHtml(cluster.clusterName)}">${escapeHtml(cluster.clusterName)}</dd></div>
-              <div><dt>Server</dt><dd title="${escapeHtml(cluster.server)}">${escapeHtml(cluster.server || '未設定')}</dd></div>
+              <div><dt>Server</dt><dd title="${escapeHtml(cluster.server)}">${escapeHtml(cluster.server || t('k8s.page.serverUnset'))}</dd></div>
               <div><dt>Namespace</dt><dd>${escapeHtml(cluster.namespace || 'default')}</dd></div>
             </dl>
           </div>
         </div>
-        <button type="button" class="no-drag vault-card-edit-btn kubernetes-edit-btn" data-cluster-id="${escapeHtml(cluster.id)}" title="編輯 Kubernetes Cluster" aria-label="編輯 ${escapeHtml(cluster.displayName)}">
+        <button type="button" class="no-drag vault-card-edit-btn kubernetes-edit-btn" data-cluster-id="${escapeHtml(cluster.id)}" title="${t('k8s.page.editClusterTitle')}" aria-label="${t('k8s.page.editClusterAria', { name: escapeHtml(cluster.displayName) })}">
           ${renderEditIcon()}
         </button>
         <div class="kubernetes-card-footer">
           <button type="button" class="no-drag kubernetes-connect-btn" data-cluster-id="${escapeHtml(cluster.id)}" ${sessionState.connectionStatus === 'connecting' ? 'disabled' : ''}>
-            ${connecting ? '連接中...' : '連接'}
+            ${connecting ? t('k8s.page.connecting') : t('common.connect')}
           </button>
         </div>
       </article>
@@ -179,7 +180,7 @@ export class KubernetesPage extends HTMLElement {
       : `<input class="no-drag" id="kubernetes-${name}" name="${name}" type="${options.type || 'text'}" value="${escapeHtml(value)}" placeholder="${escapeHtml(options.placeholder || '')}" ${options.list ? `list="${options.list}"` : ''} ${required} ${options.readonly ? 'readonly' : ''} aria-invalid="${error ? 'true' : 'false'}">`;
     return `
       <label class="kubernetes-form-field ${options.type === 'checkbox' ? 'is-checkbox' : ''}">
-        <span>${label}${options.required ? '<strong aria-hidden="true"> *</strong>' : ''}</span>
+        <span>${label}${options.required ? `<strong aria-hidden="true">${t('k8s.page.requiredMark')}</strong>` : ''}</span>
         ${input}
         ${error ? `<small class="kubernetes-field-error">${escapeHtml(error)}</small>` : ''}
       </label>
@@ -196,36 +197,36 @@ export class KubernetesPage extends HTMLElement {
           <header class="settings-header kubernetes-drawer-header">
             <div>
               <span>Kubernetes</span>
-              <h2>${isNew ? '新增 Cluster' : '編輯 Cluster'}</h2>
+              <h2>${isNew ? t('k8s.page.newCluster') : t('k8s.page.editClusterHeading')}</h2>
             </div>
-            <button type="button" id="closeKubernetesDrawer" class="no-drag kubernetes-close-btn" title="關閉" aria-label="關閉 Drawer">&times;</button>
+            <button type="button" id="closeKubernetesDrawer" class="no-drag kubernetes-close-btn" title="${t('k8s.page.closeTitle')}" aria-label="${t('k8s.page.closeDrawerAria')}">&times;</button>
           </header>
           <form id="kubernetesClusterForm" class="kubernetes-form" novalidate>
             <div class="settings-body kubernetes-form-body">
               ${this.operationError ? `<div class="kubernetes-inline-error" role="alert">${escapeHtml(this.operationError)}</div>` : ''}
               <section>
-                <h3>基本資訊</h3>
-                ${this.renderField('displayName', '顯示名稱', draft.displayName, { required: true, placeholder: '例如：正式環境' })}
-                ${this.renderField('contextName', 'Context 名稱', draft.contextName, { required: true, readonly: !isNew, placeholder: '例如：production-admin' })}
-                ${this.renderField('clusterName', 'Cluster 名稱', draft.clusterName, { required: true, readonly: !isNew, placeholder: '例如：production' })}
-                ${this.renderField('namespace', '預設 Namespace', draft.namespace, { placeholder: 'default' })}
+                <h3>${t('k8s.page.sectionBasic')}</h3>
+                ${this.renderField('displayName', t('k8s.page.fieldDisplayName'), draft.displayName, { required: true, placeholder: t('k8s.page.phDisplayName') })}
+                ${this.renderField('contextName', t('k8s.page.fieldContextName'), draft.contextName, { required: true, readonly: !isNew, placeholder: t('k8s.page.phContextName') })}
+                ${this.renderField('clusterName', t('k8s.page.fieldClusterName'), draft.clusterName, { required: true, readonly: !isNew, placeholder: t('k8s.page.phClusterName') })}
+                ${this.renderField('namespace', t('k8s.page.fieldDefaultNamespace'), draft.namespace, { placeholder: 'default' })}
               </section>
               <section>
-                <h3>連線設定</h3>
-                ${this.renderField('server', 'API Server', draft.server, { required: true, type: 'url', placeholder: 'https://kubernetes.example.com:6443' })}
-                ${this.renderField('userName', 'kubeconfig User', draft.userName, { required: true, list: 'kubernetesUserOptions', placeholder: '選擇或輸入既有 User' })}
+                <h3>${t('k8s.page.sectionConnection')}</h3>
+                ${this.renderField('server', t('k8s.page.fieldApiServer'), draft.server, { required: true, type: 'url', placeholder: 'https://kubernetes.example.com:6443' })}
+                ${this.renderField('userName', t('k8s.page.fieldKubeconfigUser'), draft.userName, { required: true, list: 'kubernetesUserOptions', placeholder: t('k8s.page.phKubeconfigUser') })}
                 <datalist id="kubernetesUserOptions">${users.map(user => `<option value="${escapeHtml(user)}"></option>`).join('')}</datalist>
-                ${this.renderField('certificateAuthority', 'Certificate Authority 路徑', draft.certificateAuthority, { placeholder: '/path/to/ca.crt' })}
-                ${this.renderField('insecureSkipTLSVerify', '略過 TLS 憑證驗證', draft.insecureSkipTLSVerify, { type: 'checkbox' })}
+                ${this.renderField('certificateAuthority', t('k8s.page.fieldCaPath'), draft.certificateAuthority, { placeholder: '/path/to/ca.crt' })}
+                ${this.renderField('insecureSkipTLSVerify', t('k8s.page.fieldInsecureTls'), draft.insecureSkipTLSVerify, { type: 'checkbox' })}
               </section>
               <section>
-                <h3>kubeconfig</h3>
-                ${this.renderField('kubeconfigPath', 'kubeconfig 路徑', draft.kubeconfigPath, { required: true, readonly: !isNew, placeholder: '~/.kube/config' })}
+                <h3>${t('k8s.page.sectionKubeconfig')}</h3>
+                ${this.renderField('kubeconfigPath', t('k8s.page.fieldKubeconfigPath'), draft.kubeconfigPath, { required: true, readonly: !isNew, placeholder: '~/.kube/config' })}
               </section>
             </div>
             <footer class="settings-footer kubernetes-form-footer">
-              <button type="button" id="cancelKubernetesDrawer" class="no-drag kubernetes-secondary-btn">取消</button>
-              <button type="submit" class="no-drag kubernetes-primary-btn" ${this.saving ? 'disabled' : ''}>${this.saving ? '儲存中...' : '儲存'}</button>
+              <button type="button" id="cancelKubernetesDrawer" class="no-drag kubernetes-secondary-btn">${t('k8s.page.cancel')}</button>
+              <button type="submit" class="no-drag kubernetes-primary-btn" ${this.saving ? 'disabled' : ''}>${this.saving ? t('k8s.page.saving') : t('k8s.page.save')}</button>
             </footer>
           </form>
         </div>
@@ -243,29 +244,29 @@ export class KubernetesPage extends HTMLElement {
         <main class="kubernetes-main-board">
           <div class="kubernetes-toolbar">
             <div>
-              <h1>Kubernetes Clusters</h1>
-              <p>管理 kubeconfig 叢集並快速切換 Context。</p>
+              <h1>${t('k8s.page.title')}</h1>
+              <p>${t('k8s.page.subtitle')}</p>
             </div>
             <div class="kubernetes-toolbar-actions">
-              <button type="button" id="reloadKubernetesBtn" class="no-drag kubernetes-secondary-btn" ${state.isLoading ? 'disabled' : ''}>${state.isLoading ? '載入中...' : '重新載入'}</button>
-              <button type="button" id="newKubernetesClusterBtn" class="no-drag kubernetes-primary-btn">+ NEW CLUSTER</button>
+              <button type="button" id="reloadKubernetesBtn" class="no-drag kubernetes-secondary-btn" ${state.isLoading ? 'disabled' : ''}>${state.isLoading ? t('k8s.page.loading') : t('k8s.page.reload')}</button>
+              <button type="button" id="newKubernetesClusterBtn" class="no-drag kubernetes-primary-btn">${t('k8s.page.newClusterButton')}</button>
             </div>
           </div>
           <div class="vault-search-bar kubernetes-search-bar">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="search-icon" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input class="no-drag" id="kubernetesSearchInput" type="search" placeholder="搜尋顯示名稱、Context、Cluster 或 Server..." autocomplete="off" value="${escapeHtml(this.searchQuery)}" aria-label="搜尋 Kubernetes Cluster">
+            <input class="no-drag" id="kubernetesSearchInput" type="search" placeholder="${t('k8s.page.searchPlaceholder')}" autocomplete="off" value="${escapeHtml(this.searchQuery)}" aria-label="${t('k8s.page.searchAria')}">
           </div>
-          ${loadError ? `<div class="kubernetes-load-error" role="alert"><strong>載入 Kubernetes 設定失敗</strong><span>${escapeHtml(loadError)}</span></div>` : ''}
+          ${loadError ? `<div class="kubernetes-load-error" role="alert"><strong>${t('k8s.page.loadFailed')}</strong><span>${escapeHtml(loadError)}</span></div>` : ''}
           <div class="kubernetes-scroll-content">
             ${state.isLoading && state.clusters.length === 0 ? `
-              <div class="kubernetes-state-panel"><span class="kubernetes-spinner"></span><h2>正在讀取 kubeconfig</h2><p>正在載入使用者目錄下的 Kubernetes Context。</p></div>
+              <div class="kubernetes-state-panel"><span class="kubernetes-spinner"></span><h2>${t('k8s.page.readingKubeconfig')}</h2><p>${t('k8s.page.readingKubeconfigDetail')}</p></div>
             ` : clusters.length > 0 ? `
               <div class="vault-grid kubernetes-grid">${clusters.map(cluster => this.renderCard(cluster, state)).join('')}</div>
             ` : `
               <div class="kubernetes-state-panel">
                 <div class="kubernetes-empty-icon">K8s</div>
-                <h2>${this.searchQuery ? '找不到符合條件的 Cluster' : '尚未找到 Kubernetes Cluster'}</h2>
-                <p>${this.searchQuery ? '請調整搜尋條件。' : '可重新載入 ~/.kube/config，或建立新的 Cluster 設定。'}</p>
+                <h2>${this.searchQuery ? t('k8s.page.noMatch') : t('k8s.page.noClusters')}</h2>
+                <p>${this.searchQuery ? t('k8s.page.noMatchDetail') : t('k8s.page.noClustersDetail')}</p>
               </div>
             `}
           </div>
@@ -369,7 +370,7 @@ export class KubernetesPage extends HTMLElement {
       const result = validateKubernetesCluster(this.formDraft);
       if (!result.valid) {
         this.validationErrors = result.errors;
-        this.operationError = '請修正標示欄位後再儲存。';
+        this.operationError = t('k8s.page.fixFieldsError');
         this.render();
         this.setupListeners();
         this.querySelector('[aria-invalid="true"]')?.focus();

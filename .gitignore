@@ -3,6 +3,8 @@ node_modules
 frontend/dist
 .DS_Store
 **/.DS_Store
+**/.fuse_hidden*
+frontend/package.json.md5
 .spectra/
 openspec/.vector-search.db*
 scratch/

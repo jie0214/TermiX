@@ -72,7 +72,7 @@ test('Session 只在指定區段顯示重新整理按鈕', () => {
 
 test('Session 提供 Create Resource Drawer、類型選單與 YAML 編輯器', () => {
   assert.match(sessionSource, /openKubernetesCreateResource/);
-  assert.match(sessionSource, /Create Resource/);
+  assert.match(sessionSource, /k8s\.session\.createResource/);
   assert.match(sessionSource, /KUBERNETES_CREATE_RESOURCE_GROUPS/);
   assert.match(sessionSource, /kubernetesCreateResourceType/);
   assert.match(sessionSource, /kubernetesCreateYAML/);
@@ -81,7 +81,7 @@ test('Session 提供 Create Resource Drawer、類型選單與 YAML 編輯器', (
   assert.match(sessionSource, /event\.key !== 'Tab'/);
   assert.match(sessionSource, /closeCreateResource\(\)/);
   assert.match(sessionSource, /saveKubernetesResourceYAML/);
-  assert.match(sessionSource, /createSaving \? '儲存中\.\.\.' : 'Save'/);
+  assert.match(sessionSource, /createSaving \? t\('k8s\.create\.saving'\) : t\('k8s\.create\.save'\)/);
   assert.match(sessionSource, /saveCreateResourceYAML\(yaml\)/);
   assert.match(sessionSource, /createSavedPath/);
 });
@@ -144,7 +144,7 @@ test('Session 對載入、錯誤、導覽與表格提供可及性語意', () => 
   assert.match(sessionSource, /aria-current="page"/);
   assert.match(sessionSource, /kubernetes-table-caption/);
   assert.match(sessionSource, /Kubernetes Events<\/caption>/);
-  assert.match(sessionSource, /kubernetes-visually-hidden">已連接/);
+  assert.match(sessionSource, /kubernetes-visually-hidden">\$\{t\('k8s\.session\.connected'\)\}/);
 });
 
 test('Detail Drawer 呈現結構化資料與安全的 Pod Logs', () => {
@@ -166,14 +166,14 @@ test('Detail Drawer 呈現結構化資料與安全的 Pod Logs', () => {
   assert.match(sessionSource, /\['Created At', detail\.createdAt\]/);
   assert.match(sessionSource, /state\.logsTruncated/);
   assert.match(sessionSource, /escapeHtml\(detail\.eventsError\)/);
-  assert.match(sessionSource, /1 MiB 顯示上限/);
+  assert.match(sessionSource, /k8s\.logs\.truncated/);
   assert.match(sessionSource, /kubernetes-log-output/);
   assert.match(sessionSource, /loadPodLogs\(\{ container, previous, tailLines \}\)/);
   for (const control of ['kubernetesLogSearch', 'toggleKubernetesLogRegex', 'kubernetesLogLevel', 'toggleKubernetesLogsPause', 'downloadKubernetesLogs', 'toggleKubernetesLogOptions', 'clearKubernetesLogs']) {
     assert.match(sessionSource, new RegExp(control));
   }
-  for (const label of ['All Levels', 'Error', 'Warning', 'Info', 'Debug', 'DISPLAY OPTIONS', 'Line Wrap', 'TIMESTAMP', 'Pause', 'Follow']) {
-    assert.match(sessionSource, new RegExp(label));
+  for (const key of ['k8s.logs.allLevels', 'k8s.logs.levelError', 'k8s.logs.levelWarning', 'k8s.logs.levelInfo', 'k8s.logs.levelDebug', 'k8s.logs.displayOptionsHeading', 'k8s.logs.lineWrap', 'k8s.logs.timestamp', 'k8s.logs.pause', 'k8s.logs.follow']) {
+    assert.match(sessionSource, new RegExp(key.replace(/\./g, '\\.')));
   }
   assert.match(sessionSource, /max="1000"/);
 });
@@ -183,7 +183,7 @@ test('Events 使用 Dashboard 快照欄位且不開啟額外 Session', () => {
   for (const field of ['event.type', 'event.reason', 'event.object', 'event.message', 'event.timestamp']) {
     assert.match(sessionSource, new RegExp(field.replace('.', '\\.')));
   }
-  assert.match(sessionSource, /目前 Namespace 沒有事件/);
+  assert.match(sessionSource, /k8s\.empty\.noEvents/);
 });
 
 test('Session 顯示真實 Overview、Metrics 與資源表格', () => {
@@ -191,7 +191,7 @@ test('Session 顯示真實 Overview、Metrics 與資源表格', () => {
     assert.match(sessionSource, new RegExp(`counts\\.${field}`));
   }
   assert.match(sessionSource, /metrics\.available/);
-  assert.match(sessionSource, /Metrics API 無法使用/);
+  assert.match(sessionSource, /k8s\.metrics\.unavailable/);
   assert.match(sessionSource, /dashboard\.nodes/);
   assert.match(sessionSource, /dashboard\.pods/);
   assert.match(sessionSource, /dashboard\.deployments/);
@@ -202,8 +202,8 @@ test('Session 顯示真實 Overview、Metrics 與資源表格', () => {
 test('Session 區分首次載入、過期快照、空資料與 RBAC 錯誤', () => {
   assert.match(sessionSource, /state\.dashboardLoading && !dashboard/);
   assert.match(sessionSource, /state\.dashboardError && dashboard/);
-  assert.match(sessionSource, /上次成功資料/);
-  assert.match(sessionSource, /目前篩選範圍沒有此類資源/);
-  assert.match(sessionSource, /Kubernetes RBAC 權限不足/);
+  assert.match(sessionSource, /k8s\.detail\.refreshFailedSnapshot/);
+  assert.match(sessionSource, /k8s\.empty\.noResourcesInScope/);
+  assert.match(sessionSource, /k8s\.dashboard\.errorRbac/);
   assert.match(sessionSource, /escapeHtml\(state\.dashboardError\)/);
 });

@@ -3,8 +3,7 @@ import type {
 } from './contracts';
 import type { OperationResult } from '../../domain';
 import type { WailsEventCallback, WailsRuntime } from './types';
-
-const MOCK_UNAVAILABLE = 'Wails Go 綁定在瀏覽器環境中不可用。';
+import { t } from '../../i18n/index.ts';
 
 function operationResult(
   success: boolean,
@@ -20,14 +19,14 @@ function operationResult(
   };
 }
 
-function operationFailure(error = MOCK_UNAVAILABLE): OperationResult {
+function operationFailure(error = t('misc.wails.mockUnavailable')): OperationResult {
   return operationResult(false, '', error);
 }
 
 function createAppMock(): WailsAppBindings {
   return {
     StartLocalTerminal: async (shellPath: string) =>
-      operationFailure(`${MOCK_UNAVAILABLE} Shell：${shellPath}`),
+      operationFailure(t('misc.wails.mockUnavailableShell', { shell: shellPath })),
     SelectFile: async () => '',
     ConnectTerminal: async () => operationFailure(),
     CancelConnectTerminal: async () => undefined,
