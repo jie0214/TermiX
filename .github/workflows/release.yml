@@ -1,6 +1,6 @@
 name: Release
 
-# 推送 vX.Y.Z tag 時觸發：三平台各自打包上傳，最後由 release job 匯總建立 GitHub Release。
+# 推送 vX.Y.Z tag 時觸發：GitVersion 推算版本 → 三平台打包 → 建立 GitHub Release。
 on:
   push:
     tags:
@@ -10,9 +10,30 @@ permissions:
   contents: write
 
 jobs:
+  # 由 GitVersion 依 git 狀態推算版本（單一事實來源），供各平台共用。
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.gv.outputs.majorMinorPatch }}
+      semver: ${{ steps.gv.outputs.semVer }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup GitVersion
+        uses: gittools/actions/gitversion/setup@v3
+        with:
+          versionSpec: '6.x'
+      - name: Determine version
+        id: gv
+        uses: gittools/actions/gitversion/execute@v3
+
   build:
     name: Build ${{ matrix.name }}
+    needs: version
     runs-on: ${{ matrix.os }}
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
     strategy:
       fail-fast: false
       matrix:
@@ -40,16 +61,6 @@ jobs:
           go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
-      # 由 tag 取得版本號（去掉開頭的 v）。
-      - name: Resolve version (unix)
-        if: runner.os != 'Windows'
-        shell: bash
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
-      - name: Resolve version (windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: echo "VERSION=$($env:GITHUB_REF_NAME -replace '^v','')" >> $env:GITHUB_ENV
-
       # ---- macOS：通用二進位 → 壓縮 .app ----
       - name: Build macOS
         if: runner.os == 'macOS'
@@ -59,7 +70,7 @@ jobs:
           mkdir -p dist
           ditto -c -k --keepParent build/bin/TermiX.app "dist/TermiX-${VERSION}-macos.zip"
 
-      # ---- Windows：產出可執行檔並壓成 zip（NSIS 安裝檔待 PATH 問題確認後再加）----
+      # ---- Windows：產出可執行檔並壓成 zip ----
       - name: Build Windows
         if: runner.os == 'Windows'
         shell: pwsh

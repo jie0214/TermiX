@@ -1,0 +1,18 @@
+next-version: 1.0.1
+workflow: GitFlow/v1
+branches:
+  develop:
+    regex: ^dev$
+    label: alpha
+  release:
+    regex: ^uat[/-]
+    label: beta
+  feature:
+    regex: ^features?[/-]
+    label: useBranchName
+  hotfix:
+    regex: ^hotfixes?[/-]
+    label: hotfix
+  main:
+    regex: ^(master|main)$
+    label: ''
