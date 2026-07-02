@@ -1,0 +1,8 @@
+build/bin
+node_modules
+frontend/dist
+.DS_Store
+**/.DS_Store
+.spectra/
+openspec/.vector-search.db*
+scratch/

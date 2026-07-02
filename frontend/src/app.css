@@ -1,0 +1,117 @@
+.react-loading-state,
+.react-error-boundary {
+  align-items: center;
+  background: var(--bg-main, #0f1115);
+  color: var(--color-text, #e5e7eb);
+  display: flex;
+  height: 100vh;
+  justify-content: center;
+  width: 100vw;
+}
+
+.react-loading-state {
+  flex-direction: column;
+  font-size: 13px;
+  font-weight: 700;
+  gap: 12px;
+  letter-spacing: 0.02em;
+}
+
+.react-loading-state__indicator {
+  animation: termix-react-loading-spin 800ms linear infinite;
+  border: 2px solid var(--color-border, #374151);
+  border-radius: 50%;
+  border-top-color: var(--color-primary, #3b82f6);
+  height: 24px;
+  width: 24px;
+}
+
+.react-error-boundary {
+  padding: 32px;
+}
+
+.react-error-boundary__panel {
+  background: var(--color-panel-bg, #171a21);
+  border: 1px solid var(--color-border, #374151);
+  border-radius: 8px;
+  box-shadow: 0 18px 48px rgb(0 0 0 / 28%);
+  max-width: 620px;
+  padding: 28px;
+  width: 100%;
+}
+
+.react-error-boundary__eyebrow {
+  color: var(--color-danger, #ef4444);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  margin: 0 0 8px;
+}
+
+.react-error-boundary h1 {
+  font-size: 22px;
+  margin: 0 0 12px;
+}
+
+.react-error-boundary p {
+  color: var(--color-text-muted, #9ca3af);
+  line-height: 1.6;
+}
+
+.react-error-boundary details {
+  border-top: 1px solid var(--color-border, #374151);
+  margin-top: 20px;
+  padding-top: 16px;
+}
+
+.react-error-boundary summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.react-error-boundary pre {
+  background: rgb(0 0 0 / 20%);
+  border-radius: 6px;
+  margin: 12px 0 0;
+  max-height: 180px;
+  overflow: auto;
+  padding: 12px;
+  white-space: pre-wrap;
+}
+
+.react-error-boundary__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.react-error-boundary__actions button {
+  background: var(--color-primary, #3b82f6);
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 700;
+  min-height: 36px;
+  padding: 0 14px;
+}
+
+.react-error-boundary__actions button + button {
+  background: transparent;
+  border-color: var(--color-border, #374151);
+  color: var(--color-text, #e5e7eb);
+}
+
+@keyframes termix-react-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .react-loading-state__indicator {
+    animation: none;
+  }
+}

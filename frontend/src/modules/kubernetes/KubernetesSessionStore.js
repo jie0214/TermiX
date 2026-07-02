@@ -1,0 +1,894 @@
+import { createStore } from 'zustand/vanilla';
+import { KubernetesAPI } from './KubernetesAPI.js';
+import { createResourceTemplate, KUBERNETES_CREATE_RESOURCE_TYPES } from './KubernetesResourceTemplates.js';
+import { showToast } from '../../components/feedback/toast.js';
+
+export const KUBERNETES_SESSION_ID = 'kubernetes-tab';
+
+const CREATE_RESOURCE_INITIAL_STATE = Object.freeze({
+  createOpen: false,
+  createResourceType: 'Pod',
+  createResourceYAML: '',
+  createLoading: false,
+  createError: '',
+  createSaving: false,
+  createSaveError: '',
+  createSavedPath: ''
+});
+
+const INITIAL_STATE = Object.freeze({
+  sessionOpen: false,
+  connectionStatus: 'idle',
+  connectedCluster: null,
+  selectedNamespace: '',
+  // 多選 namespace 狀態：陣列存放具體 namespace 名稱，空陣列 = All Namespaces。
+  // selectedNamespace 仍保留供既有單一 namespace 操作（logs / create 預設 /
+  // resource detail）相容：等於 selectedNamespaces.length === 1 時的該值，否則為 ''。
+  selectedNamespaces: [],
+  activeSection: 'overview',
+  loadError: '',
+  dashboard: null,
+  namespaces: [],
+  dashboardLoading: false,
+  dashboardError: '',
+  lastUpdatedAt: '',
+  detailOpen: false,
+  detailLoading: false,
+  detailError: '',
+  detailTab: 'overview',
+  selectedResource: null,
+  resourceDetail: null,
+  podLogs: '',
+  logsTruncated: false,
+  logsLoading: false,
+  logsError: '',
+  logOptions: null,
+  podForwards: [],
+  forwardsLoading: false,
+  forwardsError: '',
+  deleteLoading: false,
+  deleteError: '',
+  // 資源 YAML 編輯套用（UpdateKubernetesResource）狀態。
+  updateLoading: false,
+  updateError: '',
+  podActionView: null,
+  ...CREATE_RESOURCE_INITIAL_STATE
+});
+
+function errorMessage(error) {
+  return error?.message || String(error) || 'Kubernetes 連線失敗。';
+}
+
+function createConnectRequest(cluster) {
+  const source = cluster && typeof cluster === 'object' ? cluster : {};
+  const clusterId = String(source.clusterId || source.id || '').trim();
+  if (!clusterId) throw new Error('缺少要連接的 Kubernetes Cluster ID。');
+
+  return {
+    clusterId,
+    displayName: String(source.displayName || '').trim(),
+    contextName: String(source.contextName || '').trim(),
+    clusterName: String(source.clusterName || '').trim(),
+    server: String(source.server || '').trim(),
+    kubeconfigPath: String(source.kubeconfigPath || '').trim(),
+    namespace: String(source.namespace || '').trim()
+  };
+}
+
+function normalizeSession(session) {
+  if (!session || typeof session !== 'object') return null;
+  return {
+    ...session,
+    sessionId: session.sessionId || KUBERNETES_SESSION_ID
+  };
+}
+
+function resourceIdentity(kind, item) {
+  const source = item && typeof item === 'object' ? item : {};
+  const metadata = source.metadata && typeof source.metadata === 'object' ? source.metadata : {};
+  const normalizedKind = String(kind || source.kind || '').trim().toLowerCase();
+  const name = String(source.name || metadata.name || '').trim();
+  const namespace = String(source.namespace || metadata.namespace || '').trim();
+  // apiVersion：優先取傳入 item 的 apiVersion（列點擊會帶入），否則沿用 source 內既有值。
+  const apiVersion = String(source.apiVersion || metadata.apiVersion || '').trim();
+  if (!normalizedKind) throw new Error('缺少 Kubernetes 資源類型。');
+  if (!name) throw new Error('缺少 Kubernetes 資源名稱。');
+  return { ...source, kind: normalizedKind, name, namespace, apiVersion };
+}
+
+function normalizeLogOptions(options, selectedResource, selectedNamespace) {
+  const source = options && typeof options === 'object' ? options : {};
+  const resource = selectedResource && typeof selectedResource === 'object' ? selectedResource : {};
+  const podName = String(source.podName || resource.name || '').trim();
+  if (!podName) throw new Error('缺少要讀取 Logs 的 Pod 名稱。');
+  const tailLines = source.tailLines === undefined || source.tailLines === null || source.tailLines === ''
+    ? 200
+    : Number(source.tailLines);
+  if (!Number.isInteger(tailLines) || tailLines < 1 || tailLines > 1000) {
+    throw new Error('Pod Logs 行數必須是 1 到 1000 的整數。');
+  }
+  return {
+    namespace: String(source.namespace || resource.namespace || selectedNamespace || 'default').trim(),
+    podName,
+    container: String(source.container || '').trim(),
+    previous: Boolean(source.previous),
+    tailLines
+  };
+}
+
+function logsContent(payload) {
+  if (typeof payload === 'string') return payload;
+  if (!payload || typeof payload !== 'object') return '';
+  return String(payload.logs ?? payload.content ?? '');
+}
+
+function podRequest(state) {
+  const resource = state.selectedResource || {};
+  if (String(resource.kind || '').toLowerCase() !== 'pod' || !resource.name) {
+    throw new Error('目前未選取 Pod。');
+  }
+  return {
+    namespace: String(resource.namespace || state.selectedNamespace || 'default').trim(),
+    podName: String(resource.name).trim()
+  };
+}
+
+function resourceDeleteRequest(state) {
+  const resource = state.selectedResource || {};
+  const kind = String(resource.kind || state.resourceDetail?.kind || '').trim().toLowerCase();
+  const name = String(resource.name || state.resourceDetail?.name || '').trim();
+  if (!kind || !name) throw new Error('目前未選取 Kubernetes 資源。');
+  return {
+    kind,
+    name,
+    namespace: String(resource.namespace || state.resourceDetail?.namespace || state.selectedNamespace || '').trim(),
+    uid: String(state.resourceDetail?.uid || resource.uid || '').trim(),
+    // apiVersion：優先取 detail 回傳值，否則沿用列點擊帶入的 selectedResource.apiVersion。
+    apiVersion: String(state.resourceDetail?.apiVersion || resource.apiVersion || '').trim()
+  };
+}
+
+function dashboardKeyForKind(kind) {
+  if (!kind) return null;
+  const k = String(kind).toLowerCase();
+  switch (k) {
+    case 'node': return 'nodes';
+    case 'pod': return 'pods';
+    case 'deployment': return 'deployments';
+    case 'statefulset': return 'statefulSets';
+    case 'service': return 'services';
+    case 'ingress': return 'ingresses';
+    case 'persistentvolumeclaim': return 'persistentVolumeClaims';
+    case 'persistentvolume': return 'persistentVolumes';
+    case 'storageclass': return 'storageClasses';
+    default: return null;
+  }
+}
+
+// 把任意輸入正規化成「具體 namespace 名稱」的去重複陣列（過濾 All 標記 '*' 與空值）。
+function normalizeNamespaceList(list) {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set();
+  const result = [];
+  for (const raw of list) {
+    const value = String(raw ?? '').trim();
+    if (!value || value === '*') continue;
+    if (seen.has(value)) continue;
+    seen.add(value);
+    result.push(value);
+  }
+  return result;
+}
+
+// 依多選狀態推導：
+// - fetchNamespace：呼叫 loadDashboard 用的 namespace（恰好選 1 個 → 該值；否則 '*' 抓全部）。
+// - selectedNamespace：相容欄位（恰好選 1 個 → 該值；否則 ''）。
+function deriveNamespaceState(selectedNamespaces) {
+  const list = normalizeNamespaceList(selectedNamespaces);
+  if (list.length === 1) {
+    return { selectedNamespaces: list, fetchNamespace: list[0], selectedNamespace: list[0] };
+  }
+  return { selectedNamespaces: list, fetchNamespace: '*', selectedNamespace: '' };
+}
+
+export function createKubernetesSessionStore(api = KubernetesAPI) {
+  let sessionRequestVersion = 0;
+  let dashboardRequestVersion = 0;
+  let detailRequestVersion = 0;
+  let logsRequestVersion = 0;
+  let forwardRequestVersion = 0;
+  let createRequestVersion = 0;
+
+  function invalidateResourceRequests() {
+    detailRequestVersion += 1;
+    logsRequestVersion += 1;
+    forwardRequestVersion += 1;
+    createRequestVersion += 1;
+  }
+
+  return createStore((set, get) => ({
+    ...INITIAL_STATE,
+
+    connectCluster: async (cluster) => {
+      let request;
+      try {
+        request = createConnectRequest(cluster);
+      } catch (error) {
+        set({
+          connectionStatus: get().sessionOpen ? 'connected' : 'error',
+          loadError: errorMessage(error)
+        });
+        throw error;
+      }
+
+      const requestVersion = ++sessionRequestVersion;
+      set({ connectionStatus: 'connecting', loadError: '' });
+      try {
+        const session = normalizeSession(await api.connectCluster(request));
+        if (!session) throw new Error('後端未回傳 Kubernetes Session。');
+        if (requestVersion !== sessionRequestVersion) return session;
+        dashboardRequestVersion += 1;
+        invalidateResourceRequests();
+        set({
+          sessionOpen: true,
+          connectionStatus: 'connected',
+          connectedCluster: session,
+          selectedNamespace: String(session.namespace || request.namespace || ''),
+          // 連線時以 session 預設 namespace 作為初始單選（無則為 All Namespaces）。
+          selectedNamespaces: normalizeNamespaceList([session.namespace || request.namespace || '']),
+          activeSection: 'overview',
+          loadError: '',
+          dashboard: null,
+          namespaces: [],
+          dashboardLoading: false,
+          dashboardError: '',
+          lastUpdatedAt: '',
+          detailOpen: false,
+          detailLoading: false,
+          detailError: '',
+          detailTab: 'overview',
+          selectedResource: null,
+          resourceDetail: null,
+          podLogs: '',
+          logsTruncated: false,
+          logsLoading: false,
+          logsError: '',
+          logOptions: null,
+          podForwards: [],
+          forwardsLoading: false,
+          forwardsError: '',
+          deleteLoading: false,
+          deleteError: '',
+          podActionView: null,
+          ...CREATE_RESOURCE_INITIAL_STATE
+        });
+        // 後端連線時已把 kubeconfig current-context 切到該 context；重載 cluster
+        // 清單讓 KubernetesPage 的「目前使用中」徽章即時反映。以動態 import 取用
+        // kubernetesStore 以避免 store 之間的循環相依；重載失敗不影響連線流程。
+        import('./KubernetesStore.js')
+          .then(({ kubernetesStore }) => kubernetesStore.getState().reloadClusters())
+          .catch(() => {});
+        return session;
+      } catch (error) {
+        if (requestVersion === sessionRequestVersion) {
+          set({
+            connectionStatus: get().sessionOpen ? 'connected' : 'error',
+            loadError: errorMessage(error)
+          });
+        }
+        throw error;
+      }
+    },
+
+    switchCluster: async (cluster) => get().connectCluster(cluster),
+
+    restoreSession: async () => {
+      const requestVersion = ++sessionRequestVersion;
+      set({ connectionStatus: 'connecting', loadError: '' });
+      try {
+        const session = normalizeSession(await api.getActiveSession());
+        if (requestVersion !== sessionRequestVersion) return session;
+        if (!session) {
+          dashboardRequestVersion += 1;
+          invalidateResourceRequests();
+          set({ ...INITIAL_STATE });
+          return null;
+        }
+        dashboardRequestVersion += 1;
+        invalidateResourceRequests();
+        set({
+          sessionOpen: true,
+          connectionStatus: 'connected',
+          connectedCluster: session,
+          selectedNamespace: String(session.namespace || ''),
+          // 還原 session 時同樣以其預設 namespace 作為初始單選（無則為 All Namespaces）。
+          selectedNamespaces: normalizeNamespaceList([session.namespace || '']),
+          activeSection: 'overview',
+          loadError: '',
+          dashboard: null,
+          namespaces: [],
+          dashboardLoading: false,
+          dashboardError: '',
+          lastUpdatedAt: '',
+          detailOpen: false,
+          detailLoading: false,
+          detailError: '',
+          detailTab: 'overview',
+          selectedResource: null,
+          resourceDetail: null,
+          podLogs: '',
+          logsTruncated: false,
+          logsLoading: false,
+          logsError: '',
+          logOptions: null,
+          podForwards: [],
+          forwardsLoading: false,
+          forwardsError: '',
+          deleteLoading: false,
+          deleteError: '',
+          podActionView: null,
+          ...CREATE_RESOURCE_INITIAL_STATE
+        });
+        return session;
+      } catch (error) {
+        if (requestVersion === sessionRequestVersion) {
+          set({ connectionStatus: 'error', loadError: errorMessage(error) });
+        }
+        throw error;
+      }
+    },
+
+    disconnect: async () => {
+      const requestVersion = ++sessionRequestVersion;
+      try {
+        await api.disconnectCluster();
+        if (requestVersion !== sessionRequestVersion) return;
+        dashboardRequestVersion += 1;
+        invalidateResourceRequests();
+        set({ ...INITIAL_STATE });
+      } catch (error) {
+        if (requestVersion === sessionRequestVersion) {
+          set({ connectionStatus: 'error', loadError: errorMessage(error) });
+        }
+        throw error;
+      }
+    },
+
+    loadDashboard: async (namespace = get().selectedNamespace) => {
+      if (!get().connectedCluster) throw new Error('尚未連接 Kubernetes Cluster。');
+      const targetNamespace = String(namespace || get().connectedCluster.namespace || 'default');
+      const requestVersion = ++dashboardRequestVersion;
+      set({ dashboardLoading: true, dashboardError: '' });
+      try {
+        const dashboard = await api.getDashboard(targetNamespace);
+        if (!dashboard || typeof dashboard !== 'object') {
+          throw new Error('後端未回傳 Kubernetes Dashboard。');
+        }
+        if (requestVersion !== dashboardRequestVersion) return dashboard;
+        // 保留現有多選狀態。selectedNamespace（相容欄位）：
+        // 僅在「真正多選」（>=2 個具體 namespace，此時抓取用 '*'）時才強制為 ''；
+        // 其餘情況（All 或單選，含直接呼叫 loadDashboard(ns)）沿用舊行為，
+        // 採後端回傳的 namespace，以維持既有單一 namespace 操作不回歸。
+        const currentSelected = normalizeNamespaceList(get().selectedNamespaces);
+        const compatNamespace = currentSelected.length >= 2
+          ? ''
+          : String(dashboard.namespace || targetNamespace);
+        set({
+          dashboard,
+          namespaces: Array.isArray(dashboard.namespaces) ? dashboard.namespaces : [],
+          selectedNamespaces: currentSelected,
+          selectedNamespace: compatNamespace,
+          dashboardLoading: false,
+          dashboardError: '',
+          lastUpdatedAt: String(dashboard.generatedAt || new Date().toISOString())
+        });
+        return dashboard;
+      } catch (error) {
+        if (requestVersion === dashboardRequestVersion) {
+          set({ dashboardLoading: false, dashboardError: errorMessage(error) });
+        }
+        throw error;
+      }
+    },
+
+    refreshDashboard: async () => {
+      // 抓取所用 namespace 由多選狀態推導：恰好選 1 個 → 該 namespace；否則 '*' 抓全部。
+      const { fetchNamespace } = deriveNamespaceState(get().selectedNamespaces);
+      return get().loadDashboard(fetchNamespace || get().selectedNamespace);
+    },
+    selectNamespace: async (namespace) => {
+      // 相容既有單選 API：'*'（All）→ 清空多選陣列；其他 → 設為單一元素陣列。
+      const value = String(namespace || 'default');
+      const nextSelected = value === '*' ? [] : normalizeNamespaceList([value]);
+      const previousSelected = get().selectedNamespaces;
+      const derived = deriveNamespaceState(nextSelected);
+      set({ selectedNamespaces: derived.selectedNamespaces });
+      try {
+        return await get().loadDashboard(derived.fetchNamespace);
+      } catch (error) {
+        // 抓取失敗回復先前選取，避免 UI 勾選狀態與實際資料不一致。
+        set({ selectedNamespaces: normalizeNamespaceList(previousSelected) });
+        throw error;
+      }
+    },
+    // 多選：設定完整的 namespace 清單（空陣列 = All Namespaces），並重新載入 dashboard。
+    setSelectedNamespaces: async (list) => {
+      const previousSelected = get().selectedNamespaces;
+      const derived = deriveNamespaceState(list);
+      set({ selectedNamespaces: derived.selectedNamespaces });
+      try {
+        return await get().loadDashboard(derived.fetchNamespace);
+      } catch (error) {
+        set({ selectedNamespaces: normalizeNamespaceList(previousSelected) });
+        throw error;
+      }
+    },
+    // 多選：切換單一 namespace 的勾選狀態（勾任一具體 namespace 會自動取消 All）。
+    toggleNamespace: async (namespace) => {
+      const value = String(namespace || '').trim();
+      if (!value || value === '*') return get().setSelectedNamespaces([]);
+      const current = normalizeNamespaceList(get().selectedNamespaces);
+      const next = current.includes(value)
+        ? current.filter(item => item !== value)
+        : [...current, value];
+      return get().setSelectedNamespaces(next);
+    },
+    // 多選：選 All Namespaces（清空具體選取）。
+    selectAllNamespaces: async () => get().setSelectedNamespaces([]),
+    selectSection: (section) => set({ activeSection: String(section || 'overview'), podActionView: null }),
+
+    openPodLogsView: async (pod, container) => {
+      const selectedResource = resourceIdentity('pod', pod);
+      const containerName = String(container || selectedResource.containers?.[0]?.name || '').trim();
+      if (!containerName) throw new Error('Pod 沒有可讀取 Logs 的 Container。');
+      set({
+        selectedResource,
+        podActionView: { type: 'logs', container: containerName },
+        podLogs: '', logsLoading: true, logsError: '', logsTruncated: false,
+        logOptions: { namespace: selectedResource.namespace, podName: selectedResource.name, container: containerName, previous: false, tailLines: 500 }
+      });
+      return get().loadPodLogs({ container: containerName, tailLines: 500 });
+    },
+
+    openPodShellView: (pod, container) => {
+      const selectedResource = resourceIdentity('pod', pod);
+      const containerName = String(container || selectedResource.containers?.[0]?.name || '').trim();
+      if (!containerName) throw new Error('Pod 沒有可開啟 Shell 的 Container。');
+      set({ selectedResource, podActionView: { type: 'shell', container: containerName } });
+    },
+
+    closePodActionView: () => set({ podActionView: null, selectedResource: null, podLogs: '', logsError: '', logsLoading: false }),
+
+    openPodForwardFromSummary: async (pod) => {
+      const selectedResource = resourceIdentity('pod', pod);
+      const containers = (selectedResource.containers || []).map(container => ({ ...container, image: '', ready: selectedResource.phase === 'Running' }));
+      set({
+        selectedResource,
+        resourceDetail: { kind: 'Pod', name: selectedResource.name, namespace: selectedResource.namespace, uid: selectedResource.uid || '', containers },
+        detailOpen: true, detailLoading: false, detailError: '', detailTab: 'forward', podForwards: [], forwardsError: ''
+      });
+      return get().loadPodPortForwards();
+    },
+
+    openResource: async (kind, item) => {
+      if (!get().connectedCluster) throw new Error('尚未連接 Kubernetes Cluster。');
+      let selectedResource;
+      try {
+        selectedResource = resourceIdentity(kind, item);
+      } catch (error) {
+        set({ detailError: errorMessage(error) });
+        throw error;
+      }
+
+      const requestVersion = ++detailRequestVersion;
+      logsRequestVersion += 1;
+      forwardRequestVersion += 1;
+      createRequestVersion += 1;
+      set({
+        detailOpen: true,
+        detailLoading: true,
+        detailError: '',
+        detailTab: 'overview',
+        selectedResource,
+        resourceDetail: null,
+        podLogs: '',
+        logsTruncated: false,
+        logsLoading: false,
+        logsError: '',
+        logOptions: null,
+        podForwards: [],
+        forwardsLoading: false,
+        forwardsError: '',
+        deleteLoading: false,
+        deleteError: '',
+        updateLoading: false,
+        updateError: '',
+        ...CREATE_RESOURCE_INITIAL_STATE
+      });
+      try {
+        const detail = await api.getResourceDetail({
+          kind: selectedResource.kind,
+          name: selectedResource.name,
+          namespace: selectedResource.namespace,
+          apiVersion: selectedResource.apiVersion || ''
+        });
+        if (!detail || typeof detail !== 'object') {
+          throw new Error('後端未回傳 Kubernetes 資源明細。');
+        }
+        if (requestVersion !== detailRequestVersion) return detail;
+        set({ resourceDetail: detail, detailLoading: false, detailError: '' });
+        return detail;
+      } catch (error) {
+        if (requestVersion === detailRequestVersion) {
+          set({ detailLoading: false, detailError: errorMessage(error) });
+        }
+        throw error;
+      }
+    },
+
+    closeResourceDetail: () => {
+      invalidateResourceRequests();
+      set({
+        detailOpen: false,
+        detailLoading: false,
+        detailError: '',
+        detailTab: 'overview',
+        selectedResource: null,
+        resourceDetail: null,
+        podLogs: '',
+        logsTruncated: false,
+        logsLoading: false,
+        logsError: '',
+        logOptions: null,
+        podForwards: [],
+        forwardsLoading: false,
+        forwardsError: '',
+        deleteLoading: false,
+        deleteError: '',
+        updateLoading: false,
+        updateError: ''
+      });
+    },
+
+    selectDetailTab: (tab) => {
+      const allowed = new Set(['overview', 'yaml', 'logs', 'forward', 'delete']);
+      const value = String(tab || '').toLowerCase();
+      set({ detailTab: allowed.has(value) ? value : 'overview' });
+    },
+
+    openCreateResource: () => {
+      if (!get().connectedCluster) throw new Error('尚未連接 Kubernetes Cluster。');
+      invalidateResourceRequests();
+      const namespace = get().selectedNamespace === '*' ? 'default' : (get().selectedNamespace || 'default');
+      set({
+        detailOpen: false,
+        detailLoading: false,
+        detailError: '',
+        selectedResource: null,
+        resourceDetail: null,
+        createOpen: true,
+        createResourceType: 'Pod',
+        createResourceYAML: createResourceTemplate('Pod', namespace),
+        createLoading: false,
+        createError: '',
+        createSaving: false,
+        createSaveError: '',
+        createSavedPath: ''
+      });
+    },
+
+    closeCreateResource: () => {
+      createRequestVersion += 1;
+      set({ ...CREATE_RESOURCE_INITIAL_STATE });
+    },
+
+    selectCreateResourceType: (resourceType) => {
+      const type = String(resourceType || '');
+      if (!KUBERNETES_CREATE_RESOURCE_TYPES.includes(type)) {
+        set({ createError: '不支援此 Kubernetes 資源類型。' });
+        return;
+      }
+      createRequestVersion += 1;
+      const namespace = get().selectedNamespace === '*' ? 'default' : (get().selectedNamespace || 'default');
+      set({
+        createResourceType: type,
+        createResourceYAML: createResourceTemplate(type, namespace),
+        createLoading: false,
+        createError: '',
+        createSaving: false,
+        createSaveError: '',
+        createSavedPath: ''
+      });
+    },
+
+    saveCreateResourceYAML: async (yamlContent) => {
+      const content = String(yamlContent ?? get().createResourceYAML).trim();
+      if (!content) {
+        const error = new Error('Kubernetes Resource YAML 不可為空。');
+        set({ createSaveError: error.message });
+        throw error;
+      }
+      if (new TextEncoder().encode(content).length > 1024 * 1024) {
+        const error = new Error('Kubernetes Resource YAML 不可超過 1 MiB。');
+        set({ createSaveError: error.message });
+        throw error;
+      }
+      const filenameType = String(get().createResourceType || 'resource')
+        .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+        .toLowerCase();
+      const requestVersion = ++createRequestVersion;
+      set({
+        createResourceYAML: content,
+        createSaving: true,
+        createSaveError: '',
+        createSavedPath: ''
+      });
+      try {
+        const path = String(await api.saveResourceYAML(`termix-${filenameType}.yaml`, content) || '');
+        if (requestVersion !== createRequestVersion) return path;
+        set({ createSaving: false, createSaveError: '', createSavedPath: path });
+        return path;
+      } catch (error) {
+        if (requestVersion === createRequestVersion) {
+          set({ createSaving: false, createSaveError: errorMessage(error), createSavedPath: '' });
+        }
+        throw error;
+      }
+    },
+
+    applyCreateResource: async (yamlContent) => {
+      const content = String(yamlContent ?? get().createResourceYAML).trim();
+      if (!content) {
+        const error = new Error('Kubernetes Resource YAML 不可為空。');
+        set({ createError: error.message });
+        throw error;
+      }
+      if (new TextEncoder().encode(content).length > 1024 * 1024) {
+        const error = new Error('Kubernetes Resource YAML 不可超過 1 MiB。');
+        set({ createError: error.message });
+        throw error;
+      }
+      const requestVersion = ++createRequestVersion;
+      const namespace = get().selectedNamespace === '*' ? 'default' : (get().selectedNamespace || 'default');
+      const request = {
+        resourceType: get().createResourceType,
+        namespace,
+        yaml: content
+      };
+      set({ createResourceYAML: content, createLoading: true, createError: '' });
+      try {
+        const result = await api.createResource(request);
+        if (requestVersion !== createRequestVersion) return result;
+        set({ ...CREATE_RESOURCE_INITIAL_STATE });
+        showToast(`已套用 ${request.resourceType}（namespace: ${namespace}）`, { type: 'success', title: 'Kubernetes Apply' });
+        get().refreshDashboard().catch(() => {});
+        return result;
+      } catch (error) {
+        if (requestVersion === createRequestVersion) {
+          set({ createLoading: false, createError: errorMessage(error) });
+        }
+        throw error;
+      }
+    },
+
+    loadPodLogs: async (options = {}) => {
+      if (!get().connectedCluster) throw new Error('尚未連接 Kubernetes Cluster。');
+      let request;
+      try {
+        request = normalizeLogOptions(options, get().selectedResource, get().selectedNamespace);
+      } catch (error) {
+        set({ logsError: errorMessage(error) });
+        throw error;
+      }
+
+      const requestVersion = ++logsRequestVersion;
+      set({ logsLoading: true, logsError: '', logOptions: request });
+      try {
+        const payload = await api.getPodLogs(request);
+        if (requestVersion !== logsRequestVersion) return payload;
+        set({
+          podLogs: logsContent(payload),
+          logsTruncated: Boolean(payload && typeof payload === 'object' && payload.truncated),
+          logsLoading: false,
+          logsError: ''
+        });
+        return payload;
+      } catch (error) {
+        if (requestVersion === logsRequestVersion) {
+          set({ logsLoading: false, logsError: errorMessage(error) });
+        }
+        throw error;
+      }
+    },
+
+    clearPodLogs: () => {
+      logsRequestVersion += 1;
+      set({ podLogs: '', logsTruncated: false, logsLoading: false, logsError: '', logOptions: null });
+    },
+
+    loadPodPortForwards: async () => {
+      let request;
+      try {
+        request = podRequest(get());
+      } catch (error) {
+        set({ forwardsError: errorMessage(error) });
+        throw error;
+      }
+      const requestVersion = ++forwardRequestVersion;
+      set({ forwardsLoading: true, forwardsError: '' });
+      try {
+        const payload = await api.listPodPortForwards(request);
+        const forwards = Array.isArray(payload) ? payload : [];
+        if (requestVersion !== forwardRequestVersion) return forwards;
+        set({ podForwards: forwards, forwardsLoading: false, forwardsError: '' });
+        return forwards;
+      } catch (error) {
+        if (requestVersion === forwardRequestVersion) {
+          set({ forwardsLoading: false, forwardsError: errorMessage(error) });
+        }
+        throw error;
+      }
+    },
+
+    startPodPortForward: async ({ localPort, remotePort }) => {
+      let request;
+      try {
+        request = {
+          ...podRequest(get()),
+          localPort: Number(localPort),
+          remotePort: Number(remotePort)
+        };
+        if (!Number.isInteger(request.localPort) || request.localPort < 0 || request.localPort > 65535 ||
+            !Number.isInteger(request.remotePort) || request.remotePort < 1 || request.remotePort > 65535) {
+          throw new Error('Port Forward 連接埠格式不正確。');
+        }
+      } catch (error) {
+        set({ forwardsError: errorMessage(error) });
+        throw error;
+      }
+      const requestVersion = ++forwardRequestVersion;
+      set({ forwardsLoading: true, forwardsError: '' });
+      try {
+        const forward = await api.startPodPortForward(request);
+        if (requestVersion !== forwardRequestVersion) return forward;
+        set(state => ({
+          podForwards: forward ? [...state.podForwards.filter(item => item.id !== forward.id), forward] : state.podForwards,
+          forwardsLoading: false,
+          forwardsError: ''
+        }));
+        return forward;
+      } catch (error) {
+        if (requestVersion === forwardRequestVersion) {
+          set({ forwardsLoading: false, forwardsError: errorMessage(error) });
+        }
+        throw error;
+      }
+    },
+
+    stopPodPortForward: async (id) => {
+      const value = String(id || '').trim();
+      if (!value) throw new Error('缺少 Port Forward ID。');
+      const requestVersion = ++forwardRequestVersion;
+      set({ forwardsLoading: true, forwardsError: '' });
+      try {
+        await api.stopPodPortForward({ id: value });
+        if (requestVersion !== forwardRequestVersion) return;
+        set(state => ({
+          podForwards: state.podForwards.filter(item => item.id !== value),
+          forwardsLoading: false,
+          forwardsError: ''
+        }));
+      } catch (error) {
+        if (requestVersion === forwardRequestVersion) {
+          set({ forwardsLoading: false, forwardsError: errorMessage(error) });
+        }
+        throw error;
+      }
+    },
+
+    deleteSelectedResource: async () => {
+      let request;
+      try {
+        request = resourceDeleteRequest(get());
+      } catch (error) {
+        console.error('[Kubernetes][Store][Delete] 建立刪除請求失敗', error);
+        set({ deleteError: errorMessage(error) });
+        throw error;
+      }
+      set({ deleteLoading: true, deleteError: '' });
+      try {
+        if (typeof api.deleteResource === 'function') {
+          await api.deleteResource(request);
+        } else if (request.kind === 'pod') {
+          await api.deletePod({ namespace: request.namespace, podName: request.name, uid: request.uid });
+        } else {
+          throw new Error('缺少後端 API：DeleteKubernetesResource');
+        }
+        const deletedId = `${request.kind}${request.namespace ? `/${request.namespace}` : ''}/${request.name}`;
+        showToast(`已刪除 ${deletedId}`, { type: 'success', title: 'Kubernetes Delete' });
+
+        // 刪除成功後，立即從本地 dashboard 快照移除被刪除的資源
+        const dashboard = get().dashboard;
+        if (dashboard) {
+          const updated = { ...dashboard };
+          const matchKey = dashboardKeyForKind(request.kind);
+          if (matchKey && Array.isArray(updated[matchKey])) {
+            updated[matchKey] = updated[matchKey].filter(item =>
+              !(item.name === request.name && (item.namespace || '') === (request.namespace || ''))
+            );
+          }
+          set({ dashboard: updated });
+        }
+
+        const current = get().selectedResource || {};
+        if (current.name === request.name && String(current.kind || '').toLowerCase() === request.kind) {
+          get().closeResourceDetail();
+        } else {
+          set({ deleteLoading: false, deleteError: '' });
+        }
+        get().refreshDashboard().catch(() => {});
+      } catch (error) {
+        const current = get().selectedResource || {};
+        if (current.name === request.name && String(current.kind || '').toLowerCase() === request.kind) {
+          set({ deleteLoading: false, deleteError: errorMessage(error) });
+        }
+        console.error('[Kubernetes][Store][Delete] 後端 API 呼叫失敗', {
+          kind: request?.kind,
+          name: request?.name,
+          namespace: request?.namespace || '',
+          error
+        });
+        throw error;
+      }
+    },
+
+    deleteSelectedPod: async () => get().deleteSelectedResource(),
+
+    // 套用（更新）目前選取資源的 YAML：呼叫 UpdateKubernetesResource（GVK/name 由 yaml 解析，
+    // namespace 用 selectedResource.namespace 作為 fallback）。成功後 toast、重載 detail 並刷新 dashboard。
+    applyResourceYAML: async (yamlText) => {
+      const content = String(yamlText ?? '').trim();
+      if (!content) {
+        const error = new Error('Kubernetes Resource YAML 不可為空。');
+        set({ updateError: error.message });
+        throw error;
+      }
+      if (new TextEncoder().encode(content).length > 1024 * 1024) {
+        const error = new Error('Kubernetes Resource YAML 不可超過 1 MiB。');
+        set({ updateError: error.message });
+        throw error;
+      }
+      const selected = get().selectedResource || {};
+      const namespace = String(selected.namespace || get().selectedNamespace || '').trim();
+      set({ updateLoading: true, updateError: '' });
+      try {
+        const result = await api.updateResource({ namespace, yaml: content });
+        set({ updateLoading: false, updateError: '' });
+        showToast(`已套用 ${selected.kind || 'resource'}/${selected.name || ''}`, { type: 'success', title: 'Kubernetes Apply' });
+        // 重載 detail 以取得更新後的 resourceVersion / YAML；沿用既有 openResource 流程。
+        if (selected.kind && selected.name) {
+          get().openResource(selected.kind, selected).catch(() => {});
+        }
+        get().refreshDashboard().catch(() => {});
+        return result;
+      } catch (error) {
+        set({ updateLoading: false, updateError: errorMessage(error) });
+        throw error;
+      }
+    },
+
+    clearError: () => set({
+      loadError: '',
+      dashboardError: '',
+      detailError: '',
+      logsError: '',
+      forwardsError: '',
+      deleteError: '',
+      updateError: '',
+      createError: '',
+      createSaveError: ''
+    })
+  }));
+}
+
+export const kubernetesSessionStore = createKubernetesSessionStore();
