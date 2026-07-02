@@ -1,5 +1,21 @@
 export namespace app {
 	
+	export class DownloadResult {
+	    success: boolean;
+	    filePath: string;
+	    error: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DownloadResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.success = source["success"];
+	        this.filePath = source["filePath"];
+	        this.error = source["error"];
+	    }
+	}
 	export class UpdateInfo {
 	    currentVersion: string;
 	    latestVersion: string;

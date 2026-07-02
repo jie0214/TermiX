@@ -86,6 +86,10 @@ export function DisconnectKubernetesCluster() {
   return window['go']['app']['App']['DisconnectKubernetesCluster']();
 }
 
+export function DownloadUpdate() {
+  return window['go']['app']['App']['DownloadUpdate']();
+}
+
 export function ExecuteLocalCommand(arg1, arg2) {
   return window['go']['app']['App']['ExecuteLocalCommand'](arg1, arg2);
 }

@@ -140,6 +140,11 @@ function createAppMock(): WailsAppBindings {
       releaseUrl: '',
       hasUpdate: false,
     }),
+    DownloadUpdate: async () => ({
+      success: false,
+      filePath: '',
+      error: 'unavailable in browser',
+    }),
   };
 }
 

@@ -35,6 +35,7 @@ import type {
   OperationResult,
   SSHConfig,
   UpdateInfo,
+  DownloadResult,
 } from '../../domain';
 
 export interface WailsAppContract {
@@ -171,6 +172,8 @@ export interface WailsAppContract {
   ): Promise<string>;
 
   CheckForUpdate(): Promise<UpdateInfo>;
+
+  DownloadUpdate(): Promise<DownloadResult>;
 }
 
 export type WailsAppMethodName = keyof WailsAppContract;

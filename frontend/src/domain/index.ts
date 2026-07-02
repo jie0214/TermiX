@@ -1,4 +1,4 @@
-export type { OperationPayload, OperationResult, UpdateInfo } from './common';
+export type { DownloadResult, OperationPayload, OperationResult, UpdateInfo } from './common';
 export type {
   AWSIntegration,
   AWSIntegrationSecretsInput,

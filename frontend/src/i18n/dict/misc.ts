@@ -19,11 +19,18 @@ export const misc: DictBundle = {
     // LoadingState
     'misc.loading.workspace': 'Loading TermiX workspace',
     // updateCheck
-    'misc.update.message':
-      'TermiX {latest} has been released (current is {current}). Go to the download page to update?\n\nIf installed via Homebrew, you can run brew upgrade --cask termix.',
     'misc.update.title': 'A new version is available',
-    'misc.update.confirm': 'Go to download',
-    'misc.update.cancel': 'Later',
+    'misc.update.ready': 'Version {latest} is ready to install.',
+    'misc.update.hint': 'Installed via Homebrew? Run brew upgrade --cask termix.',
+    'misc.update.confirm': 'Download & install',
+    'misc.update.close': 'Close update notice',
+    'misc.update.checking': 'Checking for updates…',
+    'misc.update.upToDate': 'You’re on the latest version ({current}).',
+    'misc.update.downloading': 'Downloading update…',
+    'misc.update.downloaded':
+      'Downloaded to your Downloads folder. Unzip and replace the app to finish.',
+    'misc.update.downloadFailed':
+      'Download failed. Opening the download page in your browser instead.',
     // globalErrorOverlay
     'misc.globalError.title':
       'TermiX frontend fatal runtime error (JavaScript Uncaught Exception)',
@@ -53,11 +60,16 @@ export const misc: DictBundle = {
     'misc.errorBoundary.reload': '重新載入應用程式',
     'misc.errorBoundary.backToHosts': '返回主機管理',
     'misc.loading.workspace': '正在載入 TermiX 工作區',
-    'misc.update.message':
-      'TermiX {latest} 已發佈（目前為 {current}），是否前往下載頁面更新？\n\n若透過 Homebrew 安裝，可執行 brew upgrade --cask termix。',
     'misc.update.title': '有新版本可用',
-    'misc.update.confirm': '前往下載',
-    'misc.update.cancel': '稍後再說',
+    'misc.update.ready': '版本 {latest} 已可安裝。',
+    'misc.update.hint': '若透過 Homebrew 安裝，可執行 brew upgrade --cask termix。',
+    'misc.update.confirm': '下載並安裝',
+    'misc.update.close': '關閉更新提示',
+    'misc.update.checking': '正在檢查更新…',
+    'misc.update.upToDate': '目前已是最新版本（{current}）。',
+    'misc.update.downloading': '正在下載更新…',
+    'misc.update.downloaded': '已下載至「下載」資料夾，請解壓縮後覆蓋安裝以完成更新。',
+    'misc.update.downloadFailed': '下載失敗，已改用瀏覽器開啟下載頁面。',
     'misc.globalError.title':
       'TermiX 前端執行期致命錯誤（JavaScript Uncaught Exception）',
     'misc.globalError.summary': 'Error：{message}\nSource：{source}',
@@ -81,11 +93,17 @@ export const misc: DictBundle = {
     'misc.errorBoundary.reload': 'アプリケーションを再読み込み',
     'misc.errorBoundary.backToHosts': 'ホスト管理に戻る',
     'misc.loading.workspace': 'TermiX ワークスペースを読み込み中',
-    'misc.update.message':
-      'TermiX {latest} がリリースされました（現在は {current}）。ダウンロードページに移動して更新しますか？\n\nHomebrew でインストールした場合は brew upgrade --cask termix を実行できます。',
     'misc.update.title': '新しいバージョンが利用可能です',
-    'misc.update.confirm': 'ダウンロードへ',
-    'misc.update.cancel': '後で',
+    'misc.update.ready': 'バージョン {latest} をインストールできます。',
+    'misc.update.hint': 'Homebrew でインストールした場合は brew upgrade --cask termix を実行できます。',
+    'misc.update.confirm': 'ダウンロードしてインストール',
+    'misc.update.close': '更新通知を閉じる',
+    'misc.update.checking': '更新を確認しています…',
+    'misc.update.upToDate': '現在は最新バージョンです（{current}）。',
+    'misc.update.downloading': '更新をダウンロードしています…',
+    'misc.update.downloaded':
+      'ダウンロードフォルダに保存しました。解凍してアプリを置き換えると更新が完了します。',
+    'misc.update.downloadFailed': 'ダウンロードに失敗しました。代わりにダウンロードページを開きます。',
     'misc.globalError.title':
       'TermiX フロントエンド実行時致命的エラー（JavaScript Uncaught Exception）',
     'misc.globalError.summary': 'Error：{message}\nSource：{source}',

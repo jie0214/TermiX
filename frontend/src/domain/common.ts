@@ -13,6 +13,12 @@ export interface UpdateInfo {
   hasUpdate: boolean;
 }
 
+export interface DownloadResult {
+  success: boolean;
+  filePath: string;
+  error: string;
+}
+
 export type OperationPayload =
   | OperationResult
   | Record<string, unknown>

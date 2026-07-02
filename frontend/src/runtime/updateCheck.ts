@@ -1,46 +1,48 @@
 import { getAppBinding } from '../platform/wails';
-import { confirmDialog } from '../components/feedback/confirmDialog';
+import { onWailsEvent } from '../platform/wails/events';
+import { showToast } from '../components/feedback/toast.js';
+import { showUpdateNotification } from './updateNotification';
 import { t } from '../i18n/index.ts';
 
-// 記錄使用者已「稍後再說」的版本，避免每次啟動都重複提示同一版本。
-const DISMISS_KEY = 'termix-update-dismissed-version';
+// 選單「Check for Updates」由後端 emit 的事件名（對應 shared/events：EventCheckForUpdate）。
+const MENU_CHECK_EVENT = 'check-for-update';
 
-function openReleasePage(url: string): void {
-  // Wails runtime 提供 BrowserOpenURL 以系統瀏覽器開啟外部連結；非 Wails 環境則忽略。
-  const runtime = (globalThis as { runtime?: { BrowserOpenURL?: (u: string) => void } }).runtime;
-  runtime?.BrowserOpenURL?.(url);
-}
-
-// 啟動時檢查是否有新版本；有則以非阻塞對話框通知使用者。
+// 執行一次更新檢查。manual=true 代表使用者主動觸發（選單），會額外提示「已是最新版本」。
 // 設計為靜默失敗：任何錯誤都不影響 App 正常使用。
-export async function checkForUpdateAndNotify(): Promise<void> {
+async function runUpdateCheck(manual: boolean): Promise<void> {
   try {
     const checkForUpdate = getAppBinding('CheckForUpdate');
     if (!checkForUpdate) return;
 
     const info = await checkForUpdate();
-    if (!info?.hasUpdate || !info.latestVersion) return;
-    if (localStorage.getItem(DISMISS_KEY) === info.latestVersion) return;
 
-    const goDownload = await confirmDialog(
-      t('misc.update.message', {
-        latest: info.latestVersion,
-        current: info.currentVersion,
-      }),
-      {
-        title: t('misc.update.title'),
-        confirmText: t('misc.update.confirm'),
-        cancelText: t('misc.update.cancel'),
-      },
-    );
+    if (info?.hasUpdate && info.latestVersion) {
+      // 有新版本：右上角跳出可關閉的更新小卡。
+      // 每次啟動 / 每次手動檢查只要有新版都會再次提示（關閉僅隱藏當次）。
+      showUpdateNotification(info.latestVersion, info.releaseUrl ?? '');
+      return;
+    }
 
-    if (goDownload && info.releaseUrl) {
-      openReleasePage(info.releaseUrl);
-    } else {
-      // 記住此版本，直到有更新的版本才再次提示。
-      localStorage.setItem(DISMISS_KEY, info.latestVersion);
+    // 已是最新版本：僅在使用者主動檢查時給予回饋，避免啟動時打擾。
+    if (manual) {
+      showToast(t('misc.update.upToDate', { current: info?.currentVersion ?? '' }), {
+        type: 'success',
+      });
     }
   } catch (error) {
     console.warn('[TermiX] 更新檢查失敗', error);
   }
+}
+
+// 啟動時於背景自動檢查更新。
+export async function checkForUpdateAndNotify(): Promise<void> {
+  await runUpdateCheck(false);
+}
+
+// 註冊選單「Check for Updates」事件監聽：主動檢查並提示檢查中。
+export function registerUpdateMenuListener(): void {
+  onWailsEvent(MENU_CHECK_EVENT, () => {
+    showToast(t('misc.update.checking'), { type: 'info' });
+    void runUpdateCheck(true);
+  });
 }

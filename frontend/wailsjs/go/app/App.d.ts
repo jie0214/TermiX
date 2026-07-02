@@ -45,6 +45,8 @@ export function DeleteSnippet(arg1:string):Promise<void>;
 
 export function DisconnectKubernetesCluster():Promise<void>;
 
+export function DownloadUpdate():Promise<app.DownloadResult>;
+
 export function ExecuteLocalCommand(arg1:string,arg2:Record<string, string>):Promise<dto.OperationResult>;
 
 export function ExecuteSessionCommand(arg1:string,arg2:string):Promise<dto.OperationResult>;
