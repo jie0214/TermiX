@@ -35,6 +35,8 @@ export function DeleteHost(arg1:string):Promise<dto.OperationResult>;
 
 export function DeleteHostGroup(arg1:string):Promise<dto.OperationResult>;
 
+export function DeleteKeychainKey(arg1:string):Promise<dto.OperationResult>;
+
 export function DeleteKubernetesCluster(arg1:string):Promise<void>;
 
 export function DeleteKubernetesPod(arg1:dto.KubernetesPodDeleteRequest):Promise<void>;
@@ -58,6 +60,10 @@ export function ExecuteSnippetBatch(arg1:dto.ExecuteSnippetBatchRequest):Promise
 export function ExecuteTerminalCommand(arg1:dto.TerminalCommandRequest):Promise<dto.OperationResult>;
 
 export function ExportHostsBackup(arg1:dto.HostExportOptions):Promise<dto.OperationResult>;
+
+export function ExportKeychainKey(arg1:dto.ExportKeychainKeyRequest):Promise<dto.OperationResult>;
+
+export function GenerateKeychainKey(arg1:dto.GenerateKeychainKeyRequest):Promise<dto.OperationResult>;
 
 export function GetAWSIntegration(arg1:string):Promise<dto.OperationResult>;
 
@@ -83,6 +89,8 @@ export function GetKubernetesResourceDetail(arg1:dto.KubernetesResourceDetailReq
 
 export function ImportHostsBackup(arg1:string,arg2:dto.HostImportOptions):Promise<dto.OperationResult>;
 
+export function ImportKeychainKey(arg1:dto.ImportKeychainKeyRequest):Promise<dto.OperationResult>;
+
 export function ListAWSIntegrations():Promise<dto.OperationResult>;
 
 export function ListHostGroups():Promise<dto.OperationResult>;
@@ -90,6 +98,10 @@ export function ListHostGroups():Promise<dto.OperationResult>;
 export function ListHostVault():Promise<dto.OperationResult>;
 
 export function ListHosts():Promise<dto.OperationResult>;
+
+export function ListKeychainKeys():Promise<dto.OperationResult>;
+
+export function ListKnownHosts():Promise<dto.OperationResult>;
 
 export function ListKubernetesClusters():Promise<Array<dto.KubernetesClusterProfile>>;
 

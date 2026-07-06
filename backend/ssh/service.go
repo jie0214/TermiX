@@ -40,6 +40,11 @@ func (c *Connector) RemoveKnownHost(host string, port int) error {
 	return c.knownHosts.RemoveHost(host, port)
 }
 
+// ListKnownHosts 回傳 known_hosts 中所有已信任的主機指紋
+func (c *Connector) ListKnownHosts() ([]knownhosts.KnownHostEntry, error) {
+	return c.knownHosts.ListKnownHosts()
+}
+
 // ConfirmUnknownHost 在使用者確認指紋後，將先前暫存的未知主機公鑰寫入 known_hosts。
 // host 與 port 會被組合成與 SSH 連線時相同的位址字串（net.JoinHostPort），
 // 以對應 HostKeyCallback 暫存時所使用的鍵。
@@ -159,11 +164,14 @@ func ValidateConfig(config dto.SSHConfig) error {
 		return errors.New("密碼登入必須提供 SSH password")
 	}
 	if config.AuthMode == constants.AuthModeKey {
-		if strings.TrimSpace(config.PrivateKeyPath) == "" {
-			return errors.New("key 登入必須提供 private key path")
-		}
-		if _, err := os.Stat(common.ExpandHome(config.PrivateKeyPath)); err != nil {
-			return fmt.Errorf("private key path 無法讀取：%w", err)
+		// 使用 Keychain 金鑰時，私鑰內容已由 PrivateKeyData 帶入，毋須檔案路徑。
+		if strings.TrimSpace(config.PrivateKeyData) == "" {
+			if strings.TrimSpace(config.PrivateKeyPath) == "" {
+				return errors.New("key 登入必須提供 private key path")
+			}
+			if _, err := os.Stat(common.ExpandHome(config.PrivateKeyPath)); err != nil {
+				return fmt.Errorf("private key path 無法讀取：%w", err)
+			}
 		}
 		if strings.TrimSpace(config.CertPath) != "" {
 			if _, err := os.Stat(common.ExpandHome(config.CertPath)); err != nil {
@@ -182,9 +190,16 @@ func buildAuthMethods(config dto.SSHConfig) ([]cryptossh.AuthMethod, error) {
 		}, nil
 	}
 
-	keyBytes, err := os.ReadFile(common.ExpandHome(config.PrivateKeyPath))
-	if err != nil {
-		return nil, err
+	// 優先使用 Keychain 帶入的私鑰內容；否則回退讀取 PrivateKeyPath 檔案。
+	var keyBytes []byte
+	if strings.TrimSpace(config.PrivateKeyData) != "" {
+		keyBytes = []byte(config.PrivateKeyData)
+	} else {
+		fileBytes, err := os.ReadFile(common.ExpandHome(config.PrivateKeyPath))
+		if err != nil {
+			return nil, err
+		}
+		keyBytes = fileBytes
 	}
 	signer, err := cryptossh.ParsePrivateKey(keyBytes)
 	if err != nil {

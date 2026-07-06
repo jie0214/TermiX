@@ -11,6 +11,7 @@ import (
 	termixapp "github.com/jie0214/TermiX/backend/app"
 	"github.com/jie0214/TermiX/backend/controlpanel"
 	"github.com/jie0214/TermiX/backend/hostvault"
+	"github.com/jie0214/TermiX/backend/keychain"
 	"github.com/jie0214/TermiX/backend/knownhosts"
 	"github.com/jie0214/TermiX/backend/kubernetes"
 	"github.com/jie0214/TermiX/backend/secrets"
@@ -83,6 +84,7 @@ func main() {
 		snippets.Module,
 		hostvault.Module,
 		kubernetes.Module,
+		keychain.Module,
 		fx.Provide(termixapp.NewApp),
 		fx.Populate(&app),
 		fx.NopLogger, // 靜默 Fx 啟動日誌，保持終端乾淨

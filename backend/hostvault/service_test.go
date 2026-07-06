@@ -290,3 +290,37 @@ func (f *failingSecretStore) SetSecret(ctx context.Context, ref string, value st
 	}
 	return f.MemoryStore.SetSecret(ctx, ref, value)
 }
+
+func TestResolveRuntimeConfigInjectsKeychainPrivateKey(t *testing.T) {
+	svc := newTestService(t, secrets.NewMemoryStore())
+	ctx := context.Background()
+
+	key, err := svc.keychain.Generate(ctx, dto.GenerateKeychainKeyRequest{Label: "host-key", Type: "ed25519"})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	if _, _, err := svc.SaveHost(ctx, dto.SaveHostRequest{
+		Host: dto.HostProfile{
+			ID:    "host-kc",
+			Alias: "kc",
+			Config: dto.PersistedHostConfig{
+				Host:          "10.0.0.9",
+				Port:          22,
+				Username:      "root",
+				AuthMode:      constants.AuthModeKey,
+				KeychainKeyID: key.ID,
+			},
+		},
+	}); err != nil {
+		t.Fatalf("SaveHost() error = %v", err)
+	}
+
+	config, err := svc.ResolveRuntimeConfig(ctx, dto.HostConnectionRequest{HostID: "host-kc"})
+	if err != nil {
+		t.Fatalf("ResolveRuntimeConfig() error = %v", err)
+	}
+	if !strings.Contains(config.PrivateKeyData, "OPENSSH PRIVATE KEY") {
+		t.Fatalf("PrivateKeyData 未注入 keychain 私鑰：%q", config.PrivateKeyData)
+	}
+}

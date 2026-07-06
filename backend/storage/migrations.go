@@ -25,6 +25,7 @@ func runMigrations(db *sql.DB) error {
 			username TEXT NOT NULL,
 			auth_mode TEXT NOT NULL,
 			private_key_path TEXT NOT NULL DEFAULT '',
+			keychain_key_id TEXT NOT NULL DEFAULT '',
 			cert_path TEXT NOT NULL DEFAULT '',
 			ssh_password_ref TEXT NOT NULL DEFAULT '',
 			key_passphrase_ref TEXT NOT NULL DEFAULT '',
@@ -66,6 +67,19 @@ func runMigrations(db *sql.DB) error {
 			aws_instance_id TEXT PRIMARY KEY,
 			group_id TEXT NOT NULL REFERENCES host_groups(id) ON DELETE CASCADE,
 			deleted_at TEXT NOT NULL
+		);`,
+		`CREATE TABLE IF NOT EXISTS keychain_keys (
+			id TEXT PRIMARY KEY,
+			label TEXT NOT NULL,
+			type TEXT NOT NULL,
+			bits INTEGER NOT NULL DEFAULT 0,
+			public_key TEXT NOT NULL,
+			fingerprint TEXT NOT NULL,
+			comment TEXT NOT NULL DEFAULT '',
+			has_passphrase INTEGER NOT NULL DEFAULT 0,
+			private_key_ref TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
 		);`,
 		`CREATE TABLE IF NOT EXISTS kubernetes_clusters (
 			id TEXT PRIMARY KEY,
@@ -125,6 +139,10 @@ func runMigrations(db *sql.DB) error {
 	}
 
 	if err := ensureColumn(db, "aws_integrations", "default_password_ref", "ALTER TABLE aws_integrations ADD COLUMN default_password_ref TEXT NOT NULL DEFAULT '';"); err != nil {
+		return err
+	}
+
+	if err := ensureColumn(db, "hosts", "keychain_key_id", "ALTER TABLE hosts ADD COLUMN keychain_key_id TEXT NOT NULL DEFAULT '';"); err != nil {
 		return err
 	}
 

@@ -1,5 +1,6 @@
 import { hostStore } from './HostStore';
 import { HostAPI } from './HostAPI';
+import { KeychainAPI } from './KeychainAPI';
 import { terminalStore } from '../terminal/TerminalStore';
 import { TerminalAPI } from '../terminal/TerminalAPI';
 import { onWailsEvent } from '../../platform/wails/events.ts';
@@ -20,38 +21,13 @@ import {
   getSecretStatusLabel
 } from './HostVaultModel';
 
-function getKeychains() {
-  const data = localStorage.getItem('termix-keychains');
-  if (!data) {
-    const defaultKeys = [
-      { id: 'key_1', name: 'aws-prod-key', type: 'ED25519', fingerprint: 'SHA256:4t7f...b9a8', comment: 'Production AWS key pair' },
-      { id: 'key_2', name: 'office-bastion-key', type: 'RSA (4096)', fingerprint: 'SHA256:d8a2...c84d', comment: 'Office Bastion Host' }
-    ];
-    localStorage.setItem('termix-keychains', JSON.stringify(defaultKeys));
-    return defaultKeys;
-  }
-  try {
-    return JSON.parse(data);
-  } catch (e) {
-    return [];
-  }
-}
-
-function getKnownHosts() {
-  const data = localStorage.getItem('termix-known-hosts');
-  if (!data) {
-    const defaultHosts = [
-      { id: 'kh_1', host: 'github.com', type: 'ssh-ed25519', fingerprint: 'SHA256:+DiY3wvvV6TuJJWY5fI5gMMk80PVyOdMWXstgvpTuOM' },
-      { id: 'kh_2', host: '13.234.52.12', type: 'ecdsa-sha2-nistp256', fingerprint: 'SHA256:K3dFm...9a3B' }
-    ];
-    localStorage.setItem('termix-known-hosts', JSON.stringify(defaultHosts));
-    return defaultHosts;
-  }
-  try {
-    return JSON.parse(data);
-  } catch (e) {
-    return [];
-  }
+// 將後端 KeychainKey 的類型與位元組成顯示字串，例如 "Ed25519"、"RSA (3072)"。
+function formatKeychainType(key) {
+  const type = String(key.type || '').toLowerCase();
+  if (type === 'ed25519') return 'Ed25519';
+  if (type === 'ecdsa') return `ECDSA (${key.bits || 256})`;
+  if (type === 'rsa') return `RSA (${key.bits || ''})`.trim();
+  return key.type || '—';
 }
 
 function escapeHtml(str) {
@@ -366,6 +342,117 @@ function showChoiceDialog({ title, options }) {
   });
 }
 
+// 產生 / 匯入 SSH 金鑰的對話框；resolve 表單資料，取消則 resolve(null)。
+function openKeychainKeyDialog(mode) {
+  const isImport = mode === 'import';
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay no-drag';
+    overlay.style.cssText = 'position: fixed; inset: 0; background: rgba(12, 18, 31, 0.72); display: flex; align-items: center; justify-content: center; z-index: 100000; backdrop-filter: blur(4px);';
+
+    const fieldStyle = 'width: 100%; min-height: 34px; box-sizing: border-box; padding: 0 10px; background: rgba(12,18,31,0.6); border: 1px solid rgba(23,107,135,0.3); border-radius: 6px; color: var(--color-text); font-size: 13px;';
+    const labelStyle = 'display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--color-text-muted); margin-bottom: 5px;';
+
+    const bodyHtml = isImport ? `
+      <label style="${labelStyle}">${escapeHtml(t('hostvault.keychainLabel'))}</label>
+      <input type="text" id="kcLabel" class="no-drag" style="${fieldStyle}" placeholder="my-imported-key" />
+      <label style="${labelStyle} margin-top: 12px;">${escapeHtml(t('hostvault.keychainPrivateKey'))}</label>
+      <textarea id="kcPrivateKey" class="no-drag" rows="7" style="${fieldStyle} min-height: 130px; padding: 8px 10px; font-family: monospace; resize: vertical;" placeholder="${escapeHtml(t('hostvault.keychainPrivateKeyPlaceholder'))}"></textarea>
+      <label style="${labelStyle} margin-top: 12px;">${escapeHtml(t('hostvault.keychainImportPassphrase'))}</label>
+      <input type="password" id="kcPassphrase" class="no-drag" style="${fieldStyle}" autocomplete="off" />
+      <label style="${labelStyle} margin-top: 12px;">${escapeHtml(t('hostvault.keychainComment'))}</label>
+      <input type="text" id="kcComment" class="no-drag" style="${fieldStyle}" />
+    ` : `
+      <label style="${labelStyle}">${escapeHtml(t('hostvault.keychainLabel'))}</label>
+      <input type="text" id="kcLabel" class="no-drag" style="${fieldStyle}" placeholder="my-new-key" />
+      <div style="display: flex; gap: 10px; margin-top: 12px;">
+        <div style="flex: 1;">
+          <label style="${labelStyle}">${escapeHtml(t('hostvault.keychainType'))}</label>
+          <select id="kcType" class="no-drag" style="${fieldStyle}">
+            <option value="ed25519">Ed25519</option>
+            <option value="ecdsa">ECDSA</option>
+            <option value="rsa">RSA</option>
+            <option value="mldsa" disabled>ML-DSA (${escapeHtml(t('hostvault.keychainMldsaDisabled'))})</option>
+          </select>
+        </div>
+        <div style="flex: 1;">
+          <label style="${labelStyle}">${escapeHtml(t('hostvault.keychainStrength'))}</label>
+          <select id="kcBits" class="no-drag" style="${fieldStyle}"></select>
+        </div>
+      </div>
+      <label style="${labelStyle} margin-top: 12px;">${escapeHtml(t('hostvault.keychainPassphrase'))}</label>
+      <input type="password" id="kcPassphrase" class="no-drag" style="${fieldStyle}" autocomplete="off" />
+      <label style="${labelStyle} margin-top: 12px;">${escapeHtml(t('hostvault.keychainComment'))}</label>
+      <input type="text" id="kcComment" class="no-drag" style="${fieldStyle}" />
+    `;
+
+    const title = isImport ? t('hostvault.keychainDialogImportTitle') : t('hostvault.keychainDialogGenerateTitle');
+    const submitLabel = isImport ? t('hostvault.keychainImport') : t('hostvault.keychainGenerate');
+
+    overlay.innerHTML = `
+      <div class="settings-dialog no-drag" style="width: min(440px, calc(100vw - 32px)); background: var(--glass-bg-strong); border: 1px solid var(--glass-border); border-radius: 8px; box-shadow: var(--glass-shadow);">
+        <div class="settings-header" style="padding: 16px 18px; border-bottom: 1px solid rgba(23,107,135,0.15); display: flex; align-items: center; justify-content: space-between;">
+          <h2 style="font-size: 14px; font-weight: 800; color: var(--color-text); margin: 0;">${escapeHtml(title)}</h2>
+          <button type="button" aria-label="${t('common.close')}" class="no-drag kc-cancel-btn icon-btn" style="font-size: 18px; line-height: 1;">&times;</button>
+        </div>
+        <div style="padding: 16px 18px; max-height: 70vh; overflow-y: auto;">
+          ${bodyHtml}
+        </div>
+        <div class="settings-footer" style="padding: 14px 18px; border-top: 1px solid rgba(23,107,135,0.15); display: flex; gap: 8px; justify-content: flex-end;">
+          <button type="button" class="no-drag kc-cancel-btn" style="min-height: 34px; padding: 0 14px; border: 1px solid rgba(23,107,135,0.3); background: transparent; color: var(--color-text); border-radius: 6px; font-size: 12px; font-weight: 700; cursor: pointer;">${escapeHtml(t('common.cancel'))}</button>
+          <button type="button" class="no-drag primary kc-submit-btn" style="min-height: 34px; padding: 0 16px; border: none; background: var(--color-primary); color: #fff; border-radius: 6px; font-size: 12px; font-weight: 800; cursor: pointer;">${escapeHtml(submitLabel)}</button>
+        </div>
+      </div>
+    `;
+
+    const close = (value) => { overlay.remove(); resolve(value); };
+
+    if (!isImport) {
+      const typeSel = overlay.querySelector('#kcType');
+      const bitsSel = overlay.querySelector('#kcBits');
+      const populateBits = () => {
+        const type = typeSel.value;
+        let opts;
+        if (type === 'rsa') opts = [['2048', '2048'], ['3072', '3072'], ['4096', '4096']];
+        else if (type === 'ecdsa') opts = [['256', 'P-256'], ['384', 'P-384'], ['521', 'P-521']];
+        else opts = [['0', '—']];
+        bitsSel.innerHTML = opts.map(([v, l]) => `<option value="${v}">${escapeHtml(l)}</option>`).join('');
+        bitsSel.disabled = type === 'ed25519';
+        if (type === 'rsa') bitsSel.value = '3072';
+      };
+      typeSel.addEventListener('change', populateBits);
+      populateBits();
+    }
+
+    overlay.addEventListener('click', (event) => {
+      if (event.target === overlay || event.target.closest('.kc-cancel-btn')) {
+        close(null);
+      }
+    });
+
+    overlay.querySelector('.kc-submit-btn').addEventListener('click', () => {
+      const labelEl = overlay.querySelector('#kcLabel');
+      const label = labelEl.value.trim();
+      if (!label) { labelEl.focus(); return; }
+      const comment = overlay.querySelector('#kcComment').value.trim();
+      const passphrase = overlay.querySelector('#kcPassphrase').value;
+      if (isImport) {
+        const pkEl = overlay.querySelector('#kcPrivateKey');
+        const privateKey = pkEl.value.trim();
+        if (!privateKey) { pkEl.focus(); return; }
+        close({ mode: 'import', label, privateKey, passphrase, comment });
+      } else {
+        const type = overlay.querySelector('#kcType').value;
+        const bits = parseInt(overlay.querySelector('#kcBits').value, 10) || 0;
+        close({ mode: 'generate', label, type, bits, passphrase, comment });
+      }
+    });
+
+    document.body.appendChild(overlay);
+    setTimeout(() => overlay.querySelector('#kcLabel')?.focus(), 0);
+  });
+}
+
 export class HostListPage extends HTMLElement {
   constructor() {
     super();
@@ -381,6 +468,14 @@ export class HostListPage extends HTMLElement {
     this.selectedPackage = null;
     this.selectedAWSIntegration = null;
     this.awsSyncSettingsExpanded = false;
+    // Keychain 分頁資料由後端載入（私鑰存 OS Keychain，中繼資料存 SQLite）。
+    this.keychainKeys = [];
+    this.keychainLoaded = false;
+    this.keychainLoading = false;
+    // Known Hosts 分頁資料由後端讀取 ~/.ssh/known_hosts 取得。
+    this.knownHosts = [];
+    this.knownHostsLoaded = false;
+    this.knownHostsLoading = false;
     this.handleLogsChanged = () => {
       if (hostStore.getState().selectedTab === 'logs') {
         this.render();
@@ -399,6 +494,8 @@ export class HostListPage extends HTMLElement {
     if (snippetStore.getState().snippets.length === 0) {
       snippetStore.getState().loadSnippets();
     }
+    // 預先載入 Keychain 金鑰，供 Host 表單的金鑰選單使用。
+    this.loadKeychainKeys();
     this.render();
     this.setupListeners();
     this.setupGlobalDelegation();
@@ -431,6 +528,76 @@ export class HostListPage extends HTMLElement {
     // render() 內部會在結尾重新計算並更新 this.lastViewFingerprint。
     this.render();
     this.setupListeners();
+  }
+
+  // 從後端載入 Keychain 金鑰清單並在完成後重繪分頁。
+  async loadKeychainKeys(force = false) {
+    if (this.keychainLoading) return;
+    if (this.keychainLoaded && !force) return;
+    this.keychainLoading = true;
+    try {
+      const keys = await KeychainAPI.list();
+      this.keychainKeys = Array.isArray(keys) ? keys : [];
+      this.keychainLoaded = true;
+    } catch (err) {
+      showToast(t('hostvault.keychainLoadFailed', { error: err.message || err }), { type: 'error' });
+    } finally {
+      this.keychainLoading = false;
+    }
+    const st = hostStore.getState();
+    if (st.selectedTab === 'keychain' || st.drawerOpen) {
+      this.render();
+      this.setupListeners();
+    }
+  }
+
+  // 從後端讀取 known_hosts 清單並在完成後重繪分頁。
+  async loadKnownHosts(force = false) {
+    if (this.knownHostsLoading) return;
+    if (this.knownHostsLoaded && !force) return;
+    this.knownHostsLoading = true;
+    try {
+      const hosts = await HostAPI.listKnownHosts();
+      this.knownHosts = Array.isArray(hosts) ? hosts : [];
+      this.knownHostsLoaded = true;
+    } catch (err) {
+      showToast(t('hostvault.knownHostsLoadFailed', { error: err.message || err }), { type: 'error' });
+    } finally {
+      this.knownHostsLoading = false;
+    }
+    if (hostStore.getState().selectedTab === 'known_hosts') {
+      this.render();
+      this.setupListeners();
+    }
+  }
+
+  // 開啟產生 / 匯入對話框並呼叫後端建立金鑰。
+  async handleKeychainCreate(mode) {
+    const form = await openKeychainKeyDialog(mode);
+    if (!form) return;
+    try {
+      if (form.mode === 'import') {
+        const key = await KeychainAPI.importKey({
+          label: form.label,
+          privateKey: form.privateKey,
+          passphrase: form.passphrase,
+          comment: form.comment
+        });
+        showToast(t('hostvault.keychainImported', { label: key.label }), { type: 'success' });
+      } else {
+        const key = await KeychainAPI.generate({
+          label: form.label,
+          type: form.type,
+          bits: form.bits,
+          passphrase: form.passphrase,
+          comment: form.comment
+        });
+        showToast(t('hostvault.keychainGenerated', { label: key.label }), { type: 'success' });
+      }
+      this.loadKeychainKeys(true);
+    } catch (err) {
+      showToast(t('hostvault.keychainSaveFailed', { error: err.message || err }), { type: 'error' });
+    }
   }
 
   disconnectedCallback() {
@@ -1401,14 +1568,15 @@ export class HostListPage extends HTMLElement {
         </div>
       `;
     } else if (selectedTab === 'keychain') {
-      const keys = getKeychains();
+      const keys = this.keychainKeys;
       const rows = keys.map(k => `
         <tr style="border-bottom: 1px solid rgba(23, 107, 135, 0.15); transition: background 0.2s;">
-          <td style="padding: 14px 16px; text-align: left; font-size: 13px; font-weight: 700; color: var(--color-text);">${escapeHtml(k.name)}</td>
-          <td style="padding: 14px 16px; text-align: left; font-size: 12.5px; color: var(--color-text-muted);">${escapeHtml(k.type)}</td>
+          <td style="padding: 14px 16px; text-align: left; font-size: 13px; font-weight: 700; color: var(--color-text);">${escapeHtml(k.label)}${k.hasPassphrase ? ' <span title="' + escapeHtml(t('hostvault.keychainPassphraseProtected')) + '" style="color: var(--color-text-muted);">🔒</span>' : ''}</td>
+          <td style="padding: 14px 16px; text-align: left; font-size: 12.5px; color: var(--color-text-muted);">${escapeHtml(formatKeychainType(k))}</td>
           <td style="padding: 14px 16px; text-align: left; font-size: 11px; color: var(--color-text-muted); font-family: monospace;">${escapeHtml(k.fingerprint)}</td>
           <td style="padding: 14px 16px; text-align: left; font-size: 12.5px; color: var(--color-text-muted);">${escapeHtml(k.comment)}</td>
-          <td style="padding: 14px 16px; text-align: right;">
+          <td style="padding: 14px 16px; text-align: right; white-space: nowrap;">
+            <button type="button" aria-label="${t('hostvault.keychainCopyPublic')}" class="no-drag copy-pubkey-btn icon-btn" data-id="${k.id}" style="font-size: 15px; display: inline-flex; margin-right: 4px;" title="${t('hostvault.keychainCopyPublic')}">⧉</button>
             <button type="button" aria-label="${t('hostvault.removeKey')}" class="no-drag delete-key-btn icon-btn danger" data-id="${k.id}" style="font-size: 18px; display: inline-flex;" title="${t('hostvault.removeKey')}">&times;</button>
           </td>
         </tr>
@@ -1417,13 +1585,18 @@ export class HostListPage extends HTMLElement {
       mainBoardHtml = `
           <div class="vault-toolbar" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex: 0 0 auto;">
             <div style="display: flex; gap: 8px;">
-              <button type="button" id="addNewKeyBtn" class="no-drag primary" style="min-height: 32px; font-weight: 700; font-size: 12px; padding: 0 14px; background: var(--color-primary); border: none; border-radius: 4px; color: #fff; cursor: pointer;">+ NEW KEY</button>
+              <button type="button" id="generateKeyBtn" class="no-drag primary" style="min-height: 32px; font-weight: 700; font-size: 12px; padding: 0 14px; background: var(--color-primary); border: none; border-radius: 4px; color: #fff; cursor: pointer;">${t('hostvault.keychainGenerate')}</button>
+              <button type="button" id="importKeyBtn" class="no-drag" style="min-height: 32px; font-weight: 700; font-size: 12px; padding: 0 14px; background: transparent; border: 1px solid rgba(23,107,135,0.35); border-radius: 4px; color: var(--color-text); cursor: pointer;">${t('hostvault.keychainImport')}</button>
             </div>
             <div style="font-size: 13px; font-weight: 600; color: var(--color-text-muted); text-align: right;">${t('hostvault.keychainSubtitle')}</div>
           </div>
 
           <div style="flex: 1; overflow-y: auto; background: rgba(12, 18, 31, 0.5); border: 1px solid rgba(23, 107, 135, 0.15); border-radius: 8px; min-height: 250px;">
-            ${keys.length === 0 ? `
+            ${!this.keychainLoaded ? `
+              <div style="padding: 40px; text-align: center; color: var(--color-text-muted); font-size: 14px;">
+                ${t('hostvault.keychainLoading')}
+              </div>
+            ` : keys.length === 0 ? `
               <div style="padding: 40px; text-align: center; color: var(--color-text-muted); font-size: 14px;">
                 ${t('hostvault.noKeys')}
               </div>
@@ -1448,17 +1621,18 @@ export class HostListPage extends HTMLElement {
           </div>
       `;
     } else if (selectedTab === 'known_hosts') {
-      const hosts = getKnownHosts();
-      const rows = hosts.map(h => `
+      const hosts = this.knownHosts;
+      const rows = hosts.map((h, i) => `
         <tr style="border-bottom: 1px solid rgba(23, 107, 135, 0.15); transition: background 0.2s;">
           <td style="padding: 14px 16px; text-align: left; font-size: 13px; font-weight: 700; color: var(--color-text);">${escapeHtml(h.host)}</td>
           <td style="padding: 14px 16px; text-align: left; font-size: 12.5px; color: var(--color-text-muted);">${escapeHtml(h.type)}</td>
           <td style="padding: 14px 16px; text-align: left; font-size: 11px; color: var(--color-text-muted); font-family: monospace;">${escapeHtml(h.fingerprint)}</td>
           <td style="padding: 14px 16px; text-align: right;">
-            <button type="button" aria-label="${t('hostvault.removeFingerprint')}" class="no-drag delete-kh-btn icon-btn danger" data-id="${h.id}" style="font-size: 18px; display: inline-flex;" title="${t('hostvault.removeFingerprint')}">&times;</button>
+            <button type="button" aria-label="${t('hostvault.removeFingerprint')}" class="no-drag delete-kh-btn icon-btn danger" data-index="${i}" style="font-size: 18px; display: inline-flex;" title="${t('hostvault.removeFingerprint')}">&times;</button>
           </td>
         </tr>
       `).join('');
+      const emptyText = this.knownHostsLoading ? t('hostvault.knownHostsLoading') : t('hostvault.noKnownHosts');
 
       mainBoardHtml = `
           <div class="vault-toolbar" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex: 0 0 auto;">
@@ -1468,7 +1642,7 @@ export class HostListPage extends HTMLElement {
           <div style="flex: 1; overflow-y: auto; background: rgba(12, 18, 31, 0.5); border: 1px solid rgba(23, 107, 135, 0.15); border-radius: 8px; min-height: 250px;">
             ${hosts.length === 0 ? `
               <div style="padding: 40px; text-align: center; color: var(--color-text-muted); font-size: 14px;">
-                ${t('hostvault.noKnownHosts')}
+                ${emptyText}
               </div>
             ` : `
               <div style="overflow-x: auto; width: 100%;">
@@ -1604,12 +1778,21 @@ export class HostListPage extends HTMLElement {
 
                   <div id="keyAuth" style="display: ${drawerHost.config?.authMode === 'key' ? 'flex' : 'none'}; flex-direction: column; gap: 12px; margin-top: 10px;">
                     <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
+                      ${t('hostvault.keychainKeyField')}
+                      <select class="no-drag" id="keychainKeyId" name="keychainKeyId" style="background: #0d121f; border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
+                        <option value="">${t('hostvault.keychainKeyUseFile')}</option>
+                        ${this.keychainKeys.map(k => `<option value="${escapeHtml(k.id)}" ${drawerHost.config?.keychainKeyId === k.id ? 'selected' : ''}>${escapeHtml(k.label)} — ${escapeHtml(formatKeychainType(k))}</option>`).join('')}
+                      </select>
+                    </label>
+                    <div id="keyFileFields" style="display: ${drawerHost.config?.keychainKeyId ? 'none' : 'flex'}; flex-direction: column; gap: 12px;">
+                    <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
                       Private Key
                       <div style="display: flex; gap: 8px;">
                         <input class="no-drag" id="privateKeyPath" name="privateKeyPath" value="${drawerHost.config?.privateKeyPath || ''}" style="flex: 1; background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
                         <button type="button" id="browseKeyBtn" class="no-drag" style="background: transparent; border: 1px solid var(--color-primary); color: var(--color-primary); padding: 0 12px; border-radius: 6px; cursor: pointer;">${t('hostvault.browse')}</button>
                       </div>
                     </label>
+                    </div>
                     <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
                       Cert
                       <div style="display: flex; gap: 8px;">
@@ -2240,6 +2423,15 @@ export class HostListPage extends HTMLElement {
       });
     }
 
+    // 9b. 選用 Keychain 金鑰時，隱藏私鑰檔案欄位（金鑰庫金鑰優先）。
+    const keychainKeySelect = this.querySelector('#keychainKeyId');
+    if (keychainKeySelect) {
+      keychainKeySelect.addEventListener('change', (e) => {
+        const fileFields = this.querySelector('#keyFileFields');
+        if (fileFields) fileFields.style.display = e.target.value ? 'none' : 'flex';
+      });
+    }
+
     const startupModeSelect = this.querySelector('#startupCommandMode');
     if (startupModeSelect) {
       startupModeSelect.addEventListener('change', (e) => {
@@ -2295,6 +2487,7 @@ export class HostListPage extends HTMLElement {
         const authModeVal = this.querySelector('#authMode').value;
         const usernameVal = this.querySelector('#username').value.trim();
         const privateKeyPathVal = this.querySelector('#privateKeyPath')?.value || '';
+        const keychainKeyIdVal = this.querySelector('#keychainKeyId')?.value || '';
         const certPathVal = this.querySelector('#certPath')?.value || '';
         const customComponents = collectMountedComponents(this, state.selectedHost?.config?.customComponents, getAvailableControlPanelComponents());
         const startupCommandConfig = readStartupCommandConfig(this, state.selectedHost?.config);
@@ -2307,6 +2500,7 @@ export class HostListPage extends HTMLElement {
           username: usernameVal,
           authMode: authModeVal,
           privateKeyPath: privateKeyPathVal,
+          keychainKeyId: keychainKeyIdVal,
           certPath: certPathVal,
           secretRefs,
           customComponents,
@@ -3012,36 +3206,46 @@ export class HostListPage extends HTMLElement {
 
     // 15. Keychain Tab 事件繫結
     if (selectedTab === 'keychain') {
-      const addNewKeyBtn = this.querySelector('#addNewKeyBtn');
-      if (addNewKeyBtn) {
-        addNewKeyBtn.addEventListener('click', () => {
-          const name = prompt(t('hostvault.promptKeyName'));
-          if (!name) return;
-          const comment = prompt(t('hostvault.promptKeyComment')) || 'Custom uploaded key';
-          const keys = getKeychains();
-          const newKey = {
-            id: 'key_' + Date.now().toString(),
-            name,
-            type: 'ED25519',
-            fingerprint: 'SHA256:' + Math.random().toString(36).substr(2, 8) + '...' + Math.random().toString(36).substr(2, 4),
-            comment
-          };
-          keys.push(newKey);
-          localStorage.setItem('termix-keychains', JSON.stringify(keys));
-          this.render();
-          this.setupListeners();
-        });
+      // 首次進入分頁時載入後端金鑰清單。
+      if (!this.keychainLoaded && !this.keychainLoading) {
+        this.loadKeychainKeys();
       }
+
+      const generateBtn = this.querySelector('#generateKeyBtn');
+      if (generateBtn) {
+        generateBtn.addEventListener('click', () => this.handleKeychainCreate('generate'));
+      }
+      const importBtn = this.querySelector('#importKeyBtn');
+      if (importBtn) {
+        importBtn.addEventListener('click', () => this.handleKeychainCreate('import'));
+      }
+
+      this.querySelectorAll('.copy-pubkey-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const key = this.keychainKeys.find(k => k.id === btn.getAttribute('data-id'));
+          if (!key) return;
+          try {
+            await navigator.clipboard?.writeText(key.publicKey || '');
+            showToast(t('hostvault.keychainCopied'), { type: 'success' });
+          } catch (err) {
+            showToast(t('hostvault.keychainSaveFailed', { error: err.message || err }), { type: 'error' });
+          }
+        });
+      });
 
       this.querySelectorAll('.delete-key-btn').forEach(btn => {
         btn.addEventListener('click', async (e) => {
           e.stopPropagation();
           const keyId = btn.getAttribute('data-id');
           if (await confirmDialog(t('hostvault.confirmDeleteKey'), { title: t('hostvault.confirmDeleteKeyTitle'), danger: true })) {
-            const keys = getKeychains().filter(k => k.id !== keyId);
-            localStorage.setItem('termix-keychains', JSON.stringify(keys));
-            this.render();
-            this.setupListeners();
+            try {
+              await KeychainAPI.deleteKey(keyId);
+              showToast(t('hostvault.keychainDeleted'), { type: 'success' });
+              this.loadKeychainKeys(true);
+            } catch (err) {
+              showToast(t('hostvault.keychainSaveFailed', { error: err.message || err }), { type: 'error' });
+            }
           }
         });
       });
@@ -3049,15 +3253,24 @@ export class HostListPage extends HTMLElement {
 
     // 16. Known Hosts Tab 事件繫結
     if (selectedTab === 'known_hosts') {
+      // 首次進入分頁時載入後端 known_hosts 清單。
+      if (!this.knownHostsLoaded && !this.knownHostsLoading) {
+        this.loadKnownHosts();
+      }
+
       this.querySelectorAll('.delete-kh-btn').forEach(btn => {
         btn.addEventListener('click', async (e) => {
           e.stopPropagation();
-          const khId = btn.getAttribute('data-id');
+          const entry = this.knownHosts[Number(btn.getAttribute('data-index'))];
+          if (!entry) return;
           if (await confirmDialog(t('hostvault.confirmRevokeTrust'), { title: t('hostvault.confirmRevokeTrustTitle'), danger: true })) {
-            const hosts = getKnownHosts().filter(h => h.id !== khId);
-            localStorage.setItem('termix-known-hosts', JSON.stringify(hosts));
-            this.render();
-            this.setupListeners();
+            try {
+              await HostAPI.removeKnownHost(entry.host, 0);
+              showToast(t('hostvault.knownHostRemoved', { host: entry.host }), { type: 'success' });
+              await this.loadKnownHosts(true);
+            } catch (err) {
+              showToast(t('hostvault.knownHostRemoveFailed', { error: err.message || err }), { type: 'error' });
+            }
           }
         });
       });

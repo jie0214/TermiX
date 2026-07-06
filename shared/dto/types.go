@@ -9,6 +9,7 @@ type SSHConfig struct {
 	AuthMode          string `json:"authMode"`
 	Password          string `json:"password"`
 	PrivateKeyPath    string `json:"privateKeyPath"`
+	PrivateKeyData    string `json:"privateKeyData"` // 執行期由 keychain 解析出的 OpenSSH 私鑰內容；非空時優先於 PrivateKeyPath
 	CertPath          string `json:"certPath"`
 	SudoPassword      string `json:"sudoPassword"`
 	SessionID         string `json:"sessionId"`
@@ -34,6 +35,7 @@ type PersistedHostConfig struct {
 	Username                   string                `json:"username" yaml:"username"`
 	AuthMode                   string                `json:"authMode" yaml:"authMode"`
 	PrivateKeyPath             string                `json:"privateKeyPath" yaml:"privateKeyPath"`
+	KeychainKeyID              string                `json:"keychainKeyId" yaml:"keychainKeyId"` // 選用：改用 Keychain 儲存的金鑰，優先於 PrivateKeyPath
 	CertPath                   string                `json:"certPath" yaml:"certPath"`
 	SecretRefs                 HostSecretRefs        `json:"secretRefs" yaml:"secretRefs"`
 	ShowSnippetsInControlPanel bool                  `json:"showSnippetsInControlPanel" yaml:"showSnippetsInControlPanel"`
@@ -137,6 +139,47 @@ type HostSecretValue struct {
 	Field  string `json:"field" yaml:"field"`
 	Value  string `json:"value" yaml:"value"`
 	Found  bool   `json:"found" yaml:"found"`
+}
+
+// KeychainKey 為集中管理的 SSH 金鑰中繼資料；私鑰內容存於 OS Credential Store，不會出現在此結構。
+type KeychainKey struct {
+	ID            string `json:"id" yaml:"id"`
+	Label         string `json:"label" yaml:"label"`
+	Type          string `json:"type" yaml:"type"` // "ed25519" | "ecdsa" | "rsa"
+	Bits          int    `json:"bits" yaml:"bits"` // ecdsa 曲線位元或 rsa 金鑰長度；ed25519 為 0
+	PublicKey     string `json:"publicKey" yaml:"publicKey"`
+	Fingerprint   string `json:"fingerprint" yaml:"fingerprint"`
+	Comment       string `json:"comment" yaml:"comment"`
+	HasPassphrase bool   `json:"hasPassphrase" yaml:"hasPassphrase"`
+	PrivateKeyRef string `json:"privateKeyRef" yaml:"privateKeyRef"`
+	CreatedAt     string `json:"createdAt" yaml:"createdAt"`
+	UpdatedAt     string `json:"updatedAt" yaml:"updatedAt"`
+}
+
+type GenerateKeychainKeyRequest struct {
+	Label      string `json:"label" yaml:"label"`
+	Type       string `json:"type" yaml:"type"`
+	Bits       int    `json:"bits" yaml:"bits"`
+	Comment    string `json:"comment" yaml:"comment"`
+	Passphrase string `json:"passphrase" yaml:"passphrase"`
+}
+
+type ImportKeychainKeyRequest struct {
+	Label      string `json:"label" yaml:"label"`
+	PrivateKey string `json:"privateKey" yaml:"privateKey"`
+	Comment    string `json:"comment" yaml:"comment"`
+	Passphrase string `json:"passphrase" yaml:"passphrase"` // 用於解開受保護的匯入私鑰
+}
+
+type ExportKeychainKeyRequest struct {
+	ID             string `json:"id" yaml:"id"`
+	IncludePrivate bool   `json:"includePrivate" yaml:"includePrivate"` // true 時回傳私鑰內容（維持其加密狀態）
+}
+
+type ExportedKeychainKey struct {
+	Label      string `json:"label" yaml:"label"`
+	PublicKey  string `json:"publicKey" yaml:"publicKey"`
+	PrivateKey string `json:"privateKey" yaml:"privateKey"`
 }
 
 type AppSettings map[string]json.RawMessage
@@ -699,6 +742,7 @@ type HostExportConfig struct {
 	Username                   string                `json:"username" yaml:"username"`
 	AuthMode                   string                `json:"authMode" yaml:"authMode"`
 	PrivateKeyPath             string                `json:"privateKeyPath" yaml:"privateKeyPath"`
+	KeychainKeyID              string                `json:"keychainKeyId,omitempty" yaml:"keychainKeyId,omitempty"`
 	CertPath                   string                `json:"certPath" yaml:"certPath"`
 	Secret                     *HostExportSecret     `json:"secret,omitempty" yaml:"secret,omitempty"`
 	ShowSnippetsInControlPanel bool                  `json:"showSnippetsInControlPanel,omitempty" yaml:"showSnippetsInControlPanel,omitempty"`

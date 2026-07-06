@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jie0214/TermiX/backend/common"
+	"github.com/jie0214/TermiX/backend/keychain"
 	"github.com/jie0214/TermiX/backend/secrets"
 	"github.com/jie0214/TermiX/backend/storage"
 	"github.com/jie0214/TermiX/shared/constants"
@@ -23,24 +24,27 @@ var log = common.DomainLogger("hostvault")
 type Service struct {
 	repo                   *storage.Repository
 	secrets                secrets.SecretStore
+	keychain               *keychain.Service
 	now                    func() time.Time
 	ec2ClientBuilder       func(cfg aws.Config) ec2DescribeInstancesAPI
 	lightsailClientBuilder func(cfg aws.Config) lightsailGetInstancesAPI
 }
 
-func NewService(repo *storage.Repository, secretStore secrets.SecretStore) *Service {
+func NewService(repo *storage.Repository, secretStore secrets.SecretStore, keychainSvc *keychain.Service) *Service {
 	return &Service{
-		repo:    repo,
-		secrets: secretStore,
-		now:     time.Now,
+		repo:     repo,
+		secrets:  secretStore,
+		keychain: keychainSvc,
+		now:      time.Now,
 	}
 }
 
 func newServiceForTest(repo *storage.Repository, secretStore secrets.SecretStore, now func() time.Time) *Service {
 	return &Service{
-		repo:    repo,
-		secrets: secretStore,
-		now:     now,
+		repo:     repo,
+		secrets:  secretStore,
+		keychain: keychain.NewService(repo, secretStore),
+		now:      now,
 	}
 }
 
@@ -286,6 +290,13 @@ func (s *Service) ResolveRuntimeConfig(ctx context.Context, request dto.HostConn
 		if found {
 			config.Password = passphrase
 		}
+		if keyID := strings.TrimSpace(host.Config.KeychainKeyID); keyID != "" {
+			pem, err := s.keychain.GetPrivateKeyPEM(ctx, keyID)
+			if err != nil {
+				return dto.SSHConfig{}, fmt.Errorf("載入 Keychain 金鑰失敗：%w", err)
+			}
+			config.PrivateKeyData = pem
+		}
 	}
 
 	sudoPassword, found, err := s.optionalSecret(ctx, host.Config.SecretRefs.SudoPasswordRef)
@@ -309,6 +320,7 @@ func (s *Service) normalizeHost(input dto.HostProfile, existing dto.HostProfile,
 	host.Config.Username = strings.TrimSpace(host.Config.Username)
 	host.Config.AuthMode = strings.TrimSpace(host.Config.AuthMode)
 	host.Config.PrivateKeyPath = strings.TrimSpace(host.Config.PrivateKeyPath)
+	host.Config.KeychainKeyID = strings.TrimSpace(host.Config.KeychainKeyID)
 	host.Config.CertPath = strings.TrimSpace(host.Config.CertPath)
 	host.Config.StartupCommandMode = strings.TrimSpace(host.Config.StartupCommandMode)
 	host.Config.StartupCommandText = strings.TrimSpace(host.Config.StartupCommandText)

@@ -7,6 +7,7 @@ import (
 	termixapp "github.com/jie0214/TermiX/backend/app"
 	"github.com/jie0214/TermiX/backend/controlpanel"
 	"github.com/jie0214/TermiX/backend/hostvault"
+	"github.com/jie0214/TermiX/backend/keychain"
 	"github.com/jie0214/TermiX/backend/knownhosts"
 	"github.com/jie0214/TermiX/backend/kubernetes"
 	"github.com/jie0214/TermiX/backend/secrets"
@@ -69,8 +70,10 @@ func TestIntegrationSSHInteract(t *testing.T) {
 		t.Fatalf("OpenDatabase 失敗：%v", err)
 	}
 	repo := storage.NewRepository(db)
-	hostVaultSvc := hostvault.NewService(repo, secrets.NewMemoryStore())
-	app := termixapp.NewApp(termMgr, ctrlPanel, connector, snippets.NewService(termMgr), hostVaultSvc, kubernetes.NewService(repo))
+	secretStore := secrets.NewMemoryStore()
+	keychainSvc := keychain.NewService(repo, secretStore)
+	hostVaultSvc := hostvault.NewService(repo, secretStore, keychainSvc)
+	app := termixapp.NewApp(termMgr, ctrlPanel, connector, snippets.NewService(termMgr), hostVaultSvc, kubernetes.NewService(repo), keychainSvc)
 	testRes := app.TestConnection(sshConfig)
 	if !testRes.Success {
 		t.Fatalf("TestConnection 失敗：%s, Output: %s", testRes.Error, testRes.Output)
@@ -231,8 +234,10 @@ func TestIntegrationSSHSudoConnect(t *testing.T) {
 		t.Fatalf("OpenDatabase 失敗：%v", err)
 	}
 	repo := storage.NewRepository(db)
-	hostVaultSvc := hostvault.NewService(repo, secrets.NewMemoryStore())
-	app := termixapp.NewApp(termMgr, ctrlPanel, connector, snippets.NewService(termMgr), hostVaultSvc, kubernetes.NewService(repo))
+	secretStore := secrets.NewMemoryStore()
+	keychainSvc := keychain.NewService(repo, secretStore)
+	hostVaultSvc := hostvault.NewService(repo, secretStore, keychainSvc)
+	app := termixapp.NewApp(termMgr, ctrlPanel, connector, snippets.NewService(termMgr), hostVaultSvc, kubernetes.NewService(repo), keychainSvc)
 
 	connRes := app.ConnectTerminal(sshConfig)
 	if !connRes.Success {

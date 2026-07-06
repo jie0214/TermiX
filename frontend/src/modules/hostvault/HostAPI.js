@@ -115,6 +115,11 @@ export const HostAPI = {
     return callApp(['GetHostSecretValue'], { hostId, field });
   },
 
+  async listKnownHosts() {
+    const raw = await callApp(['ListKnownHosts']);
+    return Array.isArray(raw) ? raw : [];
+  },
+
   removeKnownHost(host, port = 22) {
     return callApp(['RemoveKnownHost'], host, port);
   },

@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/jie0214/TermiX/backend/controlpanel"
 	"github.com/jie0214/TermiX/backend/hostvault"
+	"github.com/jie0214/TermiX/backend/keychain"
 	"github.com/jie0214/TermiX/backend/kubernetes"
 	"github.com/jie0214/TermiX/backend/snippets"
 	termixssh "github.com/jie0214/TermiX/backend/ssh"
@@ -24,6 +25,7 @@ type App struct {
 	snippets     *snippets.Service
 	hostVault    *hostvault.Service
 	kubernetes   *kubernetes.Service
+	keychain     *keychain.Service
 }
 
 type SSHConfig = dto.SSHConfig
@@ -50,6 +52,12 @@ type HostImportOptions = dto.HostImportOptions
 type HostImportResult = dto.HostImportResult
 type HostConnectionRequest = dto.HostConnectionRequest
 type AppSettings = dto.AppSettings
+
+type KeychainKey = dto.KeychainKey
+type GenerateKeychainKeyRequest = dto.GenerateKeychainKeyRequest
+type ImportKeychainKeyRequest = dto.ImportKeychainKeyRequest
+type ExportKeychainKeyRequest = dto.ExportKeychainKeyRequest
+type ExportedKeychainKey = dto.ExportedKeychainKey
 
 type AWSIntegration = dto.AWSIntegration
 type AWSIntegrationSecretsInput = dto.AWSIntegrationSecretsInput

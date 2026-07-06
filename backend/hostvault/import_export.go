@@ -37,6 +37,7 @@ type importHostConfig struct {
 	AuthMode                   string                    `json:"authMode" yaml:"authMode"`
 	Password                   string                    `json:"password" yaml:"password"`
 	PrivateKeyPath             string                    `json:"privateKeyPath" yaml:"privateKeyPath"`
+	KeychainKeyID              string                    `json:"keychainKeyId" yaml:"keychainKeyId"`
 	CertPath                   string                    `json:"certPath" yaml:"certPath"`
 	SudoPassword               string                    `json:"sudoPassword" yaml:"sudoPassword"`
 	SecretRefs                 dto.HostSecretRefs        `json:"secretRefs" yaml:"secretRefs"`
@@ -85,6 +86,7 @@ func (s *Service) Export(ctx context.Context, options dto.HostExportOptions) (st
 				Username:                   host.Config.Username,
 				AuthMode:                   host.Config.AuthMode,
 				PrivateKeyPath:             host.Config.PrivateKeyPath,
+				KeychainKeyID:              host.Config.KeychainKeyID,
 				CertPath:                   host.Config.CertPath,
 				ShowSnippetsInControlPanel: host.Config.ShowSnippetsInControlPanel,
 				StartupSnippetIDs:          host.Config.StartupSnippetIDs,
@@ -210,6 +212,7 @@ func (s *Service) Import(ctx context.Context, payload string, options dto.HostIm
 				Username:                   imported.Config.Username,
 				AuthMode:                   imported.Config.AuthMode,
 				PrivateKeyPath:             imported.Config.PrivateKeyPath,
+				KeychainKeyID:              imported.Config.KeychainKeyID,
 				CertPath:                   imported.Config.CertPath,
 				SecretRefs:                 secretRefs,
 				ShowSnippetsInControlPanel: imported.Config.ShowSnippetsInControlPanel,

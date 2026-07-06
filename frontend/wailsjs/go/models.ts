@@ -156,6 +156,7 @@ export namespace dto {
 	    authMode: string;
 	    password: string;
 	    privateKeyPath: string;
+	    privateKeyData: string;
 	    certPath: string;
 	    sudoPassword: string;
 	    sessionId: string;
@@ -174,6 +175,7 @@ export namespace dto {
 	        this.authMode = source["authMode"];
 	        this.password = source["password"];
 	        this.privateKeyPath = source["privateKeyPath"];
+	        this.privateKeyData = source["privateKeyData"];
 	        this.certPath = source["certPath"];
 	        this.sudoPassword = source["sudoPassword"];
 	        this.sessionId = source["sessionId"];
@@ -242,6 +244,40 @@ export namespace dto {
 		    }
 		    return a;
 		}
+	}
+	export class ExportKeychainKeyRequest {
+	    id: string;
+	    includePrivate: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ExportKeychainKeyRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.includePrivate = source["includePrivate"];
+	    }
+	}
+	export class GenerateKeychainKeyRequest {
+	    label: string;
+	    type: string;
+	    bits: number;
+	    comment: string;
+	    passphrase: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GenerateKeychainKeyRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.label = source["label"];
+	        this.type = source["type"];
+	        this.bits = source["bits"];
+	        this.comment = source["comment"];
+	        this.passphrase = source["passphrase"];
+	    }
 	}
 	export class HostConnectionRequest {
 	    hostId: string;
@@ -343,6 +379,7 @@ export namespace dto {
 	    username: string;
 	    authMode: string;
 	    privateKeyPath: string;
+	    keychainKeyId: string;
 	    certPath: string;
 	    secretRefs: HostSecretRefs;
 	    showSnippetsInControlPanel: boolean;
@@ -364,6 +401,7 @@ export namespace dto {
 	        this.username = source["username"];
 	        this.authMode = source["authMode"];
 	        this.privateKeyPath = source["privateKeyPath"];
+	        this.keychainKeyId = source["keychainKeyId"];
 	        this.certPath = source["certPath"];
 	        this.secretRefs = this.convertValues(source["secretRefs"], HostSecretRefs);
 	        this.showSnippetsInControlPanel = source["showSnippetsInControlPanel"];
@@ -531,6 +569,24 @@ export namespace dto {
 		    }
 		    return a;
 		}
+	}
+	export class ImportKeychainKeyRequest {
+	    label: string;
+	    privateKey: string;
+	    comment: string;
+	    passphrase: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ImportKeychainKeyRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.label = source["label"];
+	        this.privateKey = source["privateKey"];
+	        this.comment = source["comment"];
+	        this.passphrase = source["passphrase"];
+	    }
 	}
 	export class KubernetesClusterProfile {
 	    id: string;

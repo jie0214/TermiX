@@ -35,6 +35,7 @@ export const DEFAULT_HOST_CONFIG = {
   username: 'user',
   authMode: 'password',
   privateKeyPath: '',
+  keychainKeyId: '',
   certPath: '',
   customComponents: [],
   showSnippetsInControlPanel: true,

@@ -66,6 +66,10 @@ export function DeleteHostGroup(arg1) {
   return window['go']['app']['App']['DeleteHostGroup'](arg1);
 }
 
+export function DeleteKeychainKey(arg1) {
+  return window['go']['app']['App']['DeleteKeychainKey'](arg1);
+}
+
 export function DeleteKubernetesCluster(arg1) {
   return window['go']['app']['App']['DeleteKubernetesCluster'](arg1);
 }
@@ -112,6 +116,14 @@ export function ExecuteTerminalCommand(arg1) {
 
 export function ExportHostsBackup(arg1) {
   return window['go']['app']['App']['ExportHostsBackup'](arg1);
+}
+
+export function ExportKeychainKey(arg1) {
+  return window['go']['app']['App']['ExportKeychainKey'](arg1);
+}
+
+export function GenerateKeychainKey(arg1) {
+  return window['go']['app']['App']['GenerateKeychainKey'](arg1);
 }
 
 export function GetAWSIntegration(arg1) {
@@ -162,6 +174,10 @@ export function ImportHostsBackup(arg1, arg2) {
   return window['go']['app']['App']['ImportHostsBackup'](arg1, arg2);
 }
 
+export function ImportKeychainKey(arg1) {
+  return window['go']['app']['App']['ImportKeychainKey'](arg1);
+}
+
 export function ListAWSIntegrations() {
   return window['go']['app']['App']['ListAWSIntegrations']();
 }
@@ -176,6 +192,14 @@ export function ListHostVault() {
 
 export function ListHosts() {
   return window['go']['app']['App']['ListHosts']();
+}
+
+export function ListKeychainKeys() {
+  return window['go']['app']['App']['ListKeychainKeys']();
+}
+
+export function ListKnownHosts() {
+  return window['go']['app']['App']['ListKnownHosts']();
 }
 
 export function ListKubernetesClusters() {

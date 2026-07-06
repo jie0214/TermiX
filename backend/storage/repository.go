@@ -84,6 +84,7 @@ func (r *Repository) ListHosts(ctx context.Context) ([]dto.HostProfile, error) {
 		username,
 		auth_mode,
 		private_key_path,
+		keychain_key_id,
 		cert_path,
 		ssh_password_ref,
 		key_passphrase_ref,
@@ -130,6 +131,7 @@ func (r *Repository) GetHost(ctx context.Context, id string) (dto.HostProfile, e
 		username,
 		auth_mode,
 		private_key_path,
+		keychain_key_id,
 		cert_path,
 		ssh_password_ref,
 		key_passphrase_ref,
@@ -177,6 +179,7 @@ func (r *Repository) SaveHost(ctx context.Context, host dto.HostProfile) error {
 		username,
 		auth_mode,
 		private_key_path,
+		keychain_key_id,
 		cert_path,
 		ssh_password_ref,
 		key_passphrase_ref,
@@ -190,7 +193,7 @@ func (r *Repository) SaveHost(ctx context.Context, host dto.HostProfile) error {
 		custom_query_script,
 		created_at,
 		updated_at
-	) VALUES (?, ?, ?, NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	) VALUES (?, ?, ?, NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(id) DO UPDATE SET
 		label = excluded.label,
 		alias = excluded.alias,
@@ -201,6 +204,7 @@ func (r *Repository) SaveHost(ctx context.Context, host dto.HostProfile) error {
 		username = excluded.username,
 		auth_mode = excluded.auth_mode,
 		private_key_path = excluded.private_key_path,
+		keychain_key_id = excluded.keychain_key_id,
 		cert_path = excluded.cert_path,
 		ssh_password_ref = excluded.ssh_password_ref,
 		key_passphrase_ref = excluded.key_passphrase_ref,
@@ -223,6 +227,7 @@ func (r *Repository) SaveHost(ctx context.Context, host dto.HostProfile) error {
 		host.Config.Username,
 		host.Config.AuthMode,
 		host.Config.PrivateKeyPath,
+		host.Config.KeychainKeyID,
 		host.Config.CertPath,
 		host.Config.SecretRefs.SSHPasswordRef,
 		host.Config.SecretRefs.KeyPassphraseRef,
@@ -417,6 +422,7 @@ func scanHost(scanner interface {
 		&host.Config.Username,
 		&host.Config.AuthMode,
 		&host.Config.PrivateKeyPath,
+		&host.Config.KeychainKeyID,
 		&host.Config.CertPath,
 		&host.Config.SecretRefs.SSHPasswordRef,
 		&host.Config.SecretRefs.KeyPassphraseRef,
@@ -471,9 +477,95 @@ func boolToInt(value bool) int {
 }
 
 var (
-	ErrHostNotFound  = errors.New("host 不存在")
-	ErrGroupNotFound = errors.New("host group 不存在")
+	ErrHostNotFound        = errors.New("host 不存在")
+	ErrGroupNotFound       = errors.New("host group 不存在")
+	ErrKeychainKeyNotFound = errors.New("keychain 金鑰不存在")
 )
+
+func (r *Repository) ListKeychainKeys(ctx context.Context) ([]dto.KeychainKey, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT id, label, type, bits, public_key, fingerprint,
+		comment, has_passphrase, private_key_ref, created_at, updated_at
+		FROM keychain_keys ORDER BY created_at ASC, id ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("查詢 keychain_keys 失敗：%w", err)
+	}
+	defer rows.Close()
+
+	keys := make([]dto.KeychainKey, 0)
+	for rows.Next() {
+		key, scanErr := scanKeychainKey(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		keys = append(keys, key)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("讀取 keychain_keys 失敗：%w", err)
+	}
+	return keys, nil
+}
+
+func (r *Repository) GetKeychainKey(ctx context.Context, id string) (dto.KeychainKey, error) {
+	row := r.db.QueryRowContext(ctx, `SELECT id, label, type, bits, public_key, fingerprint,
+		comment, has_passphrase, private_key_ref, created_at, updated_at
+		FROM keychain_keys WHERE id = ?`, strings.TrimSpace(id))
+	key, err := scanKeychainKey(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return dto.KeychainKey{}, ErrKeychainKeyNotFound
+	}
+	if err != nil {
+		return dto.KeychainKey{}, err
+	}
+	return key, nil
+}
+
+func (r *Repository) SaveKeychainKey(ctx context.Context, key dto.KeychainKey) error {
+	_, err := r.db.ExecContext(ctx, `INSERT INTO keychain_keys (
+		id, label, type, bits, public_key, fingerprint, comment,
+		has_passphrase, private_key_ref, created_at, updated_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	ON CONFLICT(id) DO UPDATE SET label=excluded.label, type=excluded.type, bits=excluded.bits,
+		public_key=excluded.public_key, fingerprint=excluded.fingerprint, comment=excluded.comment,
+		has_passphrase=excluded.has_passphrase, private_key_ref=excluded.private_key_ref,
+		updated_at=excluded.updated_at`,
+		key.ID, key.Label, key.Type, key.Bits, key.PublicKey, key.Fingerprint, key.Comment,
+		boolToInt(key.HasPassphrase), key.PrivateKeyRef, key.CreatedAt, key.UpdatedAt)
+	if err != nil {
+		return fmt.Errorf("儲存 keychain 金鑰中繼資料失敗：%w", err)
+	}
+	return nil
+}
+
+func (r *Repository) DeleteKeychainKey(ctx context.Context, id string) error {
+	result, err := r.db.ExecContext(ctx, `DELETE FROM keychain_keys WHERE id = ?`, strings.TrimSpace(id))
+	if err != nil {
+		return fmt.Errorf("刪除 keychain 金鑰失敗：%w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("取得 keychain 金鑰刪除結果失敗：%w", err)
+	}
+	if affected == 0 {
+		return ErrKeychainKeyNotFound
+	}
+	return nil
+}
+
+type rowScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanKeychainKey(scanner rowScanner) (dto.KeychainKey, error) {
+	var key dto.KeychainKey
+	var hasPassphrase int
+	if err := scanner.Scan(&key.ID, &key.Label, &key.Type, &key.Bits, &key.PublicKey,
+		&key.Fingerprint, &key.Comment, &hasPassphrase, &key.PrivateKeyRef,
+		&key.CreatedAt, &key.UpdatedAt); err != nil {
+		return dto.KeychainKey{}, err
+	}
+	key.HasPassphrase = hasPassphrase != 0
+	return key, nil
+}
 
 func (r *Repository) GroupExists(ctx context.Context, id string) (bool, error) {
 	id = strings.TrimSpace(id)

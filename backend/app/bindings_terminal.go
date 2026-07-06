@@ -25,6 +25,14 @@ func (a *App) StartLocalTerminal(shellPath string) OperationResult {
 	return a.terminal.StartLocal(shellPath)
 }
 
+func (a *App) ListKnownHosts() OperationResult {
+	entries, err := a.sshConnector.ListKnownHosts()
+	if err != nil {
+		return failure(err)
+	}
+	return successJSON(entries)
+}
+
 func (a *App) RemoveKnownHost(host string, port int) OperationResult {
 	err := a.sshConnector.RemoveKnownHost(host, port)
 	if err != nil {

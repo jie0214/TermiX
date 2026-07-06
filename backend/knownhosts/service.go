@@ -2,6 +2,7 @@ package knownhosts
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -153,6 +154,57 @@ func (v *Validator) Trust(hostname string) error {
 	v.mu.Unlock()
 
 	return nil
+}
+
+// KnownHostEntry 代表 known_hosts 檔案中的一筆已信任主機記錄，供前端列表顯示。
+type KnownHostEntry struct {
+	Host        string `json:"host"`
+	Type        string `json:"type"`
+	Fingerprint string `json:"fingerprint"`
+}
+
+// ListKnownHosts 讀取 ~/.ssh/known_hosts 並回傳所有已信任的主機指紋。
+// 檔案不存在時回傳空陣列；標記為 revoked 的條目會被略過。
+func (v *Validator) ListKnownHosts() ([]KnownHostEntry, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("無法取得使用者家目錄：%w", err)
+	}
+	path := filepath.Join(home, ".ssh", "known_hosts")
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []KnownHostEntry{}, nil
+		}
+		return nil, fmt.Errorf("讀取 known_hosts 失敗：%w", err)
+	}
+
+	entries := make([]KnownHostEntry, 0)
+	rest := data
+	for len(rest) > 0 {
+		marker, hosts, pubKey, _, remaining, perr := ssh.ParseKnownHosts(rest)
+		if perr == io.EOF {
+			break
+		}
+		if perr != nil {
+			return nil, fmt.Errorf("解析 known_hosts 失敗：%w", perr)
+		}
+		rest = remaining
+		// 略過已撤銷的條目，僅列出仍受信任的主機。
+		if marker == "revoked" {
+			continue
+		}
+		fingerprint := ssh.FingerprintSHA256(pubKey)
+		for _, host := range hosts {
+			entries = append(entries, KnownHostEntry{
+				Host:        host,
+				Type:        pubKey.Type(),
+				Fingerprint: fingerprint,
+			})
+		}
+	}
+	return entries, nil
 }
 
 // RemoveHost 透過 ssh-keygen 撤銷對指定主機指紋的信任，支援帶 port 的條目清除
