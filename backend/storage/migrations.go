@@ -10,6 +10,7 @@ func runMigrations(db *sql.DB) error {
 		`CREATE TABLE IF NOT EXISTS host_groups (
 			id TEXT PRIMARY KEY,
 			name TEXT NOT NULL,
+			parent_id TEXT REFERENCES host_groups(id) ON DELETE SET NULL,
 			order_index INTEGER NOT NULL DEFAULT 0,
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL
@@ -65,6 +66,27 @@ func runMigrations(db *sql.DB) error {
 		);`,
 		`CREATE TABLE IF NOT EXISTS deleted_aws_instances (
 			aws_instance_id TEXT PRIMARY KEY,
+			group_id TEXT NOT NULL REFERENCES host_groups(id) ON DELETE CASCADE,
+			deleted_at TEXT NOT NULL
+		);`,
+		`CREATE TABLE IF NOT EXISTS gcp_integrations (
+			group_id TEXT PRIMARY KEY REFERENCES host_groups(id) ON DELETE CASCADE,
+			name TEXT NOT NULL DEFAULT '',
+			project_id TEXT NOT NULL,
+			service_account_json_ref TEXT NOT NULL,
+			default_password_ref TEXT NOT NULL DEFAULT '',
+			ip_address_type TEXT NOT NULL,
+			default_port INTEGER NOT NULL DEFAULT 22,
+			default_username TEXT NOT NULL,
+			auth_mode TEXT NOT NULL,
+			private_key_path TEXT NOT NULL DEFAULT '',
+			cert_path TEXT NOT NULL DEFAULT '',
+			last_sync_at TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		);`,
+		`CREATE TABLE IF NOT EXISTS deleted_gcp_instances (
+			gcp_instance_id TEXT PRIMARY KEY,
 			group_id TEXT NOT NULL REFERENCES host_groups(id) ON DELETE CASCADE,
 			deleted_at TEXT NOT NULL
 		);`,
@@ -143,6 +165,14 @@ func runMigrations(db *sql.DB) error {
 	}
 
 	if err := ensureColumn(db, "hosts", "keychain_key_id", "ALTER TABLE hosts ADD COLUMN keychain_key_id TEXT NOT NULL DEFAULT '';"); err != nil {
+		return err
+	}
+
+	if err := ensureColumn(db, "hosts", "gcp_instance_id", "ALTER TABLE hosts ADD COLUMN gcp_instance_id TEXT DEFAULT '';"); err != nil {
+		return err
+	}
+
+	if err := ensureColumn(db, "host_groups", "parent_id", "ALTER TABLE host_groups ADD COLUMN parent_id TEXT REFERENCES host_groups(id) ON DELETE SET NULL;"); err != nil {
 		return err
 	}
 

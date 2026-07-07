@@ -1,6 +1,8 @@
 import type {
   AWSIntegration,
   AWSIntegrationSecretsInput,
+  GCPIntegration,
+  GCPIntegrationSecretsInput,
   AppSettings,
   AutocompleteResult,
   HostConnectionRequest,
@@ -114,6 +116,16 @@ export interface WailsAppContract {
   ): Promise<OperationResult>;
   DeleteAWSIntegration(groupId: string): Promise<OperationResult>;
   SyncAWS(groupId: string): Promise<OperationResult>;
+
+  ListGCPIntegrations(): Promise<OperationResult>;
+  GetGCPIntegration(groupId: string): Promise<OperationResult>;
+  SaveGCPIntegration(
+    integration: GCPIntegration,
+    secrets: GCPIntegrationSecretsInput,
+    previousGroupId: string,
+  ): Promise<OperationResult>;
+  DeleteGCPIntegration(groupId: string): Promise<OperationResult>;
+  SyncGCP(groupId: string): Promise<OperationResult>;
 
   ListKubernetesClusters(): Promise<KubernetesClusterProfile[]>;
   SaveKubernetesCluster(

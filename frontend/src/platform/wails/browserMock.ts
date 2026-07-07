@@ -134,6 +134,12 @@ function createAppMock(): WailsAppBindings {
       operationResult(true, JSON.stringify(integration)),
     DeleteAWSIntegration: async () => operationResult(true),
     SyncAWS: async () => operationResult(true),
+    ListGCPIntegrations: async () => operationResult(true, '[]'),
+    GetGCPIntegration: async () => operationFailure(),
+    SaveGCPIntegration: async (integration) =>
+      operationResult(true, JSON.stringify(integration)),
+    DeleteGCPIntegration: async () => operationResult(true),
+    SyncGCP: async () => operationResult(true),
     CheckForUpdate: async () => ({
       currentVersion: 'dev',
       latestVersion: '',

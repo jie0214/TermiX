@@ -58,6 +58,10 @@ export function DeleteAWSIntegration(arg1) {
   return window['go']['app']['App']['DeleteAWSIntegration'](arg1);
 }
 
+export function DeleteGCPIntegration(arg1) {
+  return window['go']['app']['App']['DeleteGCPIntegration'](arg1);
+}
+
 export function DeleteHost(arg1) {
   return window['go']['app']['App']['DeleteHost'](arg1);
 }
@@ -142,6 +146,10 @@ export function GetAutocompleteSuggestions(arg1, arg2) {
   return window['go']['app']['App']['GetAutocompleteSuggestions'](arg1, arg2);
 }
 
+export function GetGCPIntegration(arg1) {
+  return window['go']['app']['App']['GetGCPIntegration'](arg1);
+}
+
 export function GetHost(arg1) {
   return window['go']['app']['App']['GetHost'](arg1);
 }
@@ -180,6 +188,10 @@ export function ImportKeychainKey(arg1) {
 
 export function ListAWSIntegrations() {
   return window['go']['app']['App']['ListAWSIntegrations']();
+}
+
+export function ListGCPIntegrations() {
+  return window['go']['app']['App']['ListGCPIntegrations']();
 }
 
 export function ListHostGroups() {
@@ -246,6 +258,10 @@ export function SaveBackupFile(arg1, arg2, arg3) {
   return window['go']['app']['App']['SaveBackupFile'](arg1, arg2, arg3);
 }
 
+export function SaveGCPIntegration(arg1, arg2, arg3) {
+  return window['go']['app']['App']['SaveGCPIntegration'](arg1, arg2, arg3);
+}
+
 export function SaveHost(arg1, arg2) {
   return window['go']['app']['App']['SaveHost'](arg1, arg2);
 }
@@ -296,6 +312,10 @@ export function SwitchKubernetesContext(arg1) {
 
 export function SyncAWS(arg1) {
   return window['go']['app']['App']['SyncAWS'](arg1);
+}
+
+export function SyncGCP(arg1) {
+  return window['go']['app']['App']['SyncGCP'](arg1);
 }
 
 export function TestConnection(arg1) {

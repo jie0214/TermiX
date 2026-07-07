@@ -2,6 +2,8 @@ export type { DownloadResult, OperationPayload, OperationResult, UpdateInfo } fr
 export type {
   AWSIntegration,
   AWSIntegrationSecretsInput,
+  GCPIntegration,
+  GCPIntegrationSecretsInput,
   HostAuthMode,
   HostConnectionRequest,
   HostCustomComponent,

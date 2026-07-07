@@ -62,6 +62,10 @@ export class TerminalPage extends HTMLElement {
     this.unsubscribe = null;
     this.unsubscribeTheme = null;
     this.resizeObserver = null;
+    // ResizeObserver 回呼去抖用的 rAF id；避免在回呼內同步 resize 造成的觀察迴圈。
+    this._resizeRaf = null;
+    // 目前被 ResizeObserver 觀察的 pane 容器；每次重繪容器會重建，於此汰換舊參照避免累積。
+    this._observedContainers = new Set();
     // 追蹤所有以 setManagedTimeout 建立的計時器 id，卸載時統一清除，
     // 避免元件快速卸載/重繪後回呼仍操作已 dispose() 的 xterm 實例。
     this.pendingTimers = new Set();
@@ -163,17 +167,46 @@ export class TerminalPage extends HTMLElement {
       }
     });
 
-    // 監聽視窗 resize，自動調整 xterm 尺寸
+    // 監聽尺寸變化，自動調整 xterm 尺寸。
+    // 以 requestAnimationFrame 去抖：
+    //   1. 將 term.resize() 移出 ResizeObserver 回呼的同步階段，打斷「resize→layout→再次觸發觀察」
+    //      的迴圈（WebKit 下此迴圈可能導致最後一次通知未送達，讓 cols 停在動畫中途的偏大值）。
+    //   2. 於版面安定的一幀才量測，避免讀到過渡動畫進行中的中途尺寸。
     this.resizeObserver = new ResizeObserver(() => {
-      this.resizeAllXterms();
+      if (this._resizeRaf) return;
+      this._resizeRaf = requestAnimationFrame(() => {
+        this._resizeRaf = null;
+        this.resizeAllXterms();
+      });
     });
     this.resizeObserver.observe(this);
+    // 首次掛載時 observer 於 initPanesXterm 之後才建立，於此補登記當前既有的 pane 容器。
+    this.observePaneContainers();
+  }
+
+  /**
+   * 讓 ResizeObserver 觀察當前所有 pane 容器，並汰換上一輪重繪留下的舊容器參照。
+   * 合併視窗等操作只改變內部 pane 幾何、整頁外框不變，僅觀察 this 不會觸發；
+   * 觀察各容器可在任何 pane 尺寸變動時（於版面安定尺寸下）重算行列。
+   */
+  observePaneContainers() {
+    if (!this.resizeObserver) return;
+    this._observedContainers.forEach((el) => this.resizeObserver.unobserve(el));
+    this._observedContainers.clear();
+    this.querySelectorAll('.xterm-pane-container').forEach((container) => {
+      this.resizeObserver.observe(container);
+      this._observedContainers.add(container);
+    });
   }
 
   disconnectedCallback() {
     if (this.unsubscribe) this.unsubscribe();
     if (this.unsubscribeTheme) this.unsubscribeTheme();
     if (this.resizeObserver) this.resizeObserver.disconnect();
+    if (this._resizeRaf) {
+      cancelAnimationFrame(this._resizeRaf);
+      this._resizeRaf = null;
+    }
     // 清除所有尚未觸發的延遲回呼，避免操作已 dispose() 的 xterm 實例。
     this.pendingTimers.forEach((id) => clearTimeout(id));
     this.pendingTimers.clear();
@@ -709,6 +742,9 @@ export class TerminalPage extends HTMLElement {
         }
       }, 50);
     });
+
+    // 每次重繪後容器 DOM 皆重建，重新登記觀察對象（並汰換舊參照）。
+    this.observePaneContainers();
   }
 
   applyTextareaDefense(container) {

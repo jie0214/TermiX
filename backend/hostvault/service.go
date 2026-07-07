@@ -22,12 +22,13 @@ import (
 var log = common.DomainLogger("hostvault")
 
 type Service struct {
-	repo                   *storage.Repository
-	secrets                secrets.SecretStore
-	keychain               *keychain.Service
-	now                    func() time.Time
-	ec2ClientBuilder       func(cfg aws.Config) ec2DescribeInstancesAPI
-	lightsailClientBuilder func(cfg aws.Config) lightsailGetInstancesAPI
+	repo                    *storage.Repository
+	secrets                 secrets.SecretStore
+	keychain                *keychain.Service
+	now                     func() time.Time
+	ec2ClientBuilder        func(cfg aws.Config) ec2DescribeInstancesAPI
+	lightsailClientBuilder  func(cfg aws.Config) lightsailGetInstancesAPI
+	gcpComputeClientBuilder func(ctx context.Context, serviceAccountJSON string) (gcpComputeInstancesAPI, error)
 }
 
 func NewService(repo *storage.Repository, secretStore secrets.SecretStore, keychainSvc *keychain.Service) *Service {
@@ -106,6 +107,11 @@ func (s *Service) DeleteHost(ctx context.Context, hostID string) error {
 			log.WithError(err).Warnf("將已刪除之 AWS 實例記錄寫入排除表失敗：%s", host.AWSInstanceID)
 		}
 	}
+	if host.GCPInstanceID != "" {
+		if err := s.repo.AddDeletedGCPInstance(ctx, host.GCPInstanceID, host.GroupID); err != nil {
+			log.WithError(err).Warnf("將已刪除之 GCP 實例記錄寫入排除表失敗：%s", host.GCPInstanceID)
+		}
+	}
 	if err := s.repo.DeleteHost(ctx, hostID); err != nil {
 		return err
 	}
@@ -148,6 +154,28 @@ func (s *Service) SaveGroup(ctx context.Context, group dto.HostGroup) (dto.HostG
 	if err != nil {
 		return dto.HostGroup{}, err
 	}
+
+	// 巢狀目錄防呆：父目錄需存在，且不可指向自己或自身的子孫（避免循環）。
+	if normalized.ParentID != "" {
+		if normalized.ParentID == normalized.ID {
+			return dto.HostGroup{}, errors.New("目錄不可設為自己的父目錄")
+		}
+		exists, err := s.repo.GroupExists(ctx, normalized.ParentID)
+		if err != nil {
+			return dto.HostGroup{}, err
+		}
+		if !exists {
+			return dto.HostGroup{}, fmt.Errorf("父目錄不存在：%s", normalized.ParentID)
+		}
+		groups, err := s.repo.ListGroups(ctx)
+		if err != nil {
+			return dto.HostGroup{}, err
+		}
+		if isDescendantGroup(groups, normalized.ParentID, normalized.ID) {
+			return dto.HostGroup{}, errors.New("不可將目錄移動到其子目錄底下")
+		}
+	}
+
 	if err := s.repo.SaveGroup(ctx, normalized); err != nil {
 		return dto.HostGroup{}, err
 	}
@@ -156,11 +184,65 @@ func (s *Service) SaveGroup(ctx context.Context, group dto.HostGroup) (dto.HostG
 
 func (s *Service) DeleteGroup(ctx context.Context, groupID string) error {
 	groupID = strings.TrimSpace(groupID)
-	ref := fmt.Sprintf("aws/%s/secret-access-key", groupID)
-	if err := s.secrets.DeleteSecret(ctx, ref); err != nil && !errors.Is(err, secrets.ErrSecretNotFound) {
-		log.WithError(err).Warnf("刪除群組時，清除 AWS Secret 失敗：%s", ref)
+
+	// 收集整個子樹（含自身）：連子目錄一起刪除，其下主機由 FK ON DELETE SET NULL 轉為未分組，
+	// 整合設定與排除表由 FK ON DELETE CASCADE 自動清除，此處另清除 OS 憑證儲存區的 secret。
+	groups, err := s.repo.ListGroups(ctx)
+	if err != nil {
+		return err
 	}
-	return s.repo.DeleteGroup(ctx, groupID)
+	subtree := collectGroupSubtree(groups, groupID)
+
+	for _, id := range subtree {
+		ref := fmt.Sprintf("aws/%s/secret-access-key", id)
+		if err := s.secrets.DeleteSecret(ctx, ref); err != nil && !errors.Is(err, secrets.ErrSecretNotFound) {
+			log.WithError(err).Warnf("刪除群組時，清除 AWS Secret 失敗：%s", ref)
+		}
+		gcpRef := fmt.Sprintf("gcp/%s/service-account-json", id)
+		if err := s.secrets.DeleteSecret(ctx, gcpRef); err != nil && !errors.Is(err, secrets.ErrSecretNotFound) {
+			log.WithError(err).Warnf("刪除群組時，清除 GCP Secret 失敗：%s", gcpRef)
+		}
+	}
+
+	// 由子孫往上刪，最後刪除目標本身。
+	for i := len(subtree) - 1; i >= 0; i-- {
+		if err := s.repo.DeleteGroup(ctx, subtree[i]); err != nil {
+			if subtree[i] == groupID {
+				return err
+			}
+			log.WithError(err).Warnf("刪除子目錄失敗：%s", subtree[i])
+		}
+	}
+	return nil
+}
+
+// collectGroupSubtree 以 BFS 回傳 root（含）之下所有群組 ID，順序為由淺至深。
+func collectGroupSubtree(groups []dto.HostGroup, rootID string) []string {
+	childrenOf := make(map[string][]string)
+	for _, g := range groups {
+		if g.ParentID != "" {
+			childrenOf[g.ParentID] = append(childrenOf[g.ParentID], g.ID)
+		}
+	}
+	ordered := []string{rootID}
+	for i := 0; i < len(ordered); i++ {
+		ordered = append(ordered, childrenOf[ordered[i]]...)
+	}
+	return ordered
+}
+
+// isDescendantGroup 判斷 candidateID 是否為 ancestorID 的子孫（用於避免目錄循環）。
+func isDescendantGroup(groups []dto.HostGroup, candidateID string, ancestorID string) bool {
+	parentOf := make(map[string]string)
+	for _, g := range groups {
+		parentOf[g.ID] = g.ParentID
+	}
+	for cur := candidateID; cur != ""; cur = parentOf[cur] {
+		if cur == ancestorID {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Service) GetSettings(ctx context.Context) (dto.AppSettings, error) {
@@ -541,6 +623,7 @@ func (s *Service) optionalSecret(ctx context.Context, ref string) (string, bool,
 func normalizeGroup(group dto.HostGroup, now func() time.Time) (dto.HostGroup, error) {
 	group.ID = strings.TrimSpace(group.ID)
 	group.Name = strings.TrimSpace(group.Name)
+	group.ParentID = strings.TrimSpace(group.ParentID)
 	if group.ID == "" {
 		group.ID = newID("g")
 	}

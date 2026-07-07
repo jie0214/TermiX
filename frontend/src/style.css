@@ -2265,6 +2265,23 @@ textarea {
   background: color-mix(in srgb, var(--color-primary) 8%, transparent);
 }
 
+/* Hosts 麵包屑改為獨立列：只有返回鈕（Vaults）可點，hover 高亮限定於按鈕本身 */
+.vault-breadcrumbs:has(.vault-breadcrumb-back) {
+  padding: 0;
+}
+
+.vault-breadcrumbs:has(.vault-breadcrumb-back):hover {
+  background: transparent;
+}
+
+.vault-breadcrumb-back {
+  transition: background 0.2s;
+}
+
+.vault-breadcrumb-back:hover {
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+}
+
 /* 滾動內容區 */
 .vault-scroll-content {
   flex: 1;

@@ -162,6 +162,42 @@ function assertEqual(actual, expected, message) {
   );
 
   clearBindings();
+  const gcpIntegration = {
+    groupId: 'group-gcp',
+    name: 'GCP Production',
+    projectId: 'demo-project'
+  };
+  const gcpSecrets = {
+    serviceAccountJson: { value: '{"type":"service_account"}', hasValue: true },
+    defaultPassword: { value: '', hasValue: false }
+  };
+  setBinding('SaveGCPIntegration', async (value) =>
+    operationResult(JSON.stringify(value))
+  );
+  const savedGcpIntegration = await sandbox.HostAPI.saveGCPIntegration(
+    gcpIntegration,
+    gcpSecrets,
+    'group-old'
+  );
+  assertEqual(savedGcpIntegration, gcpIntegration, 'GCP Integration 會解析後端保存結果');
+  assertEqual(
+    calls.pop(),
+    ['SaveGCPIntegration', gcpIntegration, gcpSecrets, 'group-old'],
+    'GCP Integration 會保留 secrets 與 previousGroupId 參數'
+  );
+
+  clearBindings();
+  setBinding('SyncGCPIntegration', async (groupId) =>
+    operationResult(JSON.stringify({ groupId, synced: true }))
+  );
+  const gcpSyncResult = await sandbox.HostAPI.syncGCPIntegration('group-gcp-legacy');
+  assertEqual(
+    gcpSyncResult,
+    { groupId: 'group-gcp-legacy', synced: true },
+    '舊版 SyncGCPIntegration 方法仍可透過 fallback 使用'
+  );
+
+  clearBindings();
   setBinding('DeleteHost', async () =>
     operationResult('', false, '主機不存在')
   );

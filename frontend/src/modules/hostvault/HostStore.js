@@ -181,6 +181,7 @@ export const hostStore = createStore((set, get) => ({
   hosts: [],
   groups: [],
   awsIntegrations: [],
+  gcpIntegrations: [],
   isLoading: false,
   loadError: '',
   activeGroupId: null,
@@ -214,9 +215,16 @@ export const hostStore = createStore((set, get) => ({
       } catch (awsErr) {
         console.warn('[TermiX] 載入 AWS 整合配置失敗：', awsErr);
       }
+      let gcpIntegrations = [];
+      try {
+        gcpIntegrations = await HostAPI.listGCPIntegrations() || [];
+      } catch (gcpErr) {
+        console.warn('[TermiX] 載入 GCP 整合配置失敗：', gcpErr);
+      }
       set({
         hosts: hostsWithStatus,
         awsIntegrations,
+        gcpIntegrations,
         isLoading: false,
         loadError: ''
       });
@@ -368,6 +376,50 @@ export const hostStore = createStore((set, get) => ({
     await HostAPI.deleteAWSIntegration(normalizedGroupId);
     set((state) => ({
       awsIntegrations: (state.awsIntegrations || []).filter(item => item.groupId !== normalizedGroupId)
+    }));
+  },
+
+  saveGCPIntegration: async (integration, secrets, options = {}) => {
+    const previousGroupId = options.previousGroupId || '';
+    const saved = await HostAPI.saveGCPIntegration(integration, secrets, previousGroupId);
+    const result = saved || integration;
+    const currentIntegrations = get().gcpIntegrations || [];
+    const newIntegrations = currentIntegrations.filter(item => item.groupId !== result.groupId && item.groupId !== previousGroupId);
+    set({
+      gcpIntegrations: [...newIntegrations, result]
+    });
+    return result;
+  },
+
+  updateGCPIntegration: async (id, updatedFields) => {
+    const currentIntegrations = get().gcpIntegrations || [];
+    const current = currentIntegrations.find(item => item.id === id);
+    if (!current) {
+      throw new Error(`找不到 GCP 整合：${id}`);
+    }
+    const updated = {
+      ...current,
+      ...updatedFields,
+      id
+    };
+    const saved = await HostAPI.saveGCPIntegration(updated);
+    const result = saved || updated;
+    const newIntegrations = currentIntegrations.filter(item => item.id !== id);
+    set({
+      gcpIntegrations: [...newIntegrations, result]
+    });
+    return result;
+  },
+
+  deleteGCPIntegration: async (groupId) => {
+    const normalizedGroupId = String(groupId || '').trim();
+    if (!normalizedGroupId) {
+      throw new Error('找不到要刪除的 GCP Integration 群組');
+    }
+
+    await HostAPI.deleteGCPIntegration(normalizedGroupId);
+    set((state) => ({
+      gcpIntegrations: (state.gcpIntegrations || []).filter(item => item.groupId !== normalizedGroupId)
     }));
   }
 }));

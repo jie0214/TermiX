@@ -31,6 +31,8 @@ export function CreateSnippet(arg1:dto.SnippetUpsertRequest):Promise<dto.Snippet
 
 export function DeleteAWSIntegration(arg1:string):Promise<dto.OperationResult>;
 
+export function DeleteGCPIntegration(arg1:string):Promise<dto.OperationResult>;
+
 export function DeleteHost(arg1:string):Promise<dto.OperationResult>;
 
 export function DeleteHostGroup(arg1:string):Promise<dto.OperationResult>;
@@ -73,6 +75,8 @@ export function GetAppSettings():Promise<dto.OperationResult>;
 
 export function GetAutocompleteSuggestions(arg1:string,arg2:string):Promise<dto.AutocompleteResult>;
 
+export function GetGCPIntegration(arg1:string):Promise<dto.OperationResult>;
+
 export function GetHost(arg1:string):Promise<dto.OperationResult>;
 
 export function GetHostSecretStatus(arg1:string):Promise<dto.OperationResult>;
@@ -92,6 +96,8 @@ export function ImportHostsBackup(arg1:string,arg2:dto.HostImportOptions):Promis
 export function ImportKeychainKey(arg1:dto.ImportKeychainKeyRequest):Promise<dto.OperationResult>;
 
 export function ListAWSIntegrations():Promise<dto.OperationResult>;
+
+export function ListGCPIntegrations():Promise<dto.OperationResult>;
 
 export function ListHostGroups():Promise<dto.OperationResult>;
 
@@ -125,6 +131,8 @@ export function SaveAppSettings(arg1:dto.AppSettings):Promise<dto.OperationResul
 
 export function SaveBackupFile(arg1:string,arg2:string,arg3:string):Promise<dto.OperationResult>;
 
+export function SaveGCPIntegration(arg1:dto.GCPIntegration,arg2:dto.GCPIntegrationSecretsInput,arg3:string):Promise<dto.OperationResult>;
+
 export function SaveHost(arg1:dto.HostProfile,arg2:dto.HostSecretsInput):Promise<dto.OperationResult>;
 
 export function SaveHostGroup(arg1:dto.HostGroup):Promise<dto.OperationResult>;
@@ -150,6 +158,8 @@ export function StopKubernetesPodPortForward(arg1:dto.KubernetesPodPortForwardSt
 export function SwitchKubernetesContext(arg1:dto.KubernetesContextSwitchRequest):Promise<void>;
 
 export function SyncAWS(arg1:string):Promise<dto.OperationResult>;
+
+export function SyncGCP(arg1:string):Promise<dto.OperationResult>;
 
 export function TestConnection(arg1:dto.SSHConfig):Promise<dto.OperationResult>;
 

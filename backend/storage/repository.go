@@ -79,6 +79,7 @@ func (r *Repository) ListHosts(ctx context.Context) ([]dto.HostProfile, error) {
 		alias,
 		COALESCE(group_id, ''),
 		COALESCE(aws_instance_id, ''),
+		COALESCE(gcp_instance_id, ''),
 		host,
 		port,
 		username,
@@ -126,6 +127,7 @@ func (r *Repository) GetHost(ctx context.Context, id string) (dto.HostProfile, e
 		alias,
 		COALESCE(group_id, ''),
 		COALESCE(aws_instance_id, ''),
+		COALESCE(gcp_instance_id, ''),
 		host,
 		port,
 		username,
@@ -174,6 +176,7 @@ func (r *Repository) SaveHost(ctx context.Context, host dto.HostProfile) error {
 		alias,
 		group_id,
 		aws_instance_id,
+		gcp_instance_id,
 		host,
 		port,
 		username,
@@ -193,12 +196,13 @@ func (r *Repository) SaveHost(ctx context.Context, host dto.HostProfile) error {
 		custom_query_script,
 		created_at,
 		updated_at
-	) VALUES (?, ?, ?, NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	) VALUES (?, ?, ?, NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(id) DO UPDATE SET
 		label = excluded.label,
 		alias = excluded.alias,
 		group_id = excluded.group_id,
 		aws_instance_id = excluded.aws_instance_id,
+		gcp_instance_id = excluded.gcp_instance_id,
 		host = excluded.host,
 		port = excluded.port,
 		username = excluded.username,
@@ -222,6 +226,7 @@ func (r *Repository) SaveHost(ctx context.Context, host dto.HostProfile) error {
 		host.Alias,
 		host.GroupID,
 		host.AWSInstanceID,
+		host.GCPInstanceID,
 		host.Config.Host,
 		host.Config.Port,
 		host.Config.Username,
@@ -264,7 +269,7 @@ func (r *Repository) DeleteHost(ctx context.Context, id string) error {
 }
 
 func (r *Repository) ListGroups(ctx context.Context) ([]dto.HostGroup, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id, name, order_index, created_at, updated_at FROM host_groups ORDER BY order_index ASC, id ASC`)
+	rows, err := r.db.QueryContext(ctx, `SELECT id, name, COALESCE(parent_id, ''), order_index, created_at, updated_at FROM host_groups ORDER BY order_index ASC, id ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("查詢 host_groups 失敗：%w", err)
 	}
@@ -273,7 +278,7 @@ func (r *Repository) ListGroups(ctx context.Context) ([]dto.HostGroup, error) {
 	groups := make([]dto.HostGroup, 0)
 	for rows.Next() {
 		var group dto.HostGroup
-		if err := rows.Scan(&group.ID, &group.Name, &group.Order, &group.CreatedAt, &group.UpdatedAt); err != nil {
+		if err := rows.Scan(&group.ID, &group.Name, &group.ParentID, &group.Order, &group.CreatedAt, &group.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("讀取 host_groups 失敗：%w", err)
 		}
 		groups = append(groups, group)
@@ -285,14 +290,16 @@ func (r *Repository) ListGroups(ctx context.Context) ([]dto.HostGroup, error) {
 }
 
 func (r *Repository) SaveGroup(ctx context.Context, group dto.HostGroup) error {
-	_, err := r.db.ExecContext(ctx, `INSERT INTO host_groups (id, name, order_index, created_at, updated_at)
-	VALUES (?, ?, ?, ?, ?)
+	_, err := r.db.ExecContext(ctx, `INSERT INTO host_groups (id, name, parent_id, order_index, created_at, updated_at)
+	VALUES (?, ?, NULLIF(?, ''), ?, ?, ?)
 	ON CONFLICT(id) DO UPDATE SET
 		name = excluded.name,
+		parent_id = excluded.parent_id,
 		order_index = excluded.order_index,
 		updated_at = excluded.updated_at`,
 		group.ID,
 		group.Name,
+		group.ParentID,
 		group.Order,
 		group.CreatedAt,
 		group.UpdatedAt,
@@ -319,9 +326,9 @@ func (r *Repository) DeleteGroup(ctx context.Context, id string) error {
 }
 
 func (r *Repository) GetGroup(ctx context.Context, id string) (dto.HostGroup, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT id, name, order_index, created_at, updated_at FROM host_groups WHERE id = ?`, strings.TrimSpace(id))
+	row := r.db.QueryRowContext(ctx, `SELECT id, name, COALESCE(parent_id, ''), order_index, created_at, updated_at FROM host_groups WHERE id = ?`, strings.TrimSpace(id))
 	var group dto.HostGroup
-	if err := row.Scan(&group.ID, &group.Name, &group.Order, &group.CreatedAt, &group.UpdatedAt); err != nil {
+	if err := row.Scan(&group.ID, &group.Name, &group.ParentID, &group.Order, &group.CreatedAt, &group.UpdatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return dto.HostGroup{}, ErrGroupNotFound
 		}
@@ -417,6 +424,7 @@ func scanHost(scanner interface {
 		&host.Alias,
 		&host.GroupID,
 		&host.AWSInstanceID,
+		&host.GCPInstanceID,
 		&host.Config.Host,
 		&host.Config.Port,
 		&host.Config.Username,

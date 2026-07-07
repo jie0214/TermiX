@@ -196,6 +196,48 @@ func (a *App) SyncAWS(groupID string) OperationResult {
 	return success("synced")
 }
 
+func (a *App) ListGCPIntegrations() OperationResult {
+	integrations, err := a.hostVault.ListGCPIntegrations(a.contextOrBackground())
+	if err != nil {
+		return failure(err)
+	}
+	return successJSON(integrations)
+}
+
+func (a *App) GetGCPIntegration(groupID string) OperationResult {
+	integration, err := a.hostVault.GetGCPIntegration(a.contextOrBackground(), groupID)
+	if err != nil {
+		return failure(err)
+	}
+	return successJSON(integration)
+}
+
+func (a *App) SaveGCPIntegration(integration GCPIntegration, secrets GCPIntegrationSecretsInput, previousGroupID string) OperationResult {
+	saved, err := a.hostVault.SaveGCPIntegration(a.contextOrBackground(), SaveGCPIntegrationRequest{
+		Integration:     integration,
+		Secrets:         secrets,
+		PreviousGroupID: previousGroupID,
+	})
+	if err != nil {
+		return failure(err)
+	}
+	return successJSON(saved)
+}
+
+func (a *App) DeleteGCPIntegration(groupID string) OperationResult {
+	if err := a.hostVault.DeleteGCPIntegration(a.contextOrBackground(), groupID); err != nil {
+		return failure(err)
+	}
+	return success("deleted")
+}
+
+func (a *App) SyncGCP(groupID string) OperationResult {
+	if err := a.hostVault.SyncGCP(a.contextOrBackground(), groupID); err != nil {
+		return failure(err)
+	}
+	return success("synced")
+}
+
 func (a *App) contextOrBackground() context.Context {
 	if a.ctx != nil {
 		return a.ctx

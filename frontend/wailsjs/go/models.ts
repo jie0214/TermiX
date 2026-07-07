@@ -259,6 +259,76 @@ export namespace dto {
 	        this.includePrivate = source["includePrivate"];
 	    }
 	}
+	export class GCPIntegration {
+	    groupId: string;
+	    name: string;
+	    projectId: string;
+	    serviceAccountJsonRef: string;
+	    defaultPasswordRef: string;
+	    ipAddressType: string;
+	    defaultPort: number;
+	    defaultUsername: string;
+	    authMode: string;
+	    privateKeyPath: string;
+	    certPath: string;
+	    lastSyncAt: string;
+	    createdAt: string;
+	    updatedAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GCPIntegration(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.groupId = source["groupId"];
+	        this.name = source["name"];
+	        this.projectId = source["projectId"];
+	        this.serviceAccountJsonRef = source["serviceAccountJsonRef"];
+	        this.defaultPasswordRef = source["defaultPasswordRef"];
+	        this.ipAddressType = source["ipAddressType"];
+	        this.defaultPort = source["defaultPort"];
+	        this.defaultUsername = source["defaultUsername"];
+	        this.authMode = source["authMode"];
+	        this.privateKeyPath = source["privateKeyPath"];
+	        this.certPath = source["certPath"];
+	        this.lastSyncAt = source["lastSyncAt"];
+	        this.createdAt = source["createdAt"];
+	        this.updatedAt = source["updatedAt"];
+	    }
+	}
+	export class GCPIntegrationSecretsInput {
+	    serviceAccountJson: SecretValueInput;
+	    defaultPassword: SecretValueInput;
+	
+	    static createFrom(source: any = {}) {
+	        return new GCPIntegrationSecretsInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serviceAccountJson = this.convertValues(source["serviceAccountJson"], SecretValueInput);
+	        this.defaultPassword = this.convertValues(source["defaultPassword"], SecretValueInput);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class GenerateKeychainKeyRequest {
 	    label: string;
 	    type: string;
@@ -326,6 +396,7 @@ export namespace dto {
 	export class HostGroup {
 	    id: string;
 	    name: string;
+	    parentId: string;
 	    order: number;
 	    createdAt: string;
 	    updatedAt: string;
@@ -338,6 +409,7 @@ export namespace dto {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
 	        this.name = source["name"];
+	        this.parentId = source["parentId"];
 	        this.order = source["order"];
 	        this.createdAt = source["createdAt"];
 	        this.updatedAt = source["updatedAt"];
@@ -437,6 +509,7 @@ export namespace dto {
 	    alias: string;
 	    groupId: string;
 	    awsInstanceId: string;
+	    gcpInstanceId: string;
 	    config: PersistedHostConfig;
 	    createdAt: string;
 	    updatedAt: string;
@@ -452,6 +525,7 @@ export namespace dto {
 	        this.alias = source["alias"];
 	        this.groupId = source["groupId"];
 	        this.awsInstanceId = source["awsInstanceId"];
+	        this.gcpInstanceId = source["gcpInstanceId"];
 	        this.config = this.convertValues(source["config"], PersistedHostConfig);
 	        this.createdAt = source["createdAt"];
 	        this.updatedAt = source["updatedAt"];

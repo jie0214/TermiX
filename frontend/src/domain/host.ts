@@ -39,6 +39,7 @@ export interface HostProfile {
   alias: string;
   groupId: string;
   awsInstanceId: string;
+  gcpInstanceId: string;
   config: PersistedHostConfig;
   createdAt: string;
   updatedAt: string;
@@ -47,6 +48,7 @@ export interface HostProfile {
 export interface HostGroup {
   id: string;
   name: string;
+  parentId: string;
   order: number;
   createdAt: string;
   updatedAt: string;
@@ -129,5 +131,27 @@ export interface AWSIntegration {
 
 export interface AWSIntegrationSecretsInput {
   secretAccessKey: SecretValueInput;
+  defaultPassword: SecretValueInput;
+}
+
+export interface GCPIntegration {
+  groupId: string;
+  name: string;
+  projectId: string;
+  serviceAccountJsonRef: string;
+  defaultPasswordRef: string;
+  ipAddressType: string;
+  defaultPort: number;
+  defaultUsername: string;
+  authMode: string;
+  privateKeyPath: string;
+  certPath: string;
+  lastSyncAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GCPIntegrationSecretsInput {
+  serviceAccountJson: SecretValueInput;
   defaultPassword: SecretValueInput;
 }

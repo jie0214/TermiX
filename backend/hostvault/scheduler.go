@@ -38,7 +38,7 @@ func (s *Scheduler) Start() {
 	s.ticker = time.NewTicker(5 * time.Minute)
 	go func() {
 		log.Info("AWS 同步排程器已啟動（每 5 分鐘自動執行）")
-		
+
 		// 啟動時非同步執行一次同步
 		go s.syncAll()
 
@@ -81,6 +81,25 @@ func (s *Scheduler) syncAll() {
 			}
 		} else {
 			log.Infof("背景同步：同步 AWS 群組 %s 成功", integration.GroupID)
+		}
+	}
+
+	gcpIntegrations, err := s.svc.ListGCPIntegrations(ctx)
+	if err != nil {
+		log.WithError(err).Error("背景同步：無法取得 GCP 整合設定列表")
+		return
+	}
+
+	for _, integration := range gcpIntegrations {
+		log.Infof("背景同步：開始同步 GCP 群組 %s", integration.GroupID)
+		if err := s.svc.SyncGCP(ctx, integration.GroupID); err != nil {
+			if errors.Is(err, storage.ErrGCPIntegrationNotFound) {
+				log.Debugf("背景同步：群組 %s 的 GCP 整合設定已不存在，跳過同步", integration.GroupID)
+			} else {
+				log.WithError(err).Errorf("背景同步：同步 GCP 群組 %s 失敗", integration.GroupID)
+			}
+		} else {
+			log.Infof("背景同步：同步 GCP 群組 %s 成功", integration.GroupID)
 		}
 	}
 }

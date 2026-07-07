@@ -53,6 +53,7 @@ type HostProfile struct {
 	Alias         string              `json:"alias" yaml:"alias"`
 	GroupID       string              `json:"groupId" yaml:"groupId"`
 	AWSInstanceID string              `json:"awsInstanceId" yaml:"awsInstanceId"`
+	GCPInstanceID string              `json:"gcpInstanceId" yaml:"gcpInstanceId"`
 	Config        PersistedHostConfig `json:"config" yaml:"config"`
 	CreatedAt     string              `json:"createdAt" yaml:"createdAt"`
 	UpdatedAt     string              `json:"updatedAt" yaml:"updatedAt"`
@@ -61,6 +62,7 @@ type HostProfile struct {
 type HostGroup struct {
 	ID        string `json:"id" yaml:"id"`
 	Name      string `json:"name" yaml:"name"`
+	ParentID  string `json:"parentId" yaml:"parentId"`
 	Order     int    `json:"order" yaml:"order"`
 	CreatedAt string `json:"createdAt" yaml:"createdAt"`
 	UpdatedAt string `json:"updatedAt" yaml:"updatedAt"`
@@ -93,6 +95,34 @@ type AWSIntegrationSecretsInput struct {
 type SaveAWSIntegrationRequest struct {
 	Integration     AWSIntegration             `json:"integration" yaml:"integration"`
 	Secrets         AWSIntegrationSecretsInput `json:"secrets" yaml:"secrets"`
+	PreviousGroupID string                     `json:"previousGroupId" yaml:"previousGroupId"`
+}
+
+type GCPIntegration struct {
+	GroupID               string `json:"groupId" yaml:"groupId"`
+	Name                  string `json:"name" yaml:"name"`
+	ProjectID             string `json:"projectId" yaml:"projectId"`
+	ServiceAccountJSONRef string `json:"serviceAccountJsonRef" yaml:"serviceAccountJsonRef"`
+	DefaultPasswordRef    string `json:"defaultPasswordRef" yaml:"defaultPasswordRef"`
+	IPAddressType         string `json:"ipAddressType" yaml:"ipAddressType"` // "public" | "private"
+	DefaultPort           int    `json:"defaultPort" yaml:"defaultPort"`
+	DefaultUsername       string `json:"defaultUsername" yaml:"defaultUsername"`
+	AuthMode              string `json:"authMode" yaml:"authMode"`
+	PrivateKeyPath        string `json:"privateKeyPath" yaml:"privateKeyPath"`
+	CertPath              string `json:"certPath" yaml:"certPath"`
+	LastSyncAt            string `json:"lastSyncAt" yaml:"lastSyncAt"`
+	CreatedAt             string `json:"createdAt" yaml:"createdAt"`
+	UpdatedAt             string `json:"updatedAt" yaml:"updatedAt"`
+}
+
+type GCPIntegrationSecretsInput struct {
+	ServiceAccountJSON SecretValueInput `json:"serviceAccountJson" yaml:"serviceAccountJson"`
+	DefaultPassword    SecretValueInput `json:"defaultPassword" yaml:"defaultPassword"`
+}
+
+type SaveGCPIntegrationRequest struct {
+	Integration     GCPIntegration             `json:"integration" yaml:"integration"`
+	Secrets         GCPIntegrationSecretsInput `json:"secrets" yaml:"secrets"`
 	PreviousGroupID string                     `json:"previousGroupId" yaml:"previousGroupId"`
 }
 

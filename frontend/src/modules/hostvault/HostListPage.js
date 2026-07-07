@@ -721,9 +721,11 @@ export class HostListPage extends HTMLElement {
   }
 
   openAWSIntegrationDrawer(integration = null, options = {}) {
-    const { selectedTab = 'integrations', closeDropdowns = false } = options;
+    const { selectedTab = 'integrations', closeDropdowns = false, groupHint = null } = options;
     this.selectedAWSIntegration = integration;
     this.awsSyncSettingsExpanded = Boolean(integration);
+    // 僅在建立新整合時用 groupHint 預填群組名稱；編輯既有整合時不需要。
+    this.integrationGroupHint = integration ? null : groupHint;
     this.selectedGroup = null;
     hostStore.getState().setSelectedHost(null);
     hostStore.getState().setSelectedTab(selectedTab);
@@ -746,6 +748,117 @@ export class HostListPage extends HTMLElement {
     return (state.awsIntegrations || []).find(item => item.groupId === selectedGroupId) || null;
   }
 
+  openGCPIntegrationDrawer(integration = null, options = {}) {
+    const { selectedTab = 'integrations', closeDropdowns = false, groupHint = null } = options;
+    this.selectedGCPIntegration = integration;
+    this.gcpSyncSettingsExpanded = Boolean(integration);
+    this.integrationGroupHint = integration ? null : groupHint;
+    this.selectedGroup = null;
+    hostStore.getState().setSelectedHost(null);
+    hostStore.getState().setSelectedTab(selectedTab);
+    hostStore.getState().setDrawerMode('gcp-integration');
+    hostStore.getState().setDrawerOpen(true);
+
+    if (closeDropdowns) {
+      this.querySelectorAll('.termix-dropdown-menu').forEach(menu => {
+        menu.classList.remove('show');
+      });
+    }
+  }
+
+  resolveSelectedGCPIntegration() {
+    const state = hostStore.getState();
+    const selectedGroupId = String(this.selectedGCPIntegration?.groupId || '').trim();
+    if (!selectedGroupId) {
+      return null;
+    }
+    return (state.gcpIntegrations || []).find(item => item.groupId === selectedGroupId) || null;
+  }
+
+  // 由 groupId 往上組出完整目錄路徑字串，例如「AWS / Prod」。
+  groupFullPath(groupId) {
+    const groups = hostStore.getState().groups || [];
+    const byId = new Map(groups.map(g => [g.id, g]));
+    const parts = [];
+    let cur = byId.get(groupId);
+    let guard = 0;
+    while (cur && guard++ < 100) {
+      parts.unshift(cur.name);
+      cur = cur.parentId ? byId.get(cur.parentId) : null;
+    }
+    return parts.join(' / ');
+  }
+
+  // 回傳某目錄底下所有子孫目錄的 id（不含自己）。
+  groupDescendantIds(groupId) {
+    const groups = hostStore.getState().groups || [];
+    const childrenOf = {};
+    groups.forEach(g => {
+      if (g.parentId) (childrenOf[g.parentId] = childrenOf[g.parentId] || []).push(g.id);
+    });
+    const out = [];
+    const stack = [groupId];
+    while (stack.length) {
+      const id = stack.pop();
+      (childrenOf[id] || []).forEach(c => { out.push(c); stack.push(c); });
+    }
+    return out;
+  }
+
+  // 產生目錄下拉選項（以完整路徑排序顯示）。
+  // rootLabel：頂層選項文字；excludeGroupId：排除的目錄及其子孫（移動目錄時避免選到自己/子孫）。
+  renderDirectoryOptions(selectedId, rootLabel, excludeGroupId = '') {
+    const groups = hostStore.getState().groups || [];
+    const exclude = new Set();
+    if (excludeGroupId) {
+      exclude.add(excludeGroupId);
+      this.groupDescendantIds(excludeGroupId).forEach(id => exclude.add(id));
+    }
+    const opts = groups
+      .filter(g => !exclude.has(g.id))
+      .map(g => ({ id: g.id, path: this.groupFullPath(g.id) }))
+      .sort((a, b) => a.path.localeCompare(b.path));
+    const normalizedSelected = selectedId || '';
+    const rootOption = `<option value="" ${normalizedSelected === '' ? 'selected' : ''}>${escapeHtml(rootLabel)}</option>`;
+    const groupOptions = opts.map(o =>
+      `<option value="${escapeHtml(o.id)}" ${o.id === normalizedSelected ? 'selected' : ''}>${escapeHtml(o.path)}</option>`
+    ).join('');
+    return rootOption + groupOptions;
+  }
+
+  // 整合供應商註冊表：未來擴充（如 Azure）只需在此新增一項，
+  // 並提供對應的 storeKey 與開啟抽屜的方法。
+  getIntegrationProviders() {
+    return [
+      {
+        id: 'aws',
+        label: 'AWS',
+        storeKey: 'awsIntegrations',
+        open: (integration, options) => this.openAWSIntegrationDrawer(integration, options)
+      },
+      {
+        id: 'gcp',
+        label: 'GCP',
+        storeKey: 'gcpIntegrations',
+        open: (integration, options) => this.openGCPIntegrationDrawer(integration, options)
+      }
+      // 未來擴充範例：
+      // { id: 'azure', label: 'Azure', storeKey: 'azureIntegrations', open: (i, o) => this.openAzureIntegrationDrawer(i, o) }
+    ];
+  }
+
+  // 找出某群組目前關聯的整合供應商（若無則回傳 null）。
+  resolveGroupIntegration(groupId) {
+    const state = hostStore.getState();
+    for (const provider of this.getIntegrationProviders()) {
+      const integration = (state[provider.storeKey] || []).find(item => item.groupId === groupId);
+      if (integration) {
+        return { provider, integration };
+      }
+    }
+    return null;
+  }
+
   renderIntegrationsPage(state) {
     const integrations = state.awsIntegrations || [];
     const integrationCardsHtml = integrations.map((integration) => {
@@ -764,7 +877,7 @@ export class HostListPage extends HTMLElement {
           : 'Public / Private IP';
 
       return `
-        <div class="vault-card integration-card no-drag" data-integration-group-id="${integration.groupId}" title="${t('hostvault.editIntegrationTitle', { name: escapeHtml(integrationName) })}">
+        <div class="vault-card integration-card no-drag" data-integration-provider="aws" data-integration-group-id="${integration.groupId}" title="${t('hostvault.editIntegrationTitle', { name: escapeHtml(integrationName) })}">
           <div class="vault-card-icon" style="background: linear-gradient(135deg, #ff9900, #f97316); border-radius: 8px;">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
               <polygon points="12 2 2 7 12 12 22 7 12 2"/>
@@ -775,9 +888,9 @@ export class HostListPage extends HTMLElement {
           <div class="vault-card-info">
             <div class="vault-card-title">${escapeHtml(integrationName)}</div>
             <div class="vault-card-details">${escapeHtml(groupName)}，${escapeHtml(integration.region || t('hostvault.integrationNoRegion'))}</div>
-            <div class="vault-card-details" style="margin-top: 4px; color: var(--color-text-muted);">${escapeHtml(sourceLabel)}，${escapeHtml(ipTypeLabel)}</div>
+            <div class="vault-card-details" style="margin-top: 4px; color: var(--color-text-muted);">AWS · ${escapeHtml(sourceLabel)}，${escapeHtml(ipTypeLabel)}</div>
           </div>
-          <button type="button" aria-label="${t('hostvault.editIntegration')}" class="no-drag vault-integration-edit-btn" data-integration-group-id="${integration.groupId}" title="${t('hostvault.editIntegration')}" style="background: transparent; border: none; padding: 6px; cursor: pointer; color: var(--color-subtext); display: inline-flex; align-items: center; justify-content: center; margin-left: auto;">
+          <button type="button" aria-label="${t('hostvault.editIntegration')}" class="no-drag vault-integration-edit-btn" data-integration-provider="aws" data-integration-group-id="${integration.groupId}" title="${t('hostvault.editIntegration')}" style="background: transparent; border: none; padding: 6px; cursor: pointer; color: var(--color-subtext); display: inline-flex; align-items: center; justify-content: center; margin-left: auto;">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
               <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
@@ -786,6 +899,38 @@ export class HostListPage extends HTMLElement {
         </div>
       `;
     }).join('');
+
+    const gcpIntegrations = state.gcpIntegrations || [];
+    const gcpCardsHtml = gcpIntegrations.map((integration) => {
+      const relatedGroup = state.groups.find(group => group.id === integration.groupId);
+      const integrationName = integration.name || relatedGroup?.name || 'GCP Integration';
+      const groupName = relatedGroup?.name || integration.groupId || t('hostvault.integrationNoGroup');
+      const ipTypeLabel = integration.ipAddressType === 'private' ? 'Private IP' : 'Public IP';
+
+      return `
+        <div class="vault-card integration-card no-drag" data-integration-provider="gcp" data-integration-group-id="${integration.groupId}" title="${t('hostvault.editIntegrationTitle', { name: escapeHtml(integrationName) })}">
+          <div class="vault-card-icon" style="background: linear-gradient(135deg, #4285F4, #34a853); border-radius: 8px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+              <polyline points="2 17 12 22 22 17"/>
+              <polyline points="2 12 12 17 22 12"/>
+            </svg>
+          </div>
+          <div class="vault-card-info">
+            <div class="vault-card-title">${escapeHtml(integrationName)}</div>
+            <div class="vault-card-details">${escapeHtml(groupName)}，${escapeHtml(integration.projectId || t('hostvault.gcpNoProject'))}</div>
+            <div class="vault-card-details" style="margin-top: 4px; color: var(--color-text-muted);">GCP · Compute Engine，${escapeHtml(ipTypeLabel)}</div>
+          </div>
+          <button type="button" aria-label="${t('hostvault.editIntegration')}" class="no-drag vault-integration-edit-btn" data-integration-provider="gcp" data-integration-group-id="${integration.groupId}" title="${t('hostvault.editIntegration')}" style="background: transparent; border: none; padding: 6px; cursor: pointer; color: var(--color-subtext); display: inline-flex; align-items: center; justify-content: center; margin-left: auto;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+          </button>
+        </div>
+      `;
+    }).join('');
+    const allCardsHtml = integrationCardsHtml + gcpCardsHtml;
 
     return `
       <div class="vault-toolbar" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; gap: 12px; flex: 0 0 auto;">
@@ -799,7 +944,7 @@ export class HostListPage extends HTMLElement {
       <div class="vault-scroll-content" style="flex: 1; min-height: 0; overflow-y: auto;">
         <div class="vault-section">
           <h3 style="font-size: 14px; font-weight: 700; color: var(--color-text-muted); margin-bottom: 12px; text-align: left; letter-spacing: 0.5px; text-transform: uppercase;">Cloud Integrations</h3>
-          <div id="vaultIntegrationsGrid" class="vault-grid">${integrationCardsHtml || `<div style="color: var(--color-text-muted); font-size: 13px;">${t('hostvault.noIntegrations')}</div>`}</div>
+          <div id="vaultIntegrationsGrid" class="vault-grid">${allCardsHtml || `<div style="color: var(--color-text-muted); font-size: 13px;">${t('hostvault.noIntegrations')}</div>`}</div>
         </div>
       </div>
     `;
@@ -837,6 +982,8 @@ export class HostListPage extends HTMLElement {
               <h3 style="font-size: 11px; color: var(--color-primary); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">${t('hostvault.awsSettingsTitle')}</h3>
             </div>
 
+            ${this.renderProviderSelector('aws', Boolean(this.resolveSelectedAWSIntegration()))}
+
             <!-- 物件名稱 Label -->
             <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
               ${t('hostvault.objectName')}
@@ -846,7 +993,7 @@ export class HostListPage extends HTMLElement {
             <!-- 群組名稱 Label -->
             <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
               ${t('hostvault.groupName')}
-              <input class="no-drag" id="awsGroupName" name="awsGroupName" list="existingGroupsList" value="${escapeHtml(relatedGroup?.name || '')}" placeholder="${t('hostvault.groupNamePlaceholder')}" required style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text); font-weight: 600;">
+              <input class="no-drag" id="awsGroupName" name="awsGroupName" list="existingGroupsList" value="${escapeHtml(relatedGroup?.name || this.integrationGroupHint?.name || '')}" placeholder="${t('hostvault.groupNamePlaceholder')}" required style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text); font-weight: 600;">
               <datalist id="existingGroupsList">
                 ${(state.groups || []).map(g => `<option value="${escapeHtml(g.name)}"></option>`).join('')}
               </datalist>
@@ -957,16 +1104,157 @@ export class HostListPage extends HTMLElement {
     `;
   }
 
+  renderProviderSelector(provider, disabled) {
+    return `
+      <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
+        ${t('hostvault.providerLabel')}
+        <select class="no-drag" id="integrationProvider" name="integrationProvider" ${disabled ? 'disabled' : ''} style="background: #0d121f; border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
+          <option value="aws" ${provider === 'aws' ? 'selected' : ''}>Amazon Web Services (AWS)</option>
+          <option value="gcp" ${provider === 'gcp' ? 'selected' : ''}>Google Cloud Platform (GCP)</option>
+        </select>
+      </label>
+    `;
+  }
+
+  renderGCPIntegrationForm() {
+    const state = hostStore.getState();
+    const currentIntegration = this.resolveSelectedGCPIntegration();
+    const relatedGroup = currentIntegration
+      ? state.groups.find(group => group.id === currentIntegration.groupId)
+      : null;
+    const secretPlaceholder = currentIntegration
+      ? t('hostvault.gcpServiceAccountKeep')
+      : t('hostvault.gcpServiceAccountPlaceholder');
+    const isExpanded = this.gcpSyncSettingsExpanded || false;
+    const expandedStyle = `flex-direction: column; gap: 16px; margin-top: 12px; padding: 16px; background: rgba(23, 107, 135, 0.04); border: 1px solid rgba(23, 107, 135, 0.12); border-radius: 8px; ${isExpanded ? 'display: flex;' : 'display: none;'}`;
+    const authMode = currentIntegration?.authMode || 'password';
+    const showPasswordStyle = `flex-direction: column; gap: 16px; ${authMode === 'password' ? 'display: flex;' : 'display: none;'}`;
+    const showKeyStyle = `flex-direction: column; gap: 16px; ${authMode === 'key' ? 'display: flex;' : 'display: none;'}`;
+
+    return `
+      <div class="settings-dialog" style="width: 100% !important; height: 100% !important; max-height: 100% !important; border: none !important; box-shadow: none !important; transform: none !important; display: flex; flex-direction: column;">
+        <div class="settings-header" style="padding: 16px 20px; border-bottom: 1px solid rgba(23,107,135,0.15); display: flex; justify-content: space-between; align-items: center;">
+          <h2 style="font-size: 15px; font-weight: 700; color: var(--color-text); font-family: inherit;">GCP Integration</h2>
+          <button type="button" aria-label="${t('hostvault.closeSettings')}" id="closeVaultDrawer" class="no-drag btn-icon icon-btn" title="${t('hostvault.closeSettings')}" style="font-size: 18px;">
+            &times;
+          </button>
+        </div>
+
+        <form id="gcpIntegrationForm" style="display: flex; flex-direction: column; flex: 1; height: 100%; min-height: 0; margin: 0;">
+          <input type="hidden" id="gcpCurrentGroupId" value="${escapeHtml(currentIntegration?.groupId || '')}">
+          <div class="settings-body" style="padding: 20px; flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 14px;">
+            <div class="section-title" style="margin-bottom: 4px;">
+              <h3 style="font-size: 11px; color: var(--color-primary); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">${t('hostvault.gcpSettingsTitle')}</h3>
+            </div>
+
+            ${this.renderProviderSelector('gcp', Boolean(currentIntegration))}
+
+            <!-- 物件名稱 -->
+            <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
+              ${t('hostvault.objectName')}
+              <input class="no-drag" id="gcpIntegrationName" name="gcpIntegrationName" value="${escapeHtml(currentIntegration?.name || '')}" placeholder="${t('hostvault.gcpObjectNamePlaceholder')}" required style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text); font-weight: 600;">
+            </label>
+
+            <!-- 群組名稱 -->
+            <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
+              ${t('hostvault.groupName')}
+              <input class="no-drag" id="gcpGroupName" name="gcpGroupName" list="existingGroupsListGcp" value="${escapeHtml(relatedGroup?.name || this.integrationGroupHint?.name || '')}" placeholder="${t('hostvault.groupNamePlaceholder')}" required style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text); font-weight: 600;">
+              <datalist id="existingGroupsListGcp">
+                ${(state.groups || []).map(g => `<option value="${escapeHtml(g.name)}"></option>`).join('')}
+              </datalist>
+            </label>
+
+            <!-- Project ID -->
+            <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
+              ${t('hostvault.gcpProjectId')}
+              <input class="no-drag" id="gcpProjectId" name="gcpProjectId" value="${escapeHtml(currentIntegration?.projectId || '')}" placeholder="${t('hostvault.gcpProjectIdPlaceholder')}" required style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
+            </label>
+
+            <!-- Service Account JSON -->
+            <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
+              ${t('hostvault.gcpServiceAccountLabel')}
+              <textarea class="no-drag" id="gcpServiceAccountJson" name="gcpServiceAccountJson" rows="5" placeholder="${secretPlaceholder}" ${currentIntegration ? '' : 'required'} spellcheck="false" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text); font-family: monospace; resize: vertical;"></textarea>
+            </label>
+
+            <!-- 匯入 IP 位址類型 -->
+            <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
+              ${t('hostvault.importIpType')}
+              <select class="no-drag" id="gcpIpAddressType" name="gcpIpAddressType" style="background: #0d121f; border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
+                <option value="public" ${(!currentIntegration?.ipAddressType || currentIntegration?.ipAddressType === 'public') ? 'selected' : ''}>Public IP</option>
+                <option value="private" ${currentIntegration?.ipAddressType === 'private' ? 'selected' : ''}>Private IP</option>
+              </select>
+            </label>
+
+            <div style="border-top: 1px solid rgba(23,107,135,0.15); margin-top: 12px; padding-top: 12px;">
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                <h4 style="font-size: 12px; font-weight: 700; color: var(--color-text); margin: 0; text-transform: uppercase;">Add protocols</h4>
+                <button type="button" id="toggleGcpSyncSettingsBtn" class="no-drag" style="background: transparent; border: 1px solid var(--color-primary); color: var(--color-primary); border-radius: 4px; padding: 4px 10px; font-size: 11px; font-weight: 700; cursor: pointer;">
+                  ${t('hostvault.cloudSyncSettings')} ${isExpanded ? '▲' : '▼'}
+                </button>
+              </div>
+
+              <div id="gcpSyncSettingsContent" style="${expandedStyle}">
+                <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
+                  Port
+                  <input class="no-drag" id="gcpDefaultPort" name="gcpDefaultPort" type="number" min="1" max="65535" value="${currentIntegration?.defaultPort || 22}" required style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
+                </label>
+                <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
+                  Username
+                  <input class="no-drag" id="gcpDefaultUsername" name="gcpDefaultUsername" value="${escapeHtml(currentIntegration?.defaultUsername || 'root')}" required autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
+                </label>
+                <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
+                  ${t('hostvault.authMode')}
+                  <select class="no-drag" id="gcpAuthMode" name="gcpAuthMode" style="background: #0d121f; border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
+                    <option value="password" ${(!currentIntegration?.authMode || currentIntegration?.authMode === 'password') ? 'selected' : ''}>${t('hostvault.authPassword')}</option>
+                    <option value="key" ${currentIntegration?.authMode === 'key' ? 'selected' : ''}>${t('hostvault.authKey')}</option>
+                  </select>
+                </label>
+                <div id="gcpPasswordAuth" style="${showPasswordStyle}">
+                  <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
+                    ${t('hostvault.defaultPassword')}
+                    <input class="no-drag" id="gcpDefaultPassword" name="gcpDefaultPassword" type="password" autocomplete="new-password" placeholder="${t('hostvault.defaultPasswordPlaceholder')}" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
+                  </label>
+                </div>
+                <div id="gcpKeyAuth" style="${showKeyStyle}">
+                  <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
+                    ${t('hostvault.privateKeyPath')}
+                    <input class="no-drag" id="gcpPrivateKeyPath" name="gcpPrivateKeyPath" value="${escapeHtml(currentIntegration?.privateKeyPath || '')}" placeholder="${t('hostvault.privateKeyPathPlaceholder')}" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
+                  </label>
+                  <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
+                    ${t('hostvault.certPath')}
+                    <input class="no-drag" id="gcpCertPath" name="gcpCertPath" value="${escapeHtml(currentIntegration?.certPath || '')}" placeholder="${t('hostvault.certPathPlaceholder')}" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-footer" style="padding: 16px 20px; border-top: 1px solid rgba(23,107,135,0.15); display: flex; gap: 10px;">
+            ${currentIntegration ? `<button type="button" id="gcpDeleteBtn" data-integration-group-id="${escapeHtml(currentIntegration.groupId)}" class="no-drag" style="min-height: 38px; font-weight: 700; background: #e74c3c; border: none; border-radius: 6px; color: #fff; padding: 0 16px; cursor: pointer;">Delete</button>` : ''}
+            <button type="submit" id="gcpSubmitBtn" class="no-drag primary" style="flex: 1; min-height: 38px; font-weight: 700; background: var(--color-primary); border: none; border-radius: 6px; color: #fff; cursor: pointer;">${currentIntegration ? t('hostvault.saveAndResync') : t('hostvault.saveAndSync')}</button>
+          </div>
+        </form>
+      </div>
+    `;
+  }
+
   renderGroupEditForm() {
     const group = this.selectedGroup || { name: "", id: "" };
     const state = hostStore.getState();
     const currentAws = (state.awsIntegrations || []).find(item => item.groupId === group.id);
+    const currentGcp = (state.gcpIntegrations || []).find(item => item.groupId === group.id);
     const currentAwsName = currentAws?.name || group.name;
+    const currentGcpName = currentGcp?.name || group.name;
     const relationHtml = currentAws ? `
       <div style="display: flex; flex-direction: column; gap: 6px; padding: 12px; background: rgba(255,153,0,0.08); border: 1px solid rgba(255,153,0,0.18); border-radius: 8px; text-align: left;">
-        <span style="font-size: 12px; font-weight: 700; color: var(--color-text);">${escapeHtml(currentAwsName)}</span>
+        <span style="font-size: 12px; font-weight: 700; color: var(--color-text);">AWS · ${escapeHtml(currentAwsName)}</span>
         <span style="font-size: 12px; color: var(--color-subtext);">${t('hostvault.regionColon', { value: escapeHtml(currentAws.region || t('hostvault.notSet')) })}</span>
         <span style="font-size: 12px; color: var(--color-subtext);">${t('hostvault.accessKeyColon', { value: escapeHtml(currentAws.accessKeyId ? `${currentAws.accessKeyId.slice(0, 8)}...` : t('hostvault.notSet')) })}</span>
+      </div>
+    ` : currentGcp ? `
+      <div style="display: flex; flex-direction: column; gap: 6px; padding: 12px; background: rgba(66,133,244,0.08); border: 1px solid rgba(66,133,244,0.18); border-radius: 8px; text-align: left;">
+        <span style="font-size: 12px; font-weight: 700; color: var(--color-text);">GCP · ${escapeHtml(currentGcpName)}</span>
+        <span style="font-size: 12px; color: var(--color-subtext);">${t('hostvault.gcpProjectColon', { value: escapeHtml(currentGcp.projectId || t('hostvault.notSet')) })}</span>
       </div>
     ` : `
       <div style="padding: 12px; background: rgba(23,107,135,0.08); border: 1px dashed rgba(23,107,135,0.25); border-radius: 8px; font-size: 12px; color: var(--color-text-muted); text-align: left;">
@@ -995,13 +1283,30 @@ export class HostListPage extends HTMLElement {
               <input class="no-drag" id="groupDrawerNameInput" name="groupDrawerNameInput" value="${escapeHtml(group.name)}" placeholder="${t('hostvault.groupNameExample')}" required style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text); font-weight: 600;">
             </label>
 
-            <!-- AWS Integration 關聯顯示 -->
+            <!-- 上層目錄（移動此目錄；不可選自己或其子目錄） -->
+            <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
+              ${t('hostvault.parentDirectory')}
+              <select class="no-drag" id="groupParentSelect" name="groupParentSelect" style="background: #0d121f; border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
+                ${this.renderDirectoryOptions(group.parentId || '', t('hostvault.topLevelDirectory'), group.id)}
+              </select>
+            </label>
+
+            <!-- 雲端整合關聯顯示（可選 AWS / GCP，未來可擴充其他供應商） -->
             <div style="border-top: 1px solid rgba(23,107,135,0.15); margin-top: 12px; padding-top: 12px; display: flex; flex-direction: column; gap: 12px;">
               <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
-                <span style="font-size: 12px; font-weight: 700; color: var(--color-text);">${t('hostvault.awsRelationDisplay')}</span>
-                <button type="button" id="manageGroupAwsBtn" class="no-drag" style="min-height: 30px; font-weight: 700; font-size: 11px; border: 1px solid var(--color-primary); color: var(--color-primary); background: transparent; padding: 0 12px; border-radius: 4px; cursor: pointer;">${currentAws ? t('hostvault.goManage') : t('hostvault.createIntegration')}</button>
+                <span style="font-size: 12px; font-weight: 700; color: var(--color-text);">${t('hostvault.integrationRelationDisplay')}</span>
+                ${(currentAws || currentGcp)
+                  ? `<button type="button" id="manageGroupAwsBtn" class="no-drag" style="min-height: 30px; font-weight: 700; font-size: 11px; border: 1px solid var(--color-primary); color: var(--color-primary); background: transparent; padding: 0 12px; border-radius: 4px; cursor: pointer;">${t('hostvault.goManage')}</button>`
+                  : ''}
               </div>
               ${relationHtml}
+              ${(currentAws || currentGcp) ? '' : `
+                <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                  ${this.getIntegrationProviders().map(p => `
+                    <button type="button" class="no-drag group-associate-provider-btn" data-provider="${p.id}" style="min-height: 30px; font-weight: 700; font-size: 11px; border: 1px solid var(--color-primary); color: var(--color-primary); background: transparent; padding: 0 12px; border-radius: 4px; cursor: pointer;">${t('hostvault.associateProvider', { provider: p.label })}</button>
+                  `).join('')}
+                </div>
+              `}
             </div>
           </div>
 
@@ -1034,6 +1339,7 @@ export class HostListPage extends HTMLElement {
         hosts: h.hosts,
         groups: h.groups,
         awsIntegrations: h.awsIntegrations,
+        gcpIntegrations: h.gcpIntegrations,
         isLoading: h.isLoading,
         loadError: h.loadError,
         activeGroupId: h.activeGroupId,
@@ -1088,6 +1394,26 @@ export class HostListPage extends HTMLElement {
     }
 
     const currentGroup = state.groups.find(g => g.id === activeGroupId);
+
+    // 由目前目錄往上組出祖先鏈（root-most 在前，目前目錄在最後），供多層麵包屑使用。
+    const groupPathSegments = [];
+    if (currentGroup) {
+      const groupById = new Map(state.groups.map(g => [g.id, g]));
+      let cursor = currentGroup;
+      let guard = 0;
+      while (cursor && guard++ < 100) {
+        groupPathSegments.unshift(cursor);
+        cursor = cursor.parentId ? groupById.get(cursor.parentId) : null;
+      }
+    }
+    const breadcrumbSegmentsHtml = groupPathSegments.map((seg, idx) => {
+      const isLast = idx === groupPathSegments.length - 1;
+      const segSpan = isLast
+        ? `<span style="color: var(--color-text);">${escapeHtml(seg.name)}</span>`
+        : `<span class="vault-breadcrumb-seg no-drag" role="button" tabindex="0" data-group-id="${escapeHtml(seg.id)}" style="color: var(--color-primary); cursor: pointer;">${escapeHtml(seg.name)}</span>`;
+      return `<span style="color: var(--color-text-muted);">/</span>${segSpan}`;
+    }).join('');
+
     const hostVaultStatusHtml = selectedTab === 'hosts'
       ? (state.loadError
         ? `<div style="margin-bottom: 16px; padding: 12px 14px; border: 1px solid rgba(239,68,68,0.28); border-radius: 8px; color: #fca5a5; font-size: 12.5px;">${t('hostvault.loadFailed', { error: escapeHtml(state.loadError) })}</div>`
@@ -1119,11 +1445,16 @@ export class HostListPage extends HTMLElement {
       `;
     }).join('');
 
-    // 渲染 Groups Grid (僅在 Hosts 分頁且無搜尋時顯示)
+    // 渲染子目錄 Grid（Hosts 分頁、無搜尋時；顯示目前所在目錄的下一層子目錄）
     let groupsGridHtml = "";
-    if (selectedTab === 'hosts' && searchQuery === "" && activeGroupId === null) {
-      const groupsHtml = state.groups.map(group => {
+    if (selectedTab === 'hosts' && searchQuery === "") {
+      const childGroups = state.groups.filter(g => (g.parentId || null) === activeGroupId);
+      const groupsHtml = childGroups.map(group => {
         const count = state.hosts.filter(h => h.groupId === group.id).length;
+        const subCount = state.groups.filter(g => g.parentId === group.id).length;
+        const details = subCount > 0
+          ? t('hostvault.groupFolderCounts', { hosts: count, folders: subCount })
+          : t('hostvault.groupHostCount', { count });
         return `
           <div class="vault-card group-folder" data-group-id="${group.id}" title="${t('hostvault.enterGroup', { name: group.name })}" role="button" tabindex="0" aria-label="${t('hostvault.enterGroup', { name: group.name })}">
             <div class="vault-card-icon" style="background: var(--color-primary); border-radius: 8px;">
@@ -1133,7 +1464,7 @@ export class HostListPage extends HTMLElement {
             </div>
             <div class="vault-card-info">
               <div class="vault-card-title">${group.name}</div>
-              <div class="vault-card-details">${count} Hosts</div>
+              <div class="vault-card-details">${details}</div>
             </div>
             <button type="button" aria-label="${t('hostvault.editGroupTitle')}" class="no-drag vault-group-edit-btn" data-group-id="${group.id}" title="${t('hostvault.editGroupTitle')}" style="margin-left: auto;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -1145,12 +1476,16 @@ export class HostListPage extends HTMLElement {
         `;
       }).join('');
 
-      groupsGridHtml = `
-        <div id="vaultGroupsSection" class="vault-section">
-          <h3 style="font-size: 14px; font-weight: 700; color: var(--color-text-muted); margin-bottom: 12px; text-align: left; letter-spacing: 0.5px; text-transform: uppercase;">Groups</h3>
-          <div id="vaultGroupsGrid" class="vault-grid">${groupsHtml || `<div style="color: var(--color-text-muted); font-size: 13px;">${t('hostvault.noGroups')}</div>`}</div>
-        </div>
-      `;
+      // 頂層一律顯示 Groups 區塊（含空狀態）；進入子目錄後僅在有子目錄時才顯示。
+      if (activeGroupId === null || childGroups.length > 0) {
+        const sectionTitle = activeGroupId === null ? 'Groups' : t('hostvault.subdirectories');
+        groupsGridHtml = `
+          <div id="vaultGroupsSection" class="vault-section">
+            <h3 style="font-size: 14px; font-weight: 700; color: var(--color-text-muted); margin-bottom: 12px; text-align: left; letter-spacing: 0.5px; text-transform: uppercase;">${sectionTitle}</h3>
+            <div id="vaultGroupsGrid" class="vault-grid">${groupsHtml || `<div style="color: var(--color-text-muted); font-size: 13px;">${t('hostvault.noGroups')}</div>`}</div>
+          </div>
+        `;
+      }
     }
 
     // 渲染 Hosts Grid
@@ -1233,6 +1568,7 @@ export class HostListPage extends HTMLElement {
                   <button type="button" class="no-drag termix-dropdown-trigger" style="min-height: 32px; width: 24px; padding: 0; background: var(--color-primary); border: none; color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 11px; border-top-right-radius: 4px; border-bottom-right-radius: 4px;">▼</button>
                   <div class="termix-dropdown-menu" style="top: 100%; right: 0; left: auto;">
                     <button type="button" class="no-drag termix-dropdown-item" id="awsIntegrationBtn">AWS Integration</button>
+                    <button type="button" class="no-drag termix-dropdown-item" id="gcpIntegrationBtn">GCP Integration</button>
                   </div>
                 </div>
               </div>
@@ -1252,16 +1588,18 @@ export class HostListPage extends HTMLElement {
                 </div>
               </div>
             </div>
-
-            <!-- 麵包屑路徑 -->
-            <div id="vaultBreadcrumbs" class="vault-breadcrumbs ${currentGroup ? '' : 'hidden'}" style="font-size: 13px; font-weight: 600; color: var(--color-primary); cursor: pointer; display: flex; align-items: center; gap: 4px; margin-left: 16px;">
-              <span>Vaults</span>
-              <span style="color: var(--color-text-muted);">/</span>
-              <span id="breadcrumbGroupName" style="color: var(--color-text);">${currentGroup ? currentGroup.name : ''}</span>
-            </div>
           </div>
 
           <div class="vault-scroll-content" style="flex: 1; min-height: 0; overflow-y: auto;">
+            <!-- 麵包屑路徑（移至內容區左上獨立列，含 home 圖示與返回箭頭） -->
+            <div id="vaultBreadcrumbs" class="vault-breadcrumbs ${currentGroup ? '' : 'hidden'}" style="font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; margin-bottom: 16px;">
+              <button type="button" class="vault-breadcrumb-back no-drag" title="${t('hostvault.backToVaults')}" aria-label="${t('hostvault.backToVaults')}" style="display: inline-flex; align-items: center; gap: 5px; background: transparent; border: none; color: var(--color-primary); cursor: pointer; padding: 4px 6px; border-radius: 6px; font-size: 13px; font-weight: 700;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5"/><path d="M5 10v10h14V10"/></svg>
+                <span>Vaults</span>
+              </button>
+              ${breadcrumbSegmentsHtml}
+            </div>
             ${groupsGridHtml}
             ${hostsGridHtml}
           </div>
@@ -1710,6 +2048,8 @@ export class HostListPage extends HTMLElement {
           ${selectedTab === 'hosts' ? (
             state.drawerOpen && state.drawerMode === 'aws-integration' ?
               this.renderAWSIntegrationForm()
+            : state.drawerOpen && state.drawerMode === 'gcp-integration' ?
+              this.renderGCPIntegrationForm()
             : state.drawerOpen && state.drawerMode === 'group' ?
               this.renderGroupEditForm()
             : !state.selectedHost && !state.drawerOpen ? `
@@ -1744,6 +2084,13 @@ export class HostListPage extends HTMLElement {
                   <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext); margin-bottom: 12px;">
                     ${t('hostvault.connectionAlias')}
                     <input class="no-drag" id="alias" name="alias" value="${drawerHost.alias || ''}" placeholder="${t('hostvault.aliasPlaceholder')}" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
+                  </label>
+
+                  <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext); margin-bottom: 12px;">
+                    ${t('hostvault.hostDirectory')}
+                    <select class="no-drag" id="hostDirectorySelect" name="hostDirectorySelect" style="background: #0d121f; border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
+                      ${this.renderDirectoryOptions((drawerHost.groupId ?? state.activeGroupId) || '', t('hostvault.ungroupedDirectory'))}
+                    </select>
                   </label>
 
                   <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px;">
@@ -1877,7 +2224,9 @@ export class HostListPage extends HTMLElement {
             </div>
           `
           ) : selectedTab === 'integrations' ? (
-            this.renderAWSIntegrationForm()
+            state.drawerMode === 'gcp-integration'
+              ? this.renderGCPIntegrationForm()
+              : this.renderAWSIntegrationForm()
           ) : selectedTab === 'snippets' ? (
             this.snippetDrawerMode === 'package' ? packageDrawerHtml : snippetDrawerHtml
           ) : ''}
@@ -2004,12 +2353,19 @@ export class HostListPage extends HTMLElement {
     });
 
     // 3. 麵包屑回退
-    const breadcrumbs = this.querySelector('#vaultBreadcrumbs');
-    if (breadcrumbs) {
-      breadcrumbs.addEventListener('click', () => {
+    const breadcrumbBack = this.querySelector('#vaultBreadcrumbs .vault-breadcrumb-back');
+    if (breadcrumbBack) {
+      breadcrumbBack.addEventListener('click', () => {
         hostStore.getState().setActiveGroupId(null);
       });
     }
+    // 多層麵包屑：點擊中間某一層跳至該目錄
+    this.querySelectorAll('#vaultBreadcrumbs .vault-breadcrumb-seg').forEach((seg) => {
+      seg.addEventListener('click', () => {
+        const groupId = seg.getAttribute('data-group-id');
+        if (groupId) hostStore.getState().setActiveGroupId(groupId);
+      });
+    });
 
     // 4. 新增主機觸發
     const addHostBtn = this.querySelector('#addConnection');
@@ -2029,6 +2385,14 @@ export class HostListPage extends HTMLElement {
       });
     }
 
+    const gcpIntegrationBtn = this.querySelector('#gcpIntegrationBtn');
+    if (gcpIntegrationBtn) {
+      gcpIntegrationBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.openGCPIntegrationDrawer(null, { selectedTab: 'integrations', closeDropdowns: true });
+      });
+    }
+
     const newIntegrationBtn = this.querySelector('#newIntegrationBtn');
     if (newIntegrationBtn) {
       newIntegrationBtn.addEventListener('click', () => {
@@ -2040,13 +2404,33 @@ export class HostListPage extends HTMLElement {
       item.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        const groupId = item.getAttribute('data-integration-group-id') || item.closest('[data-integration-group-id]')?.getAttribute('data-integration-group-id');
+        const container = item.closest('[data-integration-group-id]') || item;
+        const groupId = container.getAttribute('data-integration-group-id');
         if (!groupId) return;
-        const integration = hostStore.getState().awsIntegrations.find(entry => entry.groupId === groupId);
-        if (!integration) return;
-        this.openAWSIntegrationDrawer(integration, { selectedTab: 'integrations' });
+        const provider = container.getAttribute('data-integration-provider') || 'aws';
+        if (provider === 'gcp') {
+          const integration = hostStore.getState().gcpIntegrations.find(entry => entry.groupId === groupId);
+          if (!integration) return;
+          this.openGCPIntegrationDrawer(integration, { selectedTab: 'integrations' });
+        } else {
+          const integration = hostStore.getState().awsIntegrations.find(entry => entry.groupId === groupId);
+          if (!integration) return;
+          this.openAWSIntegrationDrawer(integration, { selectedTab: 'integrations' });
+        }
       });
     });
+
+    // 供應商選擇器：新增整合時可切換 AWS / GCP 表單
+    const integrationProviderSelect = this.querySelector('#integrationProvider');
+    if (integrationProviderSelect && !integrationProviderSelect.disabled) {
+      integrationProviderSelect.addEventListener('change', () => {
+        if (integrationProviderSelect.value === 'gcp') {
+          this.openGCPIntegrationDrawer(null, { selectedTab: 'integrations' });
+        } else {
+          this.openAWSIntegrationDrawer(null, { selectedTab: 'integrations' });
+        }
+      });
+    }
 
     // 雲端同步設定展開折疊觸發
     const toggleAwsSyncSettingsBtn = this.querySelector('#toggleAwsSyncSettingsBtn');
@@ -2279,6 +2663,217 @@ export class HostListPage extends HTMLElement {
       });
     }
 
+    // ===== GCP 整合表單事件 =====
+    const toggleGcpSyncSettingsBtn = this.querySelector('#toggleGcpSyncSettingsBtn');
+    if (toggleGcpSyncSettingsBtn) {
+      toggleGcpSyncSettingsBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.gcpSyncSettingsExpanded = !this.gcpSyncSettingsExpanded;
+        const syncSettingsContent = this.querySelector('#gcpSyncSettingsContent');
+        if (syncSettingsContent) {
+          syncSettingsContent.style.display = this.gcpSyncSettingsExpanded ? 'flex' : 'none';
+        }
+        toggleGcpSyncSettingsBtn.textContent = `${t('hostvault.cloudSyncSettings')} ${this.gcpSyncSettingsExpanded ? '▲' : '▼'}`;
+      });
+    }
+
+    const gcpAuthModeSelect = this.querySelector('#gcpAuthMode');
+    if (gcpAuthModeSelect) {
+      gcpAuthModeSelect.addEventListener('change', () => {
+        const val = gcpAuthModeSelect.value;
+        const passwordContainer = this.querySelector('#gcpPasswordAuth');
+        const keyContainer = this.querySelector('#gcpKeyAuth');
+        if (passwordContainer && keyContainer) {
+          if (val === 'password') {
+            passwordContainer.style.display = 'flex';
+            keyContainer.style.display = 'none';
+          } else if (val === 'key') {
+            passwordContainer.style.display = 'none';
+            keyContainer.style.display = 'flex';
+          }
+        }
+      });
+    }
+
+    const gcpPrivateKeyPathInput = this.querySelector('#gcpPrivateKeyPath');
+    if (gcpPrivateKeyPathInput) {
+      gcpPrivateKeyPathInput.addEventListener('click', async () => {
+        try {
+          const selected = await HostAPI.selectFile(t('hostvault.selectPrivateKeyFile'), '*');
+          if (selected) {
+            gcpPrivateKeyPathInput.value = selected;
+          }
+        } catch (err) {
+          console.error('[TermiX] 選擇 Private Key 檔案失敗', err);
+        }
+      });
+    }
+
+    const gcpCertPathInput = this.querySelector('#gcpCertPath');
+    if (gcpCertPathInput) {
+      gcpCertPathInput.addEventListener('click', async () => {
+        try {
+          const selected = await HostAPI.selectFile(t('hostvault.selectCertFile'), '*');
+          if (selected) {
+            gcpCertPathInput.value = selected;
+          }
+        } catch (err) {
+          console.error('[TermiX] 選擇 Cert 檔案失敗', err);
+        }
+      });
+    }
+
+    const gcpForm = this.querySelector('#gcpIntegrationForm');
+    if (gcpForm) {
+      gcpForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const integrationName = this.querySelector('#gcpIntegrationName').value.trim();
+        const groupName = this.querySelector('#gcpGroupName').value.trim();
+        const projectId = this.querySelector('#gcpProjectId').value.trim();
+        const serviceAccountJson = this.querySelector('#gcpServiceAccountJson').value;
+        const ipAddressType = this.querySelector('#gcpIpAddressType').value;
+
+        const defaultPort = parseInt(this.querySelector('#gcpDefaultPort').value, 10) || 22;
+        const defaultUsername = this.querySelector('#gcpDefaultUsername').value.trim() || 'root';
+        const authMode = this.querySelector('#gcpAuthMode').value;
+        const privateKeyPath = this.querySelector('#gcpPrivateKeyPath').value.trim();
+        const certPath = this.querySelector('#gcpCertPath').value.trim();
+        const defaultPassword = this.querySelector('#gcpDefaultPassword')?.value || '';
+
+        if (!integrationName) {
+          showToast(t('hostvault.enterObjectName'), { type: 'error' });
+          return;
+        }
+        if (!groupName) {
+          showToast(t('hostvault.enterGroupName'), { type: 'error' });
+          return;
+        }
+        if (!projectId) {
+          showToast(t('hostvault.enterProjectId'), { type: 'error' });
+          return;
+        }
+
+        try {
+          const state = hostStore.getState();
+          const currentGroupId = this.querySelector('#gcpCurrentGroupId')?.value.trim() || '';
+          const editingIntegration = currentGroupId
+            ? state.gcpIntegrations.find(item => item.groupId === currentGroupId) || this.resolveSelectedGCPIntegration()
+            : this.resolveSelectedGCPIntegration();
+
+          let group = state.groups.find(g => g.name.toLowerCase() === groupName.toLowerCase());
+          if (!group) {
+            group = await state.saveGroup({ name: groupName });
+          }
+          const groupId = group.id;
+
+          const integration = {
+            groupId: groupId,
+            name: integrationName,
+            projectId: projectId,
+            ipAddressType: ipAddressType,
+            defaultPort: defaultPort,
+            defaultUsername: defaultUsername,
+            authMode: authMode,
+            privateKeyPath: privateKeyPath,
+            certPath: certPath
+          };
+
+          if (editingIntegration?.serviceAccountJsonRef && editingIntegration.groupId !== groupId && !serviceAccountJson) {
+            integration.serviceAccountJsonRef = editingIntegration.serviceAccountJsonRef;
+          }
+          if (editingIntegration?.defaultPasswordRef && editingIntegration.groupId !== groupId && !defaultPassword) {
+            integration.defaultPasswordRef = editingIntegration.defaultPasswordRef;
+          }
+
+          const secrets = {
+            serviceAccountJson: {
+              ref: `gcp/${groupId}/service-account-json`,
+              value: serviceAccountJson,
+              hasValue: Boolean(serviceAccountJson),
+              clear: false
+            },
+            defaultPassword: {
+              ref: `gcp/${groupId}/default-password`,
+              value: defaultPassword,
+              hasValue: Boolean(defaultPassword),
+              clear: false
+            }
+          };
+
+          await state.saveGCPIntegration(integration, secrets, {
+            previousGroupId: editingIntegration && editingIntegration.groupId !== groupId
+              ? editingIntegration.groupId
+              : ''
+          });
+
+          if (editingIntegration && editingIntegration.groupId !== groupId) {
+            try {
+              await state.deleteGCPIntegration(editingIntegration.groupId);
+              const relatedHosts = state.hosts.filter(h => h.groupId === editingIntegration.groupId && h.gcpInstanceId);
+              for (const host of relatedHosts) {
+                await HostAPI.saveHost({ ...host, groupId: groupId }, {});
+              }
+            } catch (moveErr) {
+              console.warn('[TermiX] 移轉舊群組主機或清除舊整合失敗：', moveErr);
+            }
+          }
+
+          try {
+            await HostAPI.syncGCPIntegration(groupId);
+          } catch (syncErr) {
+            console.error('[TermiX] GCP 同步主機失敗：', syncErr);
+            showToast(t('hostvault.gcpSyncFailed', { error: syncErr.message || syncErr }), { type: 'error', title: t('hostvault.gcpSyncFailedTitle') });
+          }
+
+          state.setDrawerOpen(false);
+          this.selectedGCPIntegration = null;
+
+          await state.loadFromBackend();
+
+          showToast(t('hostvault.gcpSaveSyncDone'), { type: 'success' });
+        } catch (err) {
+          console.error('[TermiX] GCP 整合儲存失敗：', err);
+          showToast(t('hostvault.gcpSaveFailed', { error: err.message || err }), { type: 'error' });
+        }
+      });
+    }
+
+    const gcpDeleteBtn = this.querySelector('#gcpDeleteBtn');
+    if (gcpDeleteBtn) {
+      gcpDeleteBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const targetGroupId = gcpDeleteBtn.getAttribute('data-integration-group-id') || this.querySelector('#gcpCurrentGroupId')?.value.trim() || '';
+        if (!targetGroupId) {
+          showToast(t('hostvault.gcpDeleteNotFound'), { type: 'error' });
+          return;
+        }
+
+        this.confirmModalCallback = async () => {
+          try {
+            await hostStore.getState().deleteGCPIntegration(targetGroupId);
+            this.selectedGCPIntegration = null;
+            this.gcpSyncSettingsExpanded = false;
+            hostStore.getState().setDrawerOpen(false);
+            await hostStore.getState().loadFromBackend();
+          } catch (err) {
+            console.error('[TermiX] 刪除 GCP 整合失敗：', err);
+            showToast(t('hostvault.gcpDeleteFailed', { error: err.message || err }), { type: 'error' });
+          }
+        };
+
+        const confirmModal = this.querySelector('#vaultConfirmModal');
+        const confirmTitle = this.querySelector('#confirmModalTitle');
+        const confirmMsg = this.querySelector('#confirmModalMessage');
+        if (confirmTitle) confirmTitle.textContent = t('hostvault.confirmDeleteGcp');
+        if (confirmMsg) confirmMsg.innerHTML = t('hostvault.confirmDeleteGcpMsg');
+        if (confirmModal) confirmModal.classList.remove('hidden');
+      });
+    }
+
     // 5. 編輯主機觸發
     this.querySelectorAll('.vault-card-edit-btn').forEach(btn => {
       const hostId = btn.getAttribute('data-id');
@@ -2493,6 +3088,9 @@ export class HostListPage extends HTMLElement {
         const startupCommandConfig = readStartupCommandConfig(this, state.selectedHost?.config);
         const showSnippetsInControlPanel = this.querySelector('#showSnippetsInControlPanel')?.checked !== false;
         const hostId = state.selectedHost?.id || createDraftHostId();
+        // 使用者於「目錄」下拉選擇的存放位置；空字串代表未分組（頂層）。
+        const directorySelect = this.querySelector('#hostDirectorySelect');
+        const selectedGroupId = directorySelect ? (directorySelect.value || null) : (state.selectedHost?.groupId ?? state.activeGroupId ?? null);
         const secretRefs = ensureSecretRefs(hostId, state.selectedHost?.config || {});
         const config = {
           host: hostVal,
@@ -2515,14 +3113,14 @@ export class HostListPage extends HTMLElement {
           sourceHost: state.selectedHost || createHostProfile(hostId, {
             id: hostId,
             alias: aliasVal,
-            groupId: state.activeGroupId,
+            groupId: selectedGroupId,
             config
           }),
           overrides: {
             id: hostId,
             label,
             alias: aliasVal,
-            groupId: state.selectedHost?.groupId ?? state.activeGroupId ?? null,
+            groupId: selectedGroupId,
             config
           },
           secretsPayload
@@ -2690,9 +3288,11 @@ export class HostListPage extends HTMLElement {
           return;
         }
         try {
+          // 在目前所在目錄下建立子目錄（頂層則 parentId 為空）
           await hostStore.getState().addGroup({
             id: `g_${Date.now().toString(36)}`,
-            name
+            name,
+            parentId: hostStore.getState().activeGroupId || ''
           });
           const modal = this.querySelector('#groupModal');
           if (modal) modal.classList.add('hidden');
@@ -2724,13 +3324,27 @@ export class HostListPage extends HTMLElement {
       });
     }
 
+    // 管理群組目前已關聯的整合（開啟該供應商的抽屜並帶入既有設定）
     const manageGroupAwsBtn = this.querySelector('#manageGroupAwsBtn');
     if (manageGroupAwsBtn && this.selectedGroup?.id) {
       manageGroupAwsBtn.addEventListener('click', () => {
-        const integration = hostStore.getState().awsIntegrations.find(item => item.groupId === this.selectedGroup.id) || null;
-        this.openAWSIntegrationDrawer(integration, { selectedTab: 'integrations' });
+        const linked = this.resolveGroupIntegration(this.selectedGroup.id);
+        if (linked) {
+          linked.provider.open(linked.integration, { selectedTab: 'integrations' });
+        }
       });
     }
+
+    // 尚未關聯時，依供應商註冊表提供「關聯 AWS / GCP …」選項，並預填群組名稱
+    this.querySelectorAll('.group-associate-provider-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        if (!this.selectedGroup?.id) return;
+        const providerId = btn.getAttribute('data-provider');
+        const provider = this.getIntegrationProviders().find(p => p.id === providerId);
+        if (!provider) return;
+        provider.open(null, { selectedTab: 'integrations', groupHint: this.selectedGroup });
+      });
+    });
 
     // 14. 編輯群組 Drawer 表單提交與刪除
     const groupEditForm = this.querySelector('#groupEditForm');
@@ -2745,13 +3359,15 @@ export class HostListPage extends HTMLElement {
           showToast(t('hostvault.groupNameEmpty'), { type: 'error' });
           return;
         }
+        const parentSelect = this.querySelector('#groupParentSelect');
+        const parentId = parentSelect ? parentSelect.value : '';
 
         if (this.selectedGroup) {
           const groupId = this.selectedGroup.id;
           const state = hostStore.getState();
 
           try {
-            await state.updateGroup(groupId, { name });
+            await state.updateGroup(groupId, { name, parentId });
             await state.loadFromBackend();
             state.setDrawerOpen(false);
             this.selectedGroup = null;
@@ -2770,24 +3386,23 @@ export class HostListPage extends HTMLElement {
         e.preventDefault();
         e.stopPropagation();
 
-        const groupHosts = hostStore.getState().hosts.filter(h => h.groupId === groupId);
-        const count = groupHosts.length;
+        // 計算整個子樹（含子目錄）影響到的主機與子目錄數量，供確認訊息顯示。
+        const subGroupCount = this.groupDescendantIds(groupId).length;
+        const subtreeIds = new Set([groupId, ...this.groupDescendantIds(groupId)]);
+        const affectedHosts = hostStore.getState().hosts.filter(h => subtreeIds.has(h.groupId)).length;
 
         let message = '';
-        if (count > 0) {
-          message = t('hostvault.groupHasHostsMsg', { count });
+        if (subGroupCount > 0 || affectedHosts > 0) {
+          message = t('hostvault.groupSubtreeDeleteMsg', { folders: subGroupCount, hosts: affectedHosts });
         } else {
           message = t('hostvault.confirmDeleteEmptyGroup');
         }
 
         this.confirmModalCallback = async () => {
           try {
-            if (count > 0) {
-              for (const host of groupHosts) {
-                await hostStore.getState().deleteHost(host.id);
-              }
-            }
+            // 後端會連子目錄一起刪除，其下主機改為未分組（不刪除主機）。
             await hostStore.getState().deleteGroup(groupId);
+            await hostStore.getState().loadFromBackend();
             hostStore.getState().setDrawerOpen(false);
             this.selectedGroup = null;
           } catch (err) {
@@ -3569,6 +4184,7 @@ export class HostListPage extends HTMLElement {
                                  !e.target.closest('#addConnection') &&
                                  !e.target.closest('#newIntegrationBtn') &&
                                  !e.target.closest('#awsIntegrationBtn') &&
+                                 !e.target.closest('#gcpIntegrationBtn') &&
                                  !e.target.closest('.integration-card') &&
                                  !e.target.closest('.vault-integration-edit-btn') &&
                                  !e.target.closest('.vault-card-edit-btn') &&

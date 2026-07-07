@@ -156,5 +156,23 @@ export const HostAPI = {
   },
   listAWSIntegrations() {
     return callApp(['ListAWSIntegrations']);
+  },
+
+  saveGCPIntegration(integration, secrets, previousGroupId = '') {
+    return callApp(['SaveGCPIntegration'], integration, secrets, previousGroupId);
+  },
+
+  syncGCPIntegration(groupId) {
+    return callApp(['SyncGCP', 'SyncGCPIntegration'], groupId);
+  },
+
+  getGCPIntegration(groupId) {
+    return callApp(['GetGCPIntegration'], groupId);
+  },
+  deleteGCPIntegration(groupId) {
+    return callApp(['DeleteGCPIntegration'], groupId);
+  },
+  listGCPIntegrations() {
+    return callApp(['ListGCPIntegrations']);
   }
 };
