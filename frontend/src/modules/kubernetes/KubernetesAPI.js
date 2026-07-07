@@ -152,6 +152,16 @@ export const KubernetesAPI = {
   },
 
   /** @param {unknown} request */
+  startServicePortForward(request) {
+    return callApp('StartKubernetesServicePortForward', request);
+  },
+
+  /** @param {unknown} request */
+  listServicePortForwards(request) {
+    return callApp('ListKubernetesServicePortForwards', request);
+  },
+
+  /** @param {unknown} request */
   createResource(request) {
     return callApp('CreateKubernetesResource', request);
   },

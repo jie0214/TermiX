@@ -1214,6 +1214,7 @@ export namespace dto {
 	    clusterIp: string;
 	    externalAddresses: string;
 	    ports: string;
+	    portNumbers: number[];
 	    creationTimestamp: string;
 	
 	    static createFrom(source: any = {}) {
@@ -1228,6 +1229,7 @@ export namespace dto {
 	        this.clusterIp = source["clusterIp"];
 	        this.externalAddresses = source["externalAddresses"];
 	        this.ports = source["ports"];
+	        this.portNumbers = source["portNumbers"];
 	        this.creationTimestamp = source["creationTimestamp"];
 	    }
 	}
@@ -1669,9 +1671,11 @@ export namespace dto {
 	    id: string;
 	    namespace: string;
 	    podName: string;
+	    serviceName: string;
 	    address: string;
 	    localPort: number;
 	    remotePort: number;
+	    startedAt: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new KubernetesPodPortForward(source);
@@ -1682,9 +1686,11 @@ export namespace dto {
 	        this.id = source["id"];
 	        this.namespace = source["namespace"];
 	        this.podName = source["podName"];
+	        this.serviceName = source["serviceName"];
 	        this.address = source["address"];
 	        this.localPort = source["localPort"];
 	        this.remotePort = source["remotePort"];
+	        this.startedAt = source["startedAt"];
 	    }
 	}
 	export class KubernetesPodPortForwardListRequest {
@@ -1957,6 +1963,38 @@ export namespace dto {
 	
 	
 	
+	export class KubernetesServicePortForwardListRequest {
+	    namespace: string;
+	    serviceName: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new KubernetesServicePortForwardListRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.namespace = source["namespace"];
+	        this.serviceName = source["serviceName"];
+	    }
+	}
+	export class KubernetesServicePortForwardRequest {
+	    namespace: string;
+	    serviceName: string;
+	    localPort: number;
+	    remotePort: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new KubernetesServicePortForwardRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.namespace = source["namespace"];
+	        this.serviceName = source["serviceName"];
+	        this.localPort = source["localPort"];
+	        this.remotePort = source["remotePort"];
+	    }
+	}
 	
 	export class KubernetesSession {
 	    sessionId: string;

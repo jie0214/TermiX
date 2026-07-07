@@ -53,7 +53,7 @@ test('Session 骨架提供 Namespace 與資源導覽', () => {
 });
 
 test('Pod Shell runtime events 使用共用 facade 並在卸載時清理', () => {
-  assert.match(sessionSource, /import \{ onWailsEvent \} from '\.\.\/\.\.\/platform\/wails\/events\.ts'/);
+  assert.match(sessionSource, /import \{ onWailsEvent[^}]*\} from '\.\.\/\.\.\/platform\/wails\/events\.ts'/);
   assert.match(sessionSource, /onWailsEvent\('kubernetes-shell-output'/);
   assert.match(sessionSource, /onWailsEvent\('kubernetes-shell-closed'/);
   assert.match(sessionSource, /this\.runtimeEventOffs\.forEach\(off => typeof off === 'function' && off\(\)\)/);

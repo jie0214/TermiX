@@ -333,6 +333,18 @@ type KubernetesPodPortForwardStopRequest struct {
 	ID string `json:"id" yaml:"id"`
 }
 
+type KubernetesServicePortForwardRequest struct {
+	Namespace   string `json:"namespace" yaml:"namespace"`
+	ServiceName string `json:"serviceName" yaml:"serviceName"`
+	LocalPort   int    `json:"localPort" yaml:"localPort"`
+	RemotePort  int    `json:"remotePort" yaml:"remotePort"`
+}
+
+type KubernetesServicePortForwardListRequest struct {
+	Namespace   string `json:"namespace" yaml:"namespace"`
+	ServiceName string `json:"serviceName" yaml:"serviceName"`
+}
+
 type KubernetesResourceCreateRequest struct {
 	ResourceType string `json:"resourceType" yaml:"resourceType"`
 	Namespace    string `json:"namespace" yaml:"namespace"`
@@ -418,12 +430,14 @@ type KubernetesResourceDetail struct {
 }
 
 type KubernetesPodPortForward struct {
-	ID         string `json:"id"`
-	Namespace  string `json:"namespace"`
-	PodName    string `json:"podName"`
-	Address    string `json:"address"`
-	LocalPort  int    `json:"localPort"`
-	RemotePort int    `json:"remotePort"`
+	ID          string `json:"id"`
+	Namespace   string `json:"namespace"`
+	PodName     string `json:"podName"`
+	ServiceName string `json:"serviceName"`
+	Address     string `json:"address"`
+	LocalPort   int    `json:"localPort"`
+	RemotePort  int    `json:"remotePort"`
+	StartedAt   string `json:"startedAt"`
 }
 
 type KubernetesPodLogs struct {
@@ -500,6 +514,7 @@ type KubernetesServiceSummary struct {
 	ClusterIP         string `json:"clusterIp"`
 	ExternalAddresses string `json:"externalAddresses"`
 	Ports             string `json:"ports"`
+	PortNumbers       []int  `json:"portNumbers"`
 	CreationTimestamp string `json:"creationTimestamp"`
 }
 

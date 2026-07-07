@@ -2804,7 +2804,12 @@ kubernetes-session-page {
 .kubernetes-namespace-panel {
   position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 50;
   max-height: 320px; overflow-y: auto; display: grid; gap: 2px;
-  border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-panel-bg);
+  border: 1px solid var(--color-border); border-radius: 8px;
+  /* 部分玻璃系主題的 --color-panel-bg 為半透明，會讓後方文字透出干擾閱讀；
+     以不透明的 --color-bg 為底、面板色疊加其上，確保下拉不透明。 */
+  background-color: var(--color-bg);
+  background-image: linear-gradient(var(--color-panel-bg), var(--color-panel-bg));
+  backdrop-filter: blur(8px);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28); padding: 6px;
 }
 .kubernetes-namespace-panel[hidden] { display: none; }
@@ -3006,7 +3011,6 @@ kubernetes-session-page {
   backdrop-filter: blur(24px) saturate(1.4);
   -webkit-backdrop-filter: blur(24px) saturate(1.4);
 }
-.kubernetes-pod-detail-drawer { width: min(920px, 82vw); }
 .kubernetes-detail-drawer > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 18px 20px; border-bottom: 1px solid var(--color-border); }
 .kubernetes-detail-drawer > header span { color: var(--color-primary); font-size: 11px; font-weight: 800; letter-spacing: 0.7px; text-transform: uppercase; }
 .kubernetes-detail-drawer > header h2 { margin: 4px 0 0; overflow-wrap: anywhere; font-size: 17px; }
@@ -3015,7 +3019,7 @@ kubernetes-session-page {
 .kubernetes-drawer-close { display: inline-flex; width: 32px; height: 32px; flex: 0 0 auto; align-items: center; justify-content: center; border: 0; border-radius: 6px; background: transparent; color: var(--color-subtext); cursor: pointer; }
 .kubernetes-drawer-close:hover,
 .kubernetes-drawer-close:focus-visible { color: var(--color-primary); }
-.kubernetes-drawer-close svg { display: block; }
+.kubernetes-drawer-close svg { display: block; flex: 0 0 auto; width: 22px; height: 22px; }
 .kubernetes-detail-body { min-height: 0; overflow: auto; padding: 0 20px 24px; --wails-draggable: no-drag; }
 .kubernetes-pod-detail-tabs { display: flex; flex: 0 0 auto; gap: 4px; margin: 12px 20px 0; padding: 5px; overflow-x: auto; border-radius: 8px; background: color-mix(in srgb, var(--color-titlebar-bg) 75%, transparent); --wails-draggable: no-drag; }
 .kubernetes-pod-detail-tabs button { min-height: 34px; padding: 0 13px; border: 0; border-radius: 6px; background: transparent; color: var(--color-subtext); cursor: pointer; font-size: 11px; }
@@ -3445,7 +3449,7 @@ kubernetes-session-page {
 .kubernetes-icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border: 1px solid var(--color-border); border-radius: 6px; background: transparent; color: var(--color-subtext); cursor: pointer; }
 .kubernetes-icon-btn:disabled { cursor: not-allowed; opacity: 0.45; }
 .kubernetes-icon-btn.danger { color: var(--color-danger); }
-.kubernetes-icon-btn svg { display: block; }
+.kubernetes-icon-btn svg { display: block; flex: 0 0 auto; width: 20px; height: 20px; }
 .kubernetes-log-options-wrap { position: relative; }
 .kubernetes-log-options-menu { position: absolute; right: 0; top: 38px; z-index: 30; display: grid; min-width: 220px; gap: 10px; padding: 12px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-panel-bg); box-shadow: 0 16px 32px rgba(0, 0, 0, 0.26); }
 .kubernetes-log-options-menu strong { color: var(--color-subtext); font-size: 11px; letter-spacing: 0.7px; }
@@ -3488,6 +3492,28 @@ kubernetes-session-page {
 .kubernetes-forward-empty { padding: 16px; border: 1px dashed var(--color-border); border-radius: 7px; color: var(--color-subtext); font-size: 10.5px; text-align: center; }
 .kubernetes-active-forwards > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 12px; border: 1px solid var(--color-border); border-radius: 7px; }
 .kubernetes-active-forwards button { border: 0; background: transparent; color: var(--color-danger); cursor: pointer; }
+
+/* Forward drawer 優化版：建議埠映射、區塊小標、提示文案、Active Forward 卡片 */
+.kubernetes-forward-card { grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; }
+.kubernetes-forward-card-info { display: grid; gap: 3px; }
+.kubernetes-forward-card-info strong { font-size: 12.5px; }
+.kubernetes-forward-map { font-family: 'SFMono-Regular', Consolas, monospace; font-size: 11px; color: var(--color-subtext); white-space: nowrap; }
+.kubernetes-forward-map b { color: var(--color-text); }
+.kubernetes-forward-custom { grid-template-columns: 100px auto 100px auto; }
+.kubernetes-forward-arrow { align-self: center; color: var(--color-subtext); }
+.kubernetes-forward-subhead { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--color-subtext); margin: 16px 0 8px; }
+.kubernetes-forward-hint { font-size: 11px; color: var(--color-subtext); line-height: 1.5; margin: 6px 0 0; }
+.kubernetes-forward-hint-icon { color: var(--color-primary); margin-right: 2px; }
+.kubernetes-active-forwards > .kubernetes-active-forward-card { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+.kubernetes-active-forward-head { display: flex; align-items: center; gap: 8px; }
+.kubernetes-active-forward-head code { font-size: 11.5px; color: var(--color-text); }
+.kubernetes-forward-dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: #2ecc71; box-shadow: 0 0 0 3px color-mix(in srgb, #2ecc71 22%, transparent); }
+.kubernetes-forward-running { margin-left: auto; font-size: 10px; color: #2ecc71; border: 1px solid color-mix(in srgb, #2ecc71 45%, transparent); border-radius: 999px; padding: 1px 8px; }
+.kubernetes-active-forward-meta { display: flex; gap: 12px; font-size: 10.5px; color: var(--color-subtext); }
+.kubernetes-active-forward-actions { display: flex; gap: 8px; }
+.kubernetes-active-forward-actions button { border: 1px solid var(--color-border); border-radius: 6px; padding: 5px 12px; font-size: 11px; font-weight: 600; cursor: pointer; background: transparent; }
+.kubernetes-active-forward-actions .kubernetes-secondary-btn { color: var(--color-primary); border-color: color-mix(in srgb, var(--color-primary) 45%, transparent); }
+.kubernetes-active-forward-actions .kubernetes-danger-btn { color: var(--color-danger); border-color: color-mix(in srgb, var(--color-danger) 45%, transparent); margin-left: auto; }
 .kubernetes-pod-delete > div { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 18px; border: 1px solid color-mix(in srgb, var(--color-danger) 45%, transparent); border-radius: 9px; background: var(--color-danger-bg); }
 .kubernetes-pod-delete span { display: grid; gap: 6px; }
 .kubernetes-pod-delete small { color: var(--color-subtext); }

@@ -29,3 +29,15 @@ export function offWailsEvent(
   getRuntime()?.EventsOff(eventName, ...additionalEventNames);
 }
 
+// 以系統預設瀏覽器開啟外部連結；非 Wails（瀏覽器）環境退回 window.open。
+export function openBrowserURL(url: string): void {
+  const target = String(url || '').trim();
+  if (!target) return;
+  const runtime = getRuntime();
+  if (runtime && typeof runtime.BrowserOpenURL === 'function') {
+    runtime.BrowserOpenURL(target);
+    return;
+  }
+  globalThis.window?.open?.(target, '_blank', 'noopener');
+}
+

@@ -23,6 +23,8 @@ import type {
   KubernetesPodPortForwardListRequest,
   KubernetesPodPortForwardRequest,
   KubernetesPodPortForwardStopRequest,
+  KubernetesServicePortForwardListRequest,
+  KubernetesServicePortForwardRequest,
   KubernetesPodShellSession,
   KubernetesPodShellSessionRequest,
   KubernetesPodShellStartRequest,
@@ -175,6 +177,12 @@ export interface WailsAppContract {
   StopKubernetesPodPortForward(
     request: KubernetesPodPortForwardStopRequest,
   ): Promise<void>;
+  StartKubernetesServicePortForward(
+    request: KubernetesServicePortForwardRequest,
+  ): Promise<KubernetesPodPortForward>;
+  ListKubernetesServicePortForwards(
+    request: KubernetesServicePortForwardListRequest,
+  ): Promise<KubernetesPodPortForward[]>;
   CreateKubernetesResource(
     request: KubernetesResourceCreateRequest,
   ): Promise<KubernetesResourceCreateResult>;

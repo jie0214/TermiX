@@ -86,6 +86,14 @@ func (a *App) StopKubernetesPodPortForward(request KubernetesPodPortForwardStopR
 	return a.kubernetes.StopPodPortForward(request.ID)
 }
 
+func (a *App) StartKubernetesServicePortForward(request KubernetesServicePortForwardRequest) (KubernetesPodPortForward, error) {
+	return a.kubernetes.StartServicePortForward(a.contextOrBackground(), request)
+}
+
+func (a *App) ListKubernetesServicePortForwards(request KubernetesServicePortForwardListRequest) []KubernetesPodPortForward {
+	return a.kubernetes.ListServicePortForwards(request)
+}
+
 func (a *App) CreateKubernetesResource(request KubernetesResourceCreateRequest) (KubernetesResourceCreateResult, error) {
 	return a.kubernetes.CreateResource(a.contextOrBackground(), request)
 }

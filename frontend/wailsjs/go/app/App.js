@@ -222,6 +222,10 @@ export function ListKubernetesPodPortForwards(arg1) {
   return window['go']['app']['App']['ListKubernetesPodPortForwards'](arg1);
 }
 
+export function ListKubernetesServicePortForwards(arg1) {
+  return window['go']['app']['App']['ListKubernetesServicePortForwards'](arg1);
+}
+
 export function ListSnippets() {
   return window['go']['app']['App']['ListSnippets']();
 }
@@ -296,6 +300,10 @@ export function StartKubernetesPodPortForward(arg1) {
 
 export function StartKubernetesPodShell(arg1) {
   return window['go']['app']['App']['StartKubernetesPodShell'](arg1);
+}
+
+export function StartKubernetesServicePortForward(arg1) {
+  return window['go']['app']['App']['StartKubernetesServicePortForward'](arg1);
 }
 
 export function StartLocalTerminal(arg1) {

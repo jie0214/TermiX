@@ -587,16 +587,19 @@ func serviceSummary(item corev1.Service) dto.KubernetesServiceSummary {
 		addresses = append(addresses, ingress.IP, ingress.Hostname)
 	}
 	ports := make([]string, 0, len(item.Spec.Ports))
+	portNumbers := make([]int, 0, len(item.Spec.Ports))
 	for _, port := range item.Spec.Ports {
 		value := fmt.Sprintf("%d/%s", port.Port, port.Protocol)
 		if port.NodePort > 0 {
 			value += fmt.Sprintf("->%d", port.NodePort)
 		}
 		ports = append(ports, value)
+		portNumbers = append(portNumbers, int(port.Port))
 	}
 	return dto.KubernetesServiceSummary{
 		Name: item.Name, Namespace: item.Namespace, Type: string(item.Spec.Type), ClusterIP: item.Spec.ClusterIP,
 		ExternalAddresses: strings.Join(sortedNonEmpty(addresses), ", "), Ports: strings.Join(ports, ", "),
+		PortNumbers:       portNumbers,
 		CreationTimestamp: item.CreationTimestamp.UTC().Format(time.RFC3339),
 	}
 }

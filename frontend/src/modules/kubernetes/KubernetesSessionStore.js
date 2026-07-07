@@ -134,6 +134,17 @@ function podRequest(state) {
   };
 }
 
+function serviceRequest(state) {
+  const resource = state.selectedResource || {};
+  if (String(resource.kind || '').toLowerCase() !== 'service' || !resource.name) {
+    throw new Error(t('k8s.err.noServiceSelected'));
+  }
+  return {
+    namespace: String(resource.namespace || state.selectedNamespace || 'default').trim(),
+    serviceName: String(resource.name).trim()
+  };
+}
+
 function resourceDeleteRequest(state) {
   const resource = state.selectedResource || {};
   const kind = String(resource.kind || state.resourceDetail?.kind || '').trim().toLowerCase();
@@ -751,6 +762,75 @@ export function createKubernetesSessionStore(api = KubernetesAPI) {
       set({ forwardsLoading: true, forwardsError: '' });
       try {
         const forward = await api.startPodPortForward(request);
+        if (requestVersion !== forwardRequestVersion) return forward;
+        set(state => ({
+          podForwards: forward ? [...state.podForwards.filter(item => item.id !== forward.id), forward] : state.podForwards,
+          forwardsLoading: false,
+          forwardsError: ''
+        }));
+        return forward;
+      } catch (error) {
+        if (requestVersion === forwardRequestVersion) {
+          set({ forwardsLoading: false, forwardsError: errorMessage(error) });
+        }
+        throw error;
+      }
+    },
+
+    openServiceForwardFromSummary: async (service) => {
+      const selectedResource = resourceIdentity('service', service);
+      set({
+        selectedResource,
+        resourceDetail: { kind: 'Service', name: selectedResource.name, namespace: selectedResource.namespace, uid: selectedResource.uid || '' },
+        detailOpen: true, detailLoading: false, detailError: '', detailTab: 'forward', podForwards: [], forwardsError: ''
+      });
+      return get().loadServicePortForwards();
+    },
+
+    loadServicePortForwards: async () => {
+      let request;
+      try {
+        request = serviceRequest(get());
+      } catch (error) {
+        set({ forwardsError: errorMessage(error) });
+        throw error;
+      }
+      const requestVersion = ++forwardRequestVersion;
+      set({ forwardsLoading: true, forwardsError: '' });
+      try {
+        const payload = await api.listServicePortForwards(request);
+        const forwards = Array.isArray(payload) ? payload : [];
+        if (requestVersion !== forwardRequestVersion) return forwards;
+        set({ podForwards: forwards, forwardsLoading: false, forwardsError: '' });
+        return forwards;
+      } catch (error) {
+        if (requestVersion === forwardRequestVersion) {
+          set({ forwardsLoading: false, forwardsError: errorMessage(error) });
+        }
+        throw error;
+      }
+    },
+
+    startServicePortForward: async ({ localPort, remotePort }) => {
+      let request;
+      try {
+        request = {
+          ...serviceRequest(get()),
+          localPort: Number(localPort),
+          remotePort: Number(remotePort)
+        };
+        if (!Number.isInteger(request.localPort) || request.localPort < 0 || request.localPort > 65535 ||
+            !Number.isInteger(request.remotePort) || request.remotePort < 1 || request.remotePort > 65535) {
+          throw new Error(t('k8s.err.portFormat'));
+        }
+      } catch (error) {
+        set({ forwardsError: errorMessage(error) });
+        throw error;
+      }
+      const requestVersion = ++forwardRequestVersion;
+      set({ forwardsLoading: true, forwardsError: '' });
+      try {
+        const forward = await api.startServicePortForward(request);
         if (requestVersion !== forwardRequestVersion) return forward;
         set(state => ({
           podForwards: forward ? [...state.podForwards.filter(item => item.id !== forward.id), forward] : state.podForwards,

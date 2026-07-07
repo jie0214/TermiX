@@ -1,7 +1,7 @@
 import { kubernetesSessionStore } from './KubernetesSessionStore.js';
 import { KUBERNETES_CREATE_RESOURCE_GROUPS } from './KubernetesResourceTemplates.js';
 import { KubernetesAPI } from './KubernetesAPI.js';
-import { onWailsEvent } from '../../platform/wails/events.ts';
+import { onWailsEvent, openBrowserURL } from '../../platform/wails/events.ts';
 import { confirmDialog } from '../../components/feedback/confirmDialog';
 import { showToast } from '../../components/feedback/toast.js';
 import { suppressScrollbarAutohide } from '../../runtime/scrollbarAutohide';
@@ -25,7 +25,7 @@ function escapeHtml(value) {
 const HIGH_RISK_KUBERNETES_KINDS = new Set([
   'deployment', 'statefulset', 'daemonset', 'replicaset',
   'persistentvolume', 'persistentvolumeclaim', 'pv', 'pvc',
-  'namespace', 'node', 'service', 'ingress',
+  'namespace', 'node', 'ingress',
   'configmap', 'secret', 'job', 'cronjob'
 ]);
 
@@ -272,6 +272,8 @@ export class KubernetesSessionPage extends HTMLElement {
     this.namespaceSelectInteracting = false;
     this.namespaceInteractionTimer = null;
     this.namespaceDropdownOpen = false;
+    // 多選 namespace 的草稿選取；下拉開啟期間累積，關閉時才套用（避免每勾一次就重載）。
+    this.namespaceDraft = null;
     // 側邊欄可收合分組：存放目前收合（隱藏子項）的分組名稱；預設全部展開。
     this.collapsedNavGroups = new Set();
     this.handleNamespaceOutsideClick = this.handleNamespaceOutsideClick.bind(this);
@@ -456,9 +458,13 @@ export class KubernetesSessionPage extends HTMLElement {
     this.namespaceDropdownOpen = next;
     this.markNamespaceSelectInteracting(next);
     if (next) {
+      // 開啟：以目前選取初始化草稿；期間的勾選只改草稿。
+      this.namespaceDraft = [...(kubernetesSessionStore.getState().selectedNamespaces || [])];
       document.addEventListener('pointerdown', this.handleNamespaceOutsideClick, true);
     } else {
       document.removeEventListener('pointerdown', this.handleNamespaceOutsideClick, true);
+      // 關閉：選擇完畢，套用草稿（若有變更）→ 只重載一次。
+      this.commitNamespaceDraft();
     }
     const panel = this.querySelector('.kubernetes-namespace-panel');
     const toggle = this.querySelector('#kubernetesNamespaceToggle');
@@ -473,6 +479,17 @@ export class KubernetesSessionPage extends HTMLElement {
   handleNamespaceOutsideClick(event) {
     if (event.target?.closest?.('[data-namespace-multiselect]')) return;
     this.setNamespaceDropdownOpen(false);
+  }
+
+  // 關閉下拉時套用草稿：與目前選取（順序無關）比較，有變更才呼叫 store 重載一次。
+  commitNamespaceDraft() {
+    const draft = this.namespaceDraft;
+    this.namespaceDraft = null;
+    if (!Array.isArray(draft)) return;
+    const current = kubernetesSessionStore.getState().selectedNamespaces || [];
+    const normalize = list => [...list].map(String).sort().join(' ');
+    if (normalize(draft) === normalize(current)) return;
+    kubernetesSessionStore.getState().setSelectedNamespaces(draft).catch(() => {});
   }
 
   handlePageClick(event) {
@@ -490,7 +507,9 @@ export class KubernetesSessionPage extends HTMLElement {
       this.pendingDeleteConfirm = false;
       store.selectDetailTab(detailTab.dataset.detailTab);
       if (detailTab.dataset.detailTab === 'forward') {
-        store.loadPodPortForwards().catch(error => {
+        const kind = String(store.selectedResource?.kind || store.resourceDetail?.kind || '').toLowerCase();
+        const loader = kind === 'service' ? store.loadServicePortForwards() : store.loadPodPortForwards();
+        loader.catch(error => {
           console.error('[Kubernetes][UI][DetailTab] 載入 Port Forward 失敗', error);
         });
       }
@@ -784,15 +803,20 @@ export class KubernetesSessionPage extends HTMLElement {
         : (clusterScopedEmpty[section] || t('k8s.empty.noResourcesInScope'));
       return `${this.renderSectionRefresh(section)}<div class="kubernetes-resource-empty">${emptyText}</div>`;
     }
+    // namespaced 資源（有 namespace 欄）比照 Pod：每列左側以 namespaceColor 上色條，
+    // 讓 Service/Deployment/StatefulSet/Ingress/PVC 等也能一眼辨識所屬 namespace。
+    const namespaced = definition.columns.some(([key]) => key === 'namespace');
+    // Service 列表額外提供「Forward」action（其餘資源無 action 欄）。
+    const withServiceForward = section === 'services';
     // 通用表格所有欄皆可排序：creationTimestamp 依時間、已知數值欄依數值，其餘依字串。
     return `
       ${this.renderSectionRefresh(section)}
       <div class="kubernetes-resource-table-wrap">
-        <table class="kubernetes-resource-table">
+        <table class="kubernetes-resource-table${namespaced ? ' kubernetes-nscolored-table' : ''}">
           <caption class="kubernetes-table-caption">${escapeHtml(SECTIONS.find(([id]) => id === section)?.[1] || t('k8s.resource.fallback'))}</caption>
-          <thead><tr>${definition.columns.map(([key, label]) => this.sortableTh(section, key, label, { type: sortTypeForKey(key) })).join('')}</tr></thead>
+          <thead><tr>${definition.columns.map(([key, label]) => this.sortableTh(section, key, label, { type: sortTypeForKey(key) })).join('')}${withServiceForward ? '<th></th>' : ''}</tr></thead>
           <tbody>${items.map(item => `
-            <tr class="kubernetes-resource-row" tabindex="0" role="button" data-resource-kind="${RESOURCE_KINDS[section]}" data-resource-name="${escapeHtml(item.name)}" data-resource-namespace="${escapeHtml(item.namespace || '')}" data-resource-apiversion="${escapeHtml(RESOURCE_META[section]?.apiVersion || '')}" aria-label="${t('k8s.row.viewDetailAria', { name: escapeHtml(item.name) })}">${definition.columns.map(([key, , formatter]) => (!formatter && ELLIPSIS_KEYS.has(key)) ? this.ellipsisCell(item[key]) : `<td>${formatter ? formatter(item[key]) : escapeHtml(item[key] ?? '-')}</td>`).join('')}</tr>
+            <tr class="kubernetes-resource-row" tabindex="0" role="button"${namespaced && item.namespace ? ` style="border-left-color:${this.namespaceColor(item.namespace)}"` : ''} data-resource-kind="${RESOURCE_KINDS[section]}" data-resource-name="${escapeHtml(item.name)}" data-resource-namespace="${escapeHtml(item.namespace || '')}" data-resource-apiversion="${escapeHtml(RESOURCE_META[section]?.apiVersion || '')}" aria-label="${t('k8s.row.viewDetailAria', { name: escapeHtml(item.name) })}">${definition.columns.map(([key, , formatter]) => (!formatter && ELLIPSIS_KEYS.has(key)) ? this.ellipsisCell(item[key]) : `<td>${formatter ? formatter(item[key]) : escapeHtml(item[key] ?? '-')}</td>`).join('')}${withServiceForward ? `<td class="kubernetes-pod-actions"><button data-service-action="forward" data-service="${encodeURIComponent(JSON.stringify(item))}" ${(Array.isArray(item.portNumbers) && item.portNumbers.length) ? '' : 'disabled'}>Forward</button></td>` : ''}</tr>
           `).join('')}</tbody>
         </table>
       </div>`;
@@ -1446,6 +1470,7 @@ export class KubernetesSessionPage extends HTMLElement {
     const namespace = detail?.namespace || detail?.metadata?.namespace || selected.namespace || '';
     const kind = String(selected.kind || detail?.kind || '').toLowerCase();
     const isPod = kind === 'pod';
+    const isService = kind === 'service';
     let body = '';
     if (state.detailLoading && !detail) {
       body = `<div class="kubernetes-drawer-state"><span class="kubernetes-spinner"></span><span>${t('k8s.detail.loading')}</span></div>`;
@@ -1458,33 +1483,37 @@ export class KubernetesSessionPage extends HTMLElement {
     }
     return `
       <div class="kubernetes-detail-backdrop no-drag" data-close-detail="true"></div>
-      <aside class="kubernetes-detail-drawer no-drag ${isPod ? 'kubernetes-pod-detail-drawer' : ''}" role="dialog" aria-modal="true" aria-labelledby="kubernetesDetailTitle">
-        <header><div><h2 id="kubernetesDetailTitle">${escapeHtml(title)}</h2><p><span class="kubernetes-detail-kind">${escapeHtml(selected.kind || detail?.kind || t('k8s.resource.genericName'))}</span>${namespace ? ` ${t('k8s.detail.inNamespace', { namespace: escapeHtml(namespace) })}` : ''}</p></div><button type="button" class="kubernetes-drawer-close no-drag" aria-label="${t('k8s.detail.closeAria')}">${renderKubernetesIcon('close', 16)}</button></header>
+      <aside class="kubernetes-detail-drawer no-drag" role="dialog" aria-modal="true" aria-labelledby="kubernetesDetailTitle">
+        <header><div><h2 id="kubernetesDetailTitle">${escapeHtml(title)}</h2><p><span class="kubernetes-detail-kind">${escapeHtml(selected.kind || detail?.kind || t('k8s.resource.genericName'))}</span>${namespace ? ` ${t('k8s.detail.inNamespace', { namespace: escapeHtml(namespace) })}` : ''}</p></div><button type="button" class="kubernetes-drawer-close no-drag" aria-label="${t('k8s.detail.closeAria')}">${renderKubernetesIcon('close', 22)}</button></header>
         ${state.detailError && detail ? `<div class="kubernetes-session-error compact"><strong>${t('k8s.detail.refreshFailedSnapshot')}</strong><span>${escapeHtml(state.detailError)}</span></div>` : ''}
-        ${detail ? this.renderResourceDetailTabs(state.detailTab, isPod) : ''}
+        ${detail ? this.renderResourceDetailTabs(state.detailTab, isPod, isService) : ''}
         <div class="kubernetes-detail-body"${detail ? ` id="k8s-detail-panel" role="tabpanel" aria-labelledby="k8s-detail-tab-${escapeHtml(state.detailTab || 'overview')}"` : ''}>${body}</div>
       </aside>`;
   }
 
-  renderResourceDetailTabs(activeTab = 'overview', isPod = false) {
-    // 所有 kind 皆有 Overview / YAML / Delete；Pod 另保留 Logs / Forward。
+  renderResourceDetailTabs(activeTab = 'overview', isPod = false, isService = false) {
+    // 所有 kind 皆有 Overview / YAML / Delete；Pod 另保留 Logs / Forward；Service 另保留 Forward。
     const tabs = isPod
       ? [['overview', 'Overview'], ['yaml', 'YAML'], ['logs', 'Logs'], ['forward', 'Forward'], ['delete', 'Delete']]
-      : [['overview', 'Overview'], ['yaml', 'YAML'], ['delete', 'Delete']];
+      : isService
+        ? [['overview', 'Overview'], ['yaml', 'YAML'], ['forward', 'Forward'], ['delete', 'Delete']]
+        : [['overview', 'Overview'], ['yaml', 'YAML'], ['delete', 'Delete']];
     // 內容面板 id 固定為 k8s-detail-panel；各 tab id 為 k8s-detail-tab-${id}。
     // aria-controls 指向面板、aria-selected 標示 active；面板側於 renderDetailDrawer 補 aria-labelledby。
     return `<nav class="kubernetes-pod-detail-tabs" aria-label="${t('k8s.detail.tabsAria')}" role="tablist">${tabs.map(([id, label]) => `<button type="button" id="k8s-detail-tab-${id}" class="no-drag ${activeTab === id ? 'active' : ''} ${id === 'delete' ? 'danger' : ''}" data-detail-tab="${id}" role="tab" aria-selected="${activeTab === id}" aria-controls="k8s-detail-panel">${label}</button>`).join('')}</nav>`;
   }
 
   renderResourceDetailTab(detail, selected, state) {
-    const isPod = String(selected.kind || detail.kind || '').toLowerCase() === 'pod';
+    const kind = String(selected.kind || detail.kind || '').toLowerCase();
+    const isPod = kind === 'pod';
+    const isService = kind === 'service';
     switch (state.detailTab) {
     case 'yaml':
       return this.renderDetailYAML(detail, selected, state);
     case 'logs':
       return isPod ? this.renderPodLogs(detail, selected, state, Array.isArray(detail.containers) ? detail.containers : []) : this.renderDetailContent(detail, selected, state);
     case 'forward':
-      return isPod ? this.renderPodForward(detail, state) : this.renderDetailContent(detail, selected, state);
+      return isPod ? this.renderPodForward(detail, state) : isService ? this.renderServiceForward(selected, state) : this.renderDetailContent(detail, selected, state);
     case 'delete':
       return this.renderResourceDelete(detail, selected, state);
     default:
@@ -1731,9 +1760,9 @@ export class KubernetesSessionPage extends HTMLElement {
     }
 
     const toolbar = `<div class="kubernetes-yaml-toolbar">
-      <button type="button" id="toggleKubernetesYAMLSearch" class="no-drag kubernetes-icon-btn ${this.yamlSearchOpen ? 'active' : ''}" title="${t('k8s.yaml.search')}" aria-label="${t('k8s.yaml.search')}" ${editing ? 'disabled' : ''}>${renderKubernetesIcon('search', 16)}</button>
-      <button type="button" id="editKubernetesYAML" class="no-drag kubernetes-icon-btn ${editing ? 'active' : ''}" title="${editDisabled ? t('k8s.yaml.editDisabledHint') : t('k8s.yaml.edit')}" aria-label="${t('k8s.yaml.edit')}" ${editDisabled ? 'disabled' : ''}>${renderKubernetesIcon('edit', 16)}</button>
-      <button type="button" id="copyKubernetesYAML" class="no-drag kubernetes-icon-btn" title="${t('k8s.yaml.copy')}" aria-label="${t('k8s.yaml.copy')}">${renderKubernetesIcon('copy', 16)}</button>
+      <button type="button" id="toggleKubernetesYAMLSearch" class="no-drag kubernetes-icon-btn ${this.yamlSearchOpen ? 'active' : ''}" title="${t('k8s.yaml.search')}" aria-label="${t('k8s.yaml.search')}" ${editing ? 'disabled' : ''}>${renderKubernetesIcon('search', 20)}</button>
+      <button type="button" id="editKubernetesYAML" class="no-drag kubernetes-icon-btn ${editing ? 'active' : ''}" title="${editDisabled ? t('k8s.yaml.editDisabledHint') : t('k8s.yaml.edit')}" aria-label="${t('k8s.yaml.edit')}" ${editDisabled ? 'disabled' : ''}>${renderKubernetesIcon('edit', 20)}</button>
+      <button type="button" id="copyKubernetesYAML" class="no-drag kubernetes-icon-btn" title="${t('k8s.yaml.copy')}" aria-label="${t('k8s.yaml.copy')}">${renderKubernetesIcon('copy', 20)}</button>
     </div>`;
 
     const searchBox = (this.yamlSearchOpen && !editing)
@@ -1756,6 +1785,59 @@ export class KubernetesSessionPage extends HTMLElement {
     </section>`;
   }
 
+  // 建議的本機埠：特權埠（<1024）自動 +8000（80→8080、443→8443），其餘沿用原埠，
+  // 避免綁定特權埠失敗，同時給出好記的預設值。使用者仍可用 Custom 自訂。
+  forwardSuggestedLocalPort(remotePort) {
+    const p = Number(remotePort);
+    if (!Number.isInteger(p) || p <= 0) return p;
+    return p < 1024 ? p + 8000 : p;
+  }
+
+  // 由 startedAt（RFC3339）算出運行時間字串，如 45s / 1m 23s / 2h 5m。無效則回空字串。
+  formatForwardUptime(startedAt) {
+    const ts = Date.parse(startedAt || '');
+    if (!Number.isFinite(ts)) return '';
+    let secs = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+    const h = Math.floor(secs / 3600); secs -= h * 3600;
+    const m = Math.floor(secs / 60); const s = secs - m * 60;
+    if (h > 0) return `${h}h ${m}m`;
+    if (m > 0) return `${m}m ${s}s`;
+    return `${s}s`;
+  }
+
+  // 在系統預設瀏覽器開啟轉發位址（透過 platform facade，內部使用 Wails BrowserOpenURL）。
+  openForwardUrl(url) {
+    openBrowserURL(url);
+  }
+
+  // 複製轉發的本機位址（localhost:port）到剪貼簿並提示。
+  copyForwardAddress(addr) {
+    const value = String(addr || '').trim();
+    if (!value) return;
+    const notify = () => showToast(t('k8s.forward.copied', { addr: value }), { type: 'success' });
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      navigator.clipboard.writeText(value).then(notify).catch(() => {});
+    }
+  }
+
+  // Active Forwards 卡片（Pod / Service 共用）：狀態點 + 運行時間 + Open / Copy / Stop。
+  renderForwardActive(state, kind) {
+    const forwards = Array.isArray(state.podForwards) ? state.podForwards : [];
+    if (!forwards.length) {
+      return `<div class="kubernetes-forward-empty">${state.forwardsLoading ? t('k8s.forward.updating') : t('k8s.forward.noActive')}</div>`;
+    }
+    const targetPrefix = kind === 'service' ? 'svc' : 'pod';
+    return `<div class="kubernetes-active-forwards">${forwards.map(item => {
+      const addr = `${item.address}:${item.localPort}`;
+      const uptime = this.formatForwardUptime(item.startedAt);
+      return `<div class="kubernetes-active-forward-card">
+        <div class="kubernetes-active-forward-head"><span class="kubernetes-forward-dot" aria-hidden="true"></span><code>${escapeHtml(addr)} → ${targetPrefix}:${item.remotePort}</code><span class="kubernetes-forward-running">${t('k8s.forward.running')}</span></div>
+        ${uptime ? `<div class="kubernetes-active-forward-meta"><span>${t('k8s.forward.uptime', { time: uptime })}</span></div>` : ''}
+        <div class="kubernetes-active-forward-actions"><button type="button" class="no-drag kubernetes-secondary-btn open-kubernetes-forward" data-forward-url="http://${escapeHtml(addr)}">${t('k8s.forward.open')}</button><button type="button" class="no-drag kubernetes-secondary-btn copy-kubernetes-forward" data-forward-addr="${escapeHtml(addr)}">${t('k8s.forward.copy')}</button><button type="button" class="no-drag kubernetes-danger-btn stop-kubernetes-forward" data-forward-id="${escapeHtml(item.id)}" ${state.forwardsLoading ? 'disabled' : ''}>${t('k8s.forward.stop')}</button></div>
+      </div>`;
+    }).join('')}</div>`;
+  }
+
   renderPodForward(detail, state) {
     const ports = [];
     for (const container of Array.isArray(detail.containers) ? detail.containers : []) {
@@ -1766,13 +1848,48 @@ export class KubernetesSessionPage extends HTMLElement {
         }
       }
     }
+    const cards = ports.map(port => {
+      const local = this.forwardSuggestedLocalPort(port.port);
+      const label = escapeHtml(port.name || port.container || t('k8s.forward.portLabel', { port: port.port }));
+      return `<div class="kubernetes-forward-card"><div class="kubernetes-forward-card-info"><strong>${label}</strong><span>${port.port}/${escapeHtml(port.protocol || 'TCP')}</span></div><span class="kubernetes-forward-map">localhost:<b>${local}</b> → pod:${port.port}</span><button type="button" class="no-drag kubernetes-primary-btn start-kubernetes-forward" data-local-port="${local}" data-remote-port="${port.port}" ${state.forwardsLoading ? 'disabled' : ''}>${t('k8s.forward.forward')}</button></div>`;
+    }).join('');
     return `<section class="kubernetes-detail-section kubernetes-pod-forward"><h3>${t('k8s.forward.title')}</h3>
+      <p class="kubernetes-forward-hint">${t('k8s.forward.intro')}</p>
       ${state.forwardsError ? `<div class="kubernetes-session-error compact" role="alert"><strong>${t('k8s.forward.operationFailed')}</strong><span>${escapeHtml(state.forwardsError)}</span></div>` : ''}
-      <div class="kubernetes-forward-list">${ports.map(port => `<div class="kubernetes-forward-card"><div><strong>${escapeHtml(port.name || port.container || t('k8s.forward.portLabel', { port: port.port }))}</strong><span>${port.port}/${escapeHtml(port.protocol || 'TCP')}</span></div><label>${t('k8s.forward.localPort')}<input class="no-drag kubernetes-forward-local-port" type="number" min="0" max="65535" value="${port.port}"></label><button type="button" class="no-drag kubernetes-primary-btn start-kubernetes-forward" data-remote-port="${port.port}" ${state.forwardsLoading ? 'disabled' : ''}>${t('k8s.forward.forward')}</button></div>`).join('')}</div>
+      <div class="kubernetes-forward-subhead">${t('k8s.forward.suggested')}</div>
+      <div class="kubernetes-forward-list">${cards}</div>
       ${ports.length ? '' : `<p class="kubernetes-forward-empty">${t('k8s.forward.noContainerPort')}</p>`}
-      <div class="kubernetes-forward-custom"><label>${t('k8s.forward.localPort')}<input id="kubernetesForwardCustomLocal" class="no-drag" type="number" min="0" max="65535" value="0"></label><label>${t('k8s.forward.podPort')}<input id="kubernetesForwardCustomRemote" class="no-drag" type="number" min="1" max="65535"></label><button type="button" id="startKubernetesCustomForward" class="no-drag kubernetes-secondary-btn" ${state.forwardsLoading ? 'disabled' : ''}>${t('k8s.forward.createCustom')}</button></div>
+      <div class="kubernetes-forward-subhead">${t('k8s.forward.custom')}</div>
+      <div class="kubernetes-forward-custom"><label>${t('k8s.forward.localPort')}<input id="kubernetesForwardCustomLocal" class="no-drag" type="number" min="0" max="65535" value="0"></label><span class="kubernetes-forward-arrow" aria-hidden="true">→</span><label>${t('k8s.forward.podPort')}<input id="kubernetesForwardCustomRemote" class="no-drag" type="number" min="1" max="65535"></label><button type="button" id="startKubernetesCustomForward" class="no-drag kubernetes-secondary-btn" ${state.forwardsLoading ? 'disabled' : ''}>${t('k8s.forward.createCustom')}</button></div>
+      <p class="kubernetes-forward-hint"><span class="kubernetes-forward-hint-icon" aria-hidden="true">ⓘ</span> ${t('k8s.forward.portConflictHint')}</p>
       <h3>${t('k8s.forward.active')}</h3>
-      ${state.podForwards.length ? `<div class="kubernetes-active-forwards">${state.podForwards.map(item => `<div><code>${escapeHtml(item.address)}:${item.localPort} → ${item.remotePort}</code><button type="button" class="no-drag stop-kubernetes-forward" data-forward-id="${escapeHtml(item.id)}" ${state.forwardsLoading ? 'disabled' : ''}>${t('k8s.forward.stop')}</button></div>`).join('')}</div>` : `<div class="kubernetes-forward-empty">${state.forwardsLoading ? t('k8s.forward.updating') : t('k8s.forward.noActive')}</div>`}
+      ${this.renderForwardActive(state, 'pod')}
+    </section>`;
+  }
+
+  // Service 版 Port Forward：以 Service 的連接埠清單（selected.portNumbers）為預設，
+  // 後端會把 Service port 解析成後端 Pod 的 targetPort 再轉發。停止沿用 pod 的 stop 流程。
+  renderServiceForward(selected, state) {
+    const ports = [];
+    for (const value of Array.isArray(selected.portNumbers) ? selected.portNumbers : []) {
+      const num = Number(value);
+      if (Number.isInteger(num) && num > 0 && !ports.includes(num)) ports.push(num);
+    }
+    const cards = ports.map(port => {
+      const local = this.forwardSuggestedLocalPort(port);
+      return `<div class="kubernetes-forward-card"><div class="kubernetes-forward-card-info"><strong>${t('k8s.forward.servicePortLabel', { port })}</strong><span>${port}/TCP</span></div><span class="kubernetes-forward-map">localhost:<b>${local}</b> → svc:${port}</span><button type="button" class="no-drag kubernetes-primary-btn start-kubernetes-service-forward" data-local-port="${local}" data-remote-port="${port}" ${state.forwardsLoading ? 'disabled' : ''}>${t('k8s.forward.forward')}</button></div>`;
+    }).join('');
+    return `<section class="kubernetes-detail-section kubernetes-pod-forward"><h3>${t('k8s.forward.title')}</h3>
+      <p class="kubernetes-forward-hint">${t('k8s.forward.introService')}</p>
+      ${state.forwardsError ? `<div class="kubernetes-session-error compact" role="alert"><strong>${t('k8s.forward.operationFailed')}</strong><span>${escapeHtml(state.forwardsError)}</span></div>` : ''}
+      <div class="kubernetes-forward-subhead">${t('k8s.forward.suggested')}</div>
+      <div class="kubernetes-forward-list">${cards}</div>
+      ${ports.length ? '' : `<p class="kubernetes-forward-empty">${t('k8s.forward.noServicePort')}</p>`}
+      <div class="kubernetes-forward-subhead">${t('k8s.forward.custom')}</div>
+      <div class="kubernetes-forward-custom"><label>${t('k8s.forward.localPort')}<input id="kubernetesServiceForwardCustomLocal" class="no-drag" type="number" min="0" max="65535" value="0"></label><span class="kubernetes-forward-arrow" aria-hidden="true">→</span><label>${t('k8s.forward.servicePort')}<input id="kubernetesServiceForwardCustomRemote" class="no-drag" type="number" min="1" max="65535"></label><button type="button" id="startKubernetesServiceCustomForward" class="no-drag kubernetes-secondary-btn" ${state.forwardsLoading ? 'disabled' : ''}>${t('k8s.forward.createCustom')}</button></div>
+      <p class="kubernetes-forward-hint"><span class="kubernetes-forward-hint-icon" aria-hidden="true">ⓘ</span> ${t('k8s.forward.portConflictHint')}</p>
+      <h3>${t('k8s.forward.active')}</h3>
+      ${this.renderForwardActive(state, 'service')}
     </section>`;
   }
 
@@ -1818,7 +1935,7 @@ export class KubernetesSessionPage extends HTMLElement {
     return `
       <div class="kubernetes-detail-backdrop no-drag" data-close-create="true"></div>
       <aside class="kubernetes-create-drawer no-drag" role="dialog" aria-modal="true" aria-labelledby="kubernetesCreateResourceTitle">
-        <header><h2 id="kubernetesCreateResourceTitle">${t('k8s.create.title')}</h2><button type="button" class="kubernetes-drawer-close no-drag" aria-label="${t('k8s.create.closeAria')}">${renderKubernetesIcon('close', 16)}</button></header>
+        <header><h2 id="kubernetesCreateResourceTitle">${t('k8s.create.title')}</h2><button type="button" class="kubernetes-drawer-close no-drag" aria-label="${t('k8s.create.closeAria')}">${renderKubernetesIcon('close', 22)}</button></header>
         <div class="kubernetes-create-toolbar">
           <div class="kubernetes-create-actions"><button type="button" id="applyKubernetesResource" class="no-drag kubernetes-primary-btn" ${state.createLoading || state.createSaving ? 'disabled' : ''}>${state.createLoading ? t('k8s.create.applying') : t('k8s.create.apply')}</button><button type="button" id="saveKubernetesResourceYAML" class="no-drag kubernetes-secondary-btn" ${state.createLoading || state.createSaving ? 'disabled' : ''}>${state.createSaving ? t('k8s.create.saving') : t('k8s.create.save')}</button></div>
           <label><span class="kubernetes-visually-hidden">${t('k8s.create.resourceType')}</span><select id="kubernetesCreateResourceType" class="no-drag" ${state.createLoading || state.createSaving ? 'disabled' : ''}>${KUBERNETES_CREATE_RESOURCE_GROUPS.map(([group, types]) => `<optgroup label="${escapeHtml(group)}">${types.map(type => `<option value="${type}" ${type === state.createResourceType ? 'selected' : ''}>${type}</option>`).join('')}</optgroup>`).join('')}</select></label>
@@ -1893,20 +2010,27 @@ export class KubernetesSessionPage extends HTMLElement {
       event.stopPropagation();
       this.setNamespaceDropdownOpen(!this.namespaceDropdownOpen);
     });
-    // 勾選 All Namespaces → 清空具體選取。
-    this.querySelector('[data-namespace-all]')?.addEventListener('change', () => {
+    // 多選改為「草稿模式」：勾選期間只更新本地草稿，不重載 dashboard；
+    // 待關閉下拉（選擇完畢）時才一次套用（commitNamespaceDraft），避免每勾一次就重載造成卡頓。
+    this.querySelector('[data-namespace-all]')?.addEventListener('change', (event) => {
       this.markNamespaceSelectInteracting(true);
-      kubernetesSessionStore.getState().selectAllNamespaces()
-        .catch(() => {})
-        .finally(() => this.markNamespaceSelectInteracting(false));
+      if (event.target.checked) {
+        this.namespaceDraft = [];
+        this.querySelectorAll('[data-namespace-option]').forEach(cb => { cb.checked = false; });
+      } else {
+        // 空選即代表 All，不允許把 All 取消成「什麼都沒選」，維持勾選。
+        event.target.checked = true;
+      }
     });
-    // 勾/取消單一具體 namespace（勾任一會自動取消 All，由 store toggle 處理）。
     this.querySelectorAll('[data-namespace-option]').forEach(input => {
       input.addEventListener('change', () => {
         this.markNamespaceSelectInteracting(true);
-        kubernetesSessionStore.getState().toggleNamespace(input.value)
-          .catch(() => {})
-          .finally(() => this.markNamespaceSelectInteracting(false));
+        const set = new Set(Array.isArray(this.namespaceDraft) ? this.namespaceDraft : []);
+        if (input.checked) set.add(input.value);
+        else set.delete(input.value);
+        this.namespaceDraft = [...set];
+        const allCb = this.querySelector('[data-namespace-all]');
+        if (allCb) allCb.checked = this.namespaceDraft.length === 0;
       });
     });
 
@@ -1975,6 +2099,12 @@ export class KubernetesSessionPage extends HTMLElement {
       if (button.dataset.podAction === 'logs') store.openPodLogsView(pod, button.dataset.container).catch(() => {});
       if (button.dataset.podAction === 'shell') store.openPodShellView(pod, button.dataset.container);
       if (button.dataset.podAction === 'forward') store.openPodForwardFromSummary(pod).catch(() => {});
+    }));
+    // Service 列表的 Forward action：開啟 detail drawer 的 Forward 頁籤。
+    this.querySelectorAll('[data-service-action="forward"]').forEach(button => button.addEventListener('click', event => {
+      event.stopPropagation();
+      const service = JSON.parse(decodeURIComponent(button.dataset.service));
+      kubernetesSessionStore.getState().openServiceForwardFromSummary(service).catch(() => {});
     }));
     this.querySelector('#closeKubernetesPodAction')?.addEventListener('click', () => {
       this.disposePodShell();
@@ -2244,8 +2374,7 @@ export class KubernetesSessionPage extends HTMLElement {
     });
     this.querySelectorAll('.start-kubernetes-forward').forEach(button => {
       button.addEventListener('click', () => {
-        const localPort = button.closest('.kubernetes-forward-card')?.querySelector('.kubernetes-forward-local-port')?.value;
-        kubernetesSessionStore.getState().startPodPortForward({ localPort, remotePort: button.dataset.remotePort }).catch(() => {});
+        kubernetesSessionStore.getState().startPodPortForward({ localPort: button.dataset.localPort, remotePort: button.dataset.remotePort }).catch(() => {});
       });
     });
     this.querySelector('#startKubernetesCustomForward')?.addEventListener('click', () => {
@@ -2256,6 +2385,25 @@ export class KubernetesSessionPage extends HTMLElement {
     });
     this.querySelectorAll('.stop-kubernetes-forward').forEach(button => {
       button.addEventListener('click', () => kubernetesSessionStore.getState().stopPodPortForward(button.dataset.forwardId).catch(() => {}));
+    });
+    // Active Forward 卡片的 Open / Copy 動作（Pod / Service 共用）。
+    this.querySelectorAll('.open-kubernetes-forward').forEach(button => {
+      button.addEventListener('click', () => this.openForwardUrl(button.dataset.forwardUrl));
+    });
+    this.querySelectorAll('.copy-kubernetes-forward').forEach(button => {
+      button.addEventListener('click', () => this.copyForwardAddress(button.dataset.forwardAddr));
+    });
+    // Service Forward：每個 Service 連接埠一顆按鈕 + 自訂埠。停止沿用 .stop-kubernetes-forward。
+    this.querySelectorAll('.start-kubernetes-service-forward').forEach(button => {
+      button.addEventListener('click', () => {
+        kubernetesSessionStore.getState().startServicePortForward({ localPort: button.dataset.localPort, remotePort: button.dataset.remotePort }).catch(() => {});
+      });
+    });
+    this.querySelector('#startKubernetesServiceCustomForward')?.addEventListener('click', () => {
+      kubernetesSessionStore.getState().startServicePortForward({
+        localPort: this.querySelector('#kubernetesServiceForwardCustomLocal')?.value,
+        remotePort: this.querySelector('#kubernetesServiceForwardCustomRemote')?.value
+      }).catch(() => {});
     });
   }
 

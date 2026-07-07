@@ -164,6 +164,7 @@ func (s *Service) StartPodPortForward(ctx context.Context, request dto.Kubernete
 	summary := dto.KubernetesPodPortForward{
 		ID: uuid.NewString(), Namespace: namespace, PodName: podName,
 		Address: podPortForwardAddress, LocalPort: runtime.localPort, RemotePort: request.RemotePort,
+		StartedAt: time.Now().UTC().Format(time.RFC3339),
 	}
 	s.mu.Lock()
 	if s.activeClients != clients {

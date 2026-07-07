@@ -113,6 +113,8 @@ export function ListKubernetesClusters():Promise<Array<dto.KubernetesClusterProf
 
 export function ListKubernetesPodPortForwards(arg1:dto.KubernetesPodPortForwardListRequest):Promise<Array<dto.KubernetesPodPortForward>>;
 
+export function ListKubernetesServicePortForwards(arg1:dto.KubernetesServicePortForwardListRequest):Promise<Array<dto.KubernetesPodPortForward>>;
+
 export function ListSnippets():Promise<Array<dto.Snippet>>;
 
 export function ReadBackupFile(arg1:string):Promise<dto.OperationResult>;
@@ -150,6 +152,8 @@ export function SetHostStartupSnippet(arg1:dto.HostStartupSnippetRequest):Promis
 export function StartKubernetesPodPortForward(arg1:dto.KubernetesPodPortForwardRequest):Promise<dto.KubernetesPodPortForward>;
 
 export function StartKubernetesPodShell(arg1:dto.KubernetesPodShellStartRequest):Promise<dto.KubernetesPodShellSession>;
+
+export function StartKubernetesServicePortForward(arg1:dto.KubernetesServicePortForwardRequest):Promise<dto.KubernetesPodPortForward>;
 
 export function StartLocalTerminal(arg1:string):Promise<dto.OperationResult>;
 

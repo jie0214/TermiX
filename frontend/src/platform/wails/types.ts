@@ -14,6 +14,7 @@ export interface WailsRuntime {
   EventsOnce(eventName: string, callback: WailsEventCallback): WailsEventOff;
   EventsOff(eventName: string, ...additionalEventNames: string[]): void;
   EventsOffAll(): void;
+  BrowserOpenURL?(url: string): void;
 }
 
 declare global {

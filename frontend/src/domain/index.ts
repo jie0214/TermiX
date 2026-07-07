@@ -47,6 +47,8 @@ export type {
   KubernetesResourceIdentity,
   KubernetesResourceUpdateRequest,
   KubernetesResourceUpdateResult,
+  KubernetesServicePortForwardListRequest,
+  KubernetesServicePortForwardRequest,
   KubernetesSession,
 } from './kubernetes';
 export { THEME_IDS } from './settings';

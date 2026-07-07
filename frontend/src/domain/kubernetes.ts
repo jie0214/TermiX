@@ -131,9 +131,23 @@ export interface KubernetesPodPortForward {
   id: string;
   namespace: string;
   podName: string;
+  serviceName: string;
   address: string;
   localPort: number;
   remotePort: number;
+  startedAt: string;
+}
+
+export interface KubernetesServicePortForwardRequest {
+  namespace: string;
+  serviceName: string;
+  localPort: number;
+  remotePort: number;
+}
+
+export interface KubernetesServicePortForwardListRequest {
+  namespace: string;
+  serviceName: string;
 }
 
 export interface KubernetesResourceCreateRequest {
