@@ -1,99 +1,101 @@
 # TermiX
 
-TermiX 是一款桌面應用程式，把 **SSH 主機管理、終端工作區、Kubernetes 叢集操作、控制面板與日誌檢視**整合在同一個視窗裡，讓日常維運不必在多個工具之間切換。
+[English](README.md) · [繁體中文](README.zh-Hant.md) · [日本語](README.ja.md)
 
-支援 macOS、Windows、Linux。
+TermiX is a desktop app that brings **SSH host management, terminal workspaces, Kubernetes cluster operations, a control panel, and log viewing** together in a single window — so day-to-day operations no longer mean switching between tools.
 
----
-
-## 功能特色
-
-- **主機保險箱** — 集中管理 SSH 主機、群組與登入資訊，支援密碼、Private Key、SSH Certificate；可搜尋、分類與拖曳整理。
-- **終端工作區** — 遠端 SSH 與本機終端機，支援分頁與窗格、尺寸自動校正，以及互動式 TUI。
-- **控制面板** — FunctionBox 一鍵執行常用動作、InfoBox 狀態看板；本機指令預設安全閘（僅允許 `open`）。
-- **Kubernetes** — 讀取 `~/.kube/config`，切換 Context 與 Namespace，檢視 Overview、Nodes、Pods、Deployments、StatefulSets、Workloads、Networking、Storage、Events；提供資源 Drawer、YAML、Logs、Port Forward、Delete 與 Create Resource。
-- **日誌** — Session 日誌、控制面板日誌，以及 Kubernetes 的 Logs 檢視（篩選、暫停、下載、清除）。
+Available for macOS, Windows, and Linux.
 
 ---
 
-## 系統需求
+## Features
 
-- **作業系統**：macOS 11 以上、Windows 10 以上，或主流 Linux 發行版。
-- **Kubernetes 功能（選用）**：需要一份有效的 `~/.kube/config` 與對應叢集的存取權限。
-- 不需要另外安裝執行環境，下載的安裝檔已包含所需元件。
+- **Host Vault** — Centrally manage SSH hosts, groups, and credentials, with support for password, private key, and SSH certificate; searchable, categorizable, and drag-to-organize.
+- **Terminal workspace** — Remote SSH and local terminals with tabs and panes, automatic resizing, and interactive TUI support.
+- **Control panel** — FunctionBox for one-click common actions and InfoBox status boards; local commands are gated by default (only `open` is allowed).
+- **Kubernetes** — Reads `~/.kube/config`, switches context and namespace, and views Overview, Nodes, Pods, Deployments, StatefulSets, Workloads, Networking, Storage, and Events; provides a resource drawer, YAML, logs, port forwarding, delete, and create resource.
+- **Logs** — Session logs, control-panel logs, and the Kubernetes logs viewer (filter, pause, download, clear).
 
 ---
 
-## 下載與安裝
+## Requirements
 
-到本專案的 [Releases](https://github.com/jie0214/TermiX/releases) 頁面下載對應作業系統的檔案：
+- **Operating system**: macOS 11+, Windows 10+, or a mainstream Linux distribution.
+- **Kubernetes features (optional)**: a valid `~/.kube/config` and access to the corresponding cluster.
+- No separate runtime needed — the downloaded installer bundles everything required.
+
+---
+
+## Download and install
+
+Download the file for your OS from the project's [Releases](https://github.com/jie0214/TermiX/releases) page:
 
 ### macOS
-1. 下載 `.app`（或 `.dmg`）並解壓縮。
-2. 將 `TermiX.app` 拖入「應用程式」資料夾。
-3. 首次開啟若出現「無法驗證開發者」，請在 App 上按右鍵 →「打開」→ 再按一次「打開」。
+1. Download the `.app` (or `.dmg`) and unzip it.
+2. Drag `TermiX.app` into your Applications folder.
+3. On first launch, if you see "cannot verify developer", right-click the app → "Open" → "Open" again.
 
 ### Windows
-1. 下載安裝檔（`.exe`）並執行。
-2. 若出現 SmartScreen 提示，點「更多資訊」→「仍要執行」。
+1. Download and run the installer (`.exe`).
+2. If SmartScreen appears, click "More info" → "Run anyway".
 
 ### Linux
-1. 下載執行檔，加上執行權限：`chmod +x TermiX`。
-2. 直接執行 `./TermiX`。
+1. Download the binary and make it executable: `chmod +x TermiX`.
+2. Run it directly: `./TermiX`.
 
-> 目前的安裝檔尚未做程式碼簽章，因此系統可能顯示安全警告，依上述步驟略過即可。若 Releases 尚未提供你的平台，請見文末「從原始碼建置」。
-
----
-
-## 快速上手
-
-1. **新增主機**：開啟後在「主機保險箱」新增 SSH 主機，填入位址與登入方式（密碼 / Key / Certificate），即可連線。
-2. **使用終端**：連線後進入終端工作區，可開多個分頁與窗格；也可開本機終端機。
-3. **控制面板**：用 FunctionBox 執行預設動作、InfoBox 觀察狀態。
-4. **操作 Kubernetes**：確保本機有 `~/.kube/config`，開啟 Kubernetes 分頁後即可切換 Context / Namespace 並瀏覽、操作叢集資源。
+> The current builds are not code-signed, so your system may show a security warning — follow the steps above to bypass it. If Releases doesn't yet provide your platform, see "Build from source" below.
 
 ---
 
-## 進階設定（環境變數）
+## Quick start
 
-一般使用不需要設定，以下為選用：
+1. **Add a host**: In Host Vault, add an SSH host with its address and login method (password / key / certificate), then connect.
+2. **Use the terminal**: After connecting, open the terminal workspace with multiple tabs and panes; you can also open a local terminal.
+3. **Control panel**: Run preset actions via FunctionBox and watch status via InfoBox.
+4. **Operate Kubernetes**: Make sure `~/.kube/config` exists, open the Kubernetes tab, then switch context/namespace and browse and operate cluster resources.
+
+---
+
+## Advanced settings (environment variables)
+
+Not required for normal use; the following are optional:
 
 - `TERMIX_ALLOW_UNSAFE_LOCAL_COMMANDS=1`
-  預設 FunctionBox 只允許執行 `open`。設定此變數後才能執行任意本機 Shell 指令，**請確認來源可信任再啟用**。
+  By default FunctionBox only allows `open`. Set this variable to run arbitrary local shell commands — **only enable it if you trust the source.**
 - `TERMIX_SECRET_STORE=memory`
-  改用記憶體型的祕密儲存（重啟後不保留），適合臨時或測試情境。
+  Use an in-memory secret store (not persisted across restarts), suitable for temporary or testing scenarios.
 
 ---
 
-## 常見問題
+## FAQ
 
-- **Kubernetes 資源顯示存取失敗或缺值**：多半是 `~/.kube/config` 權限不足，或叢集未提供 Metrics；請確認你的帳號對該叢集有對應權限。
-- **開啟時出現安全警告**：因安裝檔尚未簽章所致，依上方「下載與安裝」步驟略過即可。
-- **FunctionBox 無法執行某些指令**：這是安全預設；如確需執行本機指令，請參考上方環境變數。
-
----
-
-## 授權
-
-本專案採用 [MIT License](LICENSE)，可自由使用、修改與散布。所含第三方套件各自保留其原授權（MIT / BSD / Apache-2.0）。
+- **Kubernetes resources show access failures or missing values**: usually insufficient `~/.kube/config` permissions, or the cluster doesn't expose metrics; confirm your account has the right permissions for the cluster.
+- **Security warning on launch**: because the builds aren't signed; follow the "Download and install" steps to bypass it.
+- **FunctionBox can't run some commands**: this is the safe default; if you must run local commands, see the environment variables above.
 
 ---
 
-## 從原始碼建置（開發者）
+## License
 
-需要 Go 1.25+、Node.js 與 npm，以及 [Wails CLI](https://wails.io)：
+This project is under the [MIT License](LICENSE) — free to use, modify, and distribute. Bundled third-party packages retain their original licenses (MIT / BSD / Apache-2.0).
+
+---
+
+## Build from source (developers)
+
+Requires Go 1.25+, Node.js and npm, and the [Wails CLI](https://wails.io):
 
 ```bash
-go install github.com/wailsapp/wails/v2/cmd/wails@latest   # 安裝 Wails CLI
-npm install --prefix frontend                              # 安裝前端依賴
+go install github.com/wailsapp/wails/v2/cmd/wails@latest   # install the Wails CLI
+npm install --prefix frontend                              # install frontend deps
 
-wails dev        # 開發模式（熱重載）
-wails build      # 打包，輸出至 build/bin/TermiX.app
+wails dev        # development mode (hot reload)
+wails build      # package, output to build/bin/TermiX.app
 ```
 
-測試：
+Tests:
 
 ```bash
-go test ./...                    # 後端
-npm test --prefix frontend       # 前端
+go test ./...                    # backend
+npm test --prefix frontend       # frontend
 ```
