@@ -145,6 +145,7 @@ export interface WailsAppContract {
   GetKubernetesDashboard(
     request: KubernetesDashboardRequest,
   ): Promise<KubernetesDashboardSnapshot>;
+  GetKubernetesNamespaces(): Promise<string[]>;
   GetKubernetesResourceDetail(
     request: KubernetesResourceDetailRequest,
   ): Promise<KubernetesResourceDetail>;

@@ -170,6 +170,10 @@ export function GetKubernetesDashboard(arg1) {
   return window['go']['app']['App']['GetKubernetesDashboard'](arg1);
 }
 
+export function GetKubernetesNamespaces() {
+  return window['go']['app']['App']['GetKubernetesNamespaces']();
+}
+
 export function GetKubernetesPodLogs(arg1) {
   return window['go']['app']['App']['GetKubernetesPodLogs'](arg1);
 }

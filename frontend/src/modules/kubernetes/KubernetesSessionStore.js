@@ -280,6 +280,8 @@ export function createKubernetesSessionStore(api = KubernetesAPI) {
         import('./KubernetesStore.js')
           .then(({ kubernetesStore }) => kubernetesStore.getState().reloadClusters())
           .catch(() => {});
+        // 連線成功即以輕量 API 填充 namespace 篩選下拉，不必等整包 dashboard（大叢集很慢）。
+        get().loadNamespaces();
         return session;
       } catch (error) {
         if (requestVersion === sessionRequestVersion) {
@@ -366,6 +368,17 @@ export function createKubernetesSessionStore(api = KubernetesAPI) {
       }
     },
 
+    // 只載入 namespace 名稱清單（輕量），與整包 dashboard 解耦，讓篩選下拉快速可用。
+    loadNamespaces: async () => {
+      if (!get().connectedCluster) return;
+      try {
+        const names = await api.listNamespaces();
+        if (Array.isArray(names) && names.length) set({ namespaces: names });
+      } catch (error) {
+        // 靜默失敗：dashboard 快照仍會補上 namespace 清單。
+      }
+    },
+
     loadDashboard: async (namespace = get().selectedNamespace) => {
       if (!get().connectedCluster) throw new Error(t('k8s.err.notConnected'));
       const targetNamespace = String(namespace || get().connectedCluster.namespace || 'default');
@@ -387,7 +400,7 @@ export function createKubernetesSessionStore(api = KubernetesAPI) {
           : String(dashboard.namespace || targetNamespace);
         set({
           dashboard,
-          namespaces: Array.isArray(dashboard.namespaces) ? dashboard.namespaces : [],
+          namespaces: (Array.isArray(dashboard.namespaces) && dashboard.namespaces.length) ? dashboard.namespaces : get().namespaces,
           selectedNamespaces: currentSelected,
           selectedNamespace: compatNamespace,
           dashboardLoading: false,

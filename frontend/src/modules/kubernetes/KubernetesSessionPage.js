@@ -42,6 +42,39 @@ const SECTION_GROUPS = [
   ['AUTOSCALING & POLICY', [['horizontalPodAutoscalers', 'HPA'], ['podDisruptionBudgets', 'Pod Disruption Budgets'], ['resourceQuotas', 'Resource Quotas']]],
   ['ACCESS CONTROL', [['serviceAccounts', 'Service Accounts'], ['roles', 'Roles'], ['roleBindings', 'Role Bindings'], ['clusterRoles', 'Cluster Roles'], ['clusterRoleBindings', 'Cluster Role Bindings']]]
 ];
+// 每個 section 對應的 Tabler 圖示（左側導覽用），提升掃視性。未列者退回通用圖示。
+const SECTION_ICONS = {
+  overview: 'ti-layout-dashboard',
+  namespaces: 'ti-box',
+  nodes: 'ti-server-2',
+  events: 'ti-bell',
+  customResourceDefinitions: 'ti-puzzle',
+  pods: 'ti-box-multiple',
+  deployments: 'ti-rocket',
+  statefulsets: 'ti-database',
+  daemonSets: 'ti-topology-star-3',
+  jobs: 'ti-briefcase',
+  cronJobs: 'ti-clock-hour-4',
+  configMaps: 'ti-file-text',
+  secrets: 'ti-lock',
+  services: 'ti-router',
+  ingresses: 'ti-arrow-guide',
+  endpoints: 'ti-plug',
+  networkPolicies: 'ti-shield-lock',
+  persistentVolumeClaims: 'ti-file-database',
+  persistentVolumes: 'ti-database',
+  storageClasses: 'ti-stack-2',
+  horizontalPodAutoscalers: 'ti-arrows-maximize',
+  podDisruptionBudgets: 'ti-shield-half',
+  resourceQuotas: 'ti-gauge',
+  serviceAccounts: 'ti-user-cog',
+  roles: 'ti-user-shield',
+  roleBindings: 'ti-users',
+  clusterRoles: 'ti-shield-check',
+  clusterRoleBindings: 'ti-users-group'
+};
+const sectionIcon = (id) => SECTION_ICONS[id] || 'ti-circle';
+
 const SECTIONS = SECTION_GROUPS.flatMap(([, sections]) => sections);
 const REFRESHABLE_SECTIONS = new Set([
   'namespaces',
@@ -82,6 +115,11 @@ const CLUSTER_SCOPED_SECTIONS = new Set([
   'clusterRoleBindings',
   'customResourceDefinitions'
 ]);
+
+// namespace 篩選下拉：多於 1 個 namespace 即顯示搜尋框；單次最多渲染的 namespace 列數
+// （含隱藏 select），避免大叢集每次重繪都建立/解析成千上萬個節點造成卡頓。
+const NAMESPACE_SEARCH_THRESHOLD = 1;
+const NAMESPACE_OPTION_CAP = 200;
 
 // section → { kind, apiVersion }：涵蓋所有可點開 detail drawer 的資源。
 // kind 沿用既有小寫單數命名慣例；apiVersion 為該 GVK 的 group/version（core 為 'v1'）。
@@ -274,6 +312,8 @@ export class KubernetesSessionPage extends HTMLElement {
     this.namespaceDropdownOpen = false;
     // 多選 namespace 的草稿選取；下拉開啟期間累積，關閉時才套用（避免每勾一次就重載）。
     this.namespaceDraft = null;
+    // namespace 搜尋詞（下拉內即時過濾用）。
+    this.namespaceFilter = '';
     // 側邊欄可收合分組：存放目前收合（隱藏子項）的分組名稱；預設全部展開。
     this.collapsedNavGroups = new Set();
     this.handleNamespaceOutsideClick = this.handleNamespaceOutsideClick.bind(this);
@@ -337,8 +377,12 @@ export class KubernetesSessionPage extends HTMLElement {
       });
     });
     const state = kubernetesSessionStore.getState();
-    if (state.connectedCluster && !state.dashboard && !state.dashboardLoading) {
-      state.loadDashboard(state.selectedNamespace).catch(() => {});
+    if (state.connectedCluster) {
+      // 與 dashboard 平行、獨立載入 namespace 清單，讓篩選下拉即刻可用（不必等整包 dashboard）。
+      state.loadNamespaces();
+      if (!state.dashboard && !state.dashboardLoading) {
+        state.loadDashboard(state.selectedNamespace).catch(() => {});
+      }
     }
     this.startLiveUpdates();
     this.runtimeEventOffs.push(onWailsEvent('kubernetes-shell-output', data => {
@@ -463,6 +507,7 @@ export class KubernetesSessionPage extends HTMLElement {
       document.addEventListener('pointerdown', this.handleNamespaceOutsideClick, true);
     } else {
       document.removeEventListener('pointerdown', this.handleNamespaceOutsideClick, true);
+      this.namespaceFilter = ''; // 下次開啟從完整清單開始。
       // 關閉：選擇完畢，套用草稿（若有變更）→ 只重載一次。
       this.commitNamespaceDraft();
     }
@@ -487,7 +532,7 @@ export class KubernetesSessionPage extends HTMLElement {
     this.namespaceDraft = null;
     if (!Array.isArray(draft)) return;
     const current = kubernetesSessionStore.getState().selectedNamespaces || [];
-    const normalize = list => [...list].map(String).sort().join(' ');
+    const normalize = list => [...list].map(String).sort().join('\0');
     if (normalize(draft) === normalize(current)) return;
     kubernetesSessionStore.getState().setSelectedNamespaces(draft).catch(() => {});
   }
@@ -867,28 +912,31 @@ export class KubernetesSessionPage extends HTMLElement {
     return escapeHtml(namespace || '-');
   }
 
-  // Namespace 多選下拉：按鈕顯示摘要，展開後為「All Namespaces」＋每個 namespace 的 checkbox。
-  // 另保留一個視覺隱藏的原生 <select> 作為無障礙/相容備援（沿用既有 guard 的 activeElement 判斷）。
+  // Namespace 多選下拉：按鈕顯示摘要，展開後為搜尋框 ＋「All Namespaces」＋ 每個 namespace 的 checkbox。
+  // 大叢集優化：超過門檻顯示搜尋框；選項與隱藏 select 皆截斷至 NAMESPACE_OPTION_CAP，
+  // 避免每次重繪建立/解析成千上萬節點。另保留視覺隱藏的原生 <select> 作為無障礙/相容備援。
   renderNamespaceMultiSelect(state, namespaces) {
     const selected = Array.isArray(state.selectedNamespaces) ? state.selectedNamespaces : [];
     const selectedSet = new Set(selected);
     const isAll = selected.length === 0;
     const specific = namespaces.filter(item => item !== '*');
+    this._nsSpecific = specific; // 供搜尋框局部重繪選項時重用同一份清單。
     let summary;
     if (isAll) summary = t('k8s.namespace.all');
     else if (selected.length === 1) summary = selected[0];
     else summary = t('k8s.namespace.countSelected', { count: selected.length });
     // cluster-scoped section 不受 namespace 篩選，停用整個多選控制項並加提示。
+    // 注意：不因 dashboardLoading 停用——namespace 清單獨立載入（loadNamespaces），
+    // 且草稿模式 + request-version 失效讓「載入中改選」安全；否則大叢集載入久時下拉會長時間鎖死。
     const clusterScoped = CLUSTER_SCOPED_SECTIONS.has(state.activeSection || '');
-    const disabled = (state.dashboardLoading || clusterScoped) ? 'disabled' : '';
+    const disabled = clusterScoped ? 'disabled' : '';
     const scopeHint = clusterScoped ? ` title="${t('k8s.namespace.scopeHint')}"` : '';
     const open = clusterScoped ? false : this.namespaceDropdownOpen;
     const legacyValue = isAll ? '*' : (selected.length === 1 ? selected[0] : '*');
-    const options = specific.map(item => {
-      const checked = selectedSet.has(item) ? 'checked' : '';
-      const color = this.namespaceColor(item);
-      return `<label class="kubernetes-namespace-option no-drag"><input type="checkbox" class="no-drag" data-namespace-option value="${escapeHtml(item)}" ${checked} ${disabled}><span class="kubernetes-namespace-dot" style="background:${color}" aria-hidden="true"></span><span>${escapeHtml(item)}</span></label>`;
-    }).join('');
+    const showSearch = specific.length > NAMESPACE_SEARCH_THRESHOLD;
+    // 隱藏原生 select 同樣截斷；確保目前單選值仍在清單內（相容 change 事件）。
+    const selectItems = ['*', ...specific.slice(0, NAMESPACE_OPTION_CAP)];
+    if (legacyValue !== '*' && !selectItems.includes(legacyValue)) selectItems.push(legacyValue);
     return `<div class="kubernetes-namespace-field kubernetes-namespace-multiselect${clusterScoped ? ' cluster-scoped' : ''}" data-namespace-multiselect${scopeHint}>
       <span id="kubernetesNamespaceLabel">${t('k8s.namespace.label')}</span>
       <button type="button" id="kubernetesNamespaceToggle" class="no-drag kubernetes-namespace-toggle" aria-haspopup="true" aria-expanded="${open ? 'true' : 'false'}" aria-labelledby="kubernetesNamespaceLabel kubernetesNamespaceToggle"${scopeHint} ${disabled}>
@@ -896,12 +944,49 @@ export class KubernetesSessionPage extends HTMLElement {
         <span class="kubernetes-namespace-caret" aria-hidden="true">▾</span>
       </button>
       <div class="kubernetes-namespace-panel ${open ? 'open' : ''}" role="group" aria-label="${t('k8s.namespace.selectAria')}" ${open ? '' : 'hidden'}>
+        ${showSearch ? `<div class="kubernetes-namespace-search no-drag"><input type="text" id="kubernetesNamespaceFilter" class="no-drag" placeholder="${t('k8s.namespace.searchPlaceholder')}" value="${escapeHtml(this.namespaceFilter || '')}" autocomplete="off" spellcheck="false" ${disabled}></div>` : ''}
         <label class="kubernetes-namespace-option no-drag"><input type="checkbox" class="no-drag" data-namespace-all ${isAll ? 'checked' : ''} ${disabled}><span>${t('k8s.namespace.all')}</span></label>
-        ${options}
+        <div class="kubernetes-namespace-options" id="kubernetesNamespaceOptions">${this.renderNamespaceOptionsHtml(specific, selectedSet, disabled)}</div>
       </div>
-      <select id="kubernetesNamespaceSelect" class="no-drag kubernetes-visually-hidden" tabindex="-1" aria-hidden="true" ${disabled}>${namespaces.map(item => `<option value="${escapeHtml(item)}" ${item === legacyValue ? 'selected' : ''}>${item === '*' ? t('k8s.namespace.all') : escapeHtml(item)}</option>`).join('')}</select>
-      ${clusterScoped ? `<small class="kubernetes-namespace-note">${t('k8s.namespace.scopeHint')}</small>` : ''}
+      <select id="kubernetesNamespaceSelect" class="no-drag kubernetes-visually-hidden" tabindex="-1" aria-hidden="true" ${disabled}>${selectItems.map(item => `<option value="${escapeHtml(item)}" ${item === legacyValue ? 'selected' : ''}>${item === '*' ? t('k8s.namespace.all') : escapeHtml(item)}</option>`).join('')}</select>
     </div>`;
+  }
+
+  // 產生 namespace 選項列（套用搜尋過濾與 NAMESPACE_OPTION_CAP 截斷）。
+  // 下拉開啟中以草稿（namespaceDraft）為勾選依據，確保過濾重繪不會清掉未提交的勾選。
+  renderNamespaceOptionsHtml(specific, committedSet, disabled) {
+    const activeSet = (this.namespaceDropdownOpen && Array.isArray(this.namespaceDraft))
+      ? new Set(this.namespaceDraft)
+      : committedSet;
+    const filter = (this.namespaceFilter || '').trim().toLowerCase();
+    const filtered = filter ? specific.filter(item => item.toLowerCase().includes(filter)) : specific;
+    const shown = filtered.slice(0, NAMESPACE_OPTION_CAP);
+    const rows = shown.map(item => {
+      const checked = activeSet.has(item) ? 'checked' : '';
+      const color = this.namespaceColor(item);
+      return `<label class="kubernetes-namespace-option no-drag"><input type="checkbox" class="no-drag" data-namespace-option value="${escapeHtml(item)}" ${checked} ${disabled}><span class="kubernetes-namespace-dot" style="background:${color}" aria-hidden="true"></span><span>${escapeHtml(item)}</span></label>`;
+    }).join('');
+    if (filter && filtered.length === 0) {
+      return `<div class="kubernetes-namespace-more">${t('k8s.namespace.noMatch')}</div>`;
+    }
+    const hidden = filtered.length - shown.length;
+    const more = hidden > 0 ? `<div class="kubernetes-namespace-more">${t('k8s.namespace.moreHint', { count: hidden })}</div>` : '';
+    return rows + more;
+  }
+
+  // 綁定 namespace 選項 checkbox 的 change（草稿模式）；因搜尋會局部重繪選項，需可重複呼叫。
+  bindNamespaceOptionListeners() {
+    this.querySelectorAll('[data-namespace-option]').forEach(input => {
+      input.addEventListener('change', () => {
+        this.markNamespaceSelectInteracting(true);
+        const set = new Set(Array.isArray(this.namespaceDraft) ? this.namespaceDraft : []);
+        if (input.checked) set.add(input.value);
+        else set.delete(input.value);
+        this.namespaceDraft = [...set];
+        const allCb = this.querySelector('[data-namespace-all]');
+        if (allCb) allCb.checked = this.namespaceDraft.length === 0;
+      });
+    });
   }
 
   renderPodsTable(allPods, metricsAvailable) {
@@ -1854,7 +1939,6 @@ export class KubernetesSessionPage extends HTMLElement {
       return `<div class="kubernetes-forward-card"><div class="kubernetes-forward-card-info"><strong>${label}</strong><span>${port.port}/${escapeHtml(port.protocol || 'TCP')}</span></div><span class="kubernetes-forward-map">localhost:<b>${local}</b> → pod:${port.port}</span><button type="button" class="no-drag kubernetes-primary-btn start-kubernetes-forward" data-local-port="${local}" data-remote-port="${port.port}" ${state.forwardsLoading ? 'disabled' : ''}>${t('k8s.forward.forward')}</button></div>`;
     }).join('');
     return `<section class="kubernetes-detail-section kubernetes-pod-forward"><h3>${t('k8s.forward.title')}</h3>
-      <p class="kubernetes-forward-hint">${t('k8s.forward.intro')}</p>
       ${state.forwardsError ? `<div class="kubernetes-session-error compact" role="alert"><strong>${t('k8s.forward.operationFailed')}</strong><span>${escapeHtml(state.forwardsError)}</span></div>` : ''}
       <div class="kubernetes-forward-subhead">${t('k8s.forward.suggested')}</div>
       <div class="kubernetes-forward-list">${cards}</div>
@@ -1880,7 +1964,6 @@ export class KubernetesSessionPage extends HTMLElement {
       return `<div class="kubernetes-forward-card"><div class="kubernetes-forward-card-info"><strong>${t('k8s.forward.servicePortLabel', { port })}</strong><span>${port}/TCP</span></div><span class="kubernetes-forward-map">localhost:<b>${local}</b> → svc:${port}</span><button type="button" class="no-drag kubernetes-primary-btn start-kubernetes-service-forward" data-local-port="${local}" data-remote-port="${port}" ${state.forwardsLoading ? 'disabled' : ''}>${t('k8s.forward.forward')}</button></div>`;
     }).join('');
     return `<section class="kubernetes-detail-section kubernetes-pod-forward"><h3>${t('k8s.forward.title')}</h3>
-      <p class="kubernetes-forward-hint">${t('k8s.forward.introService')}</p>
       ${state.forwardsError ? `<div class="kubernetes-session-error compact" role="alert"><strong>${t('k8s.forward.operationFailed')}</strong><span>${escapeHtml(state.forwardsError)}</span></div>` : ''}
       <div class="kubernetes-forward-subhead">${t('k8s.forward.suggested')}</div>
       <div class="kubernetes-forward-list">${cards}</div>
@@ -1979,9 +2062,9 @@ export class KubernetesSessionPage extends HTMLElement {
     this.innerHTML = `
       <div class="kubernetes-session-layout no-drag">
         <aside class="kubernetes-session-nav">
-          <div class="kubernetes-session-cluster"><span class="kubernetes-session-status" aria-hidden="true"></span><span class="kubernetes-visually-hidden">${t('k8s.session.connected')}</span><div><strong>${escapeHtml(clusterName)}</strong><small>${escapeHtml(cluster.contextName || '')}</small></div></div>
+          <div class="kubernetes-session-cluster"><span class="kubernetes-session-status" aria-hidden="true"></span><span class="kubernetes-visually-hidden">${t('k8s.session.connected')}</span><div class="kubernetes-session-cluster-meta"><strong>${escapeHtml(clusterName)}</strong><small title="${escapeHtml(cluster.contextName || '')}">${escapeHtml(cluster.contextName || '')}</small></div><i class="ti ti-cloud kubernetes-session-cluster-icon" aria-hidden="true"></i></div>
           ${namespaceControl}
-          <nav aria-label="${t('k8s.session.navAria')}">${SECTION_GROUPS.map(([group, sections]) => `<div class="kubernetes-nav-group ${this.collapsedNavGroups.has(group) ? 'collapsed' : ''}"><button type="button" class="no-drag kubernetes-nav-heading" data-nav-group="${escapeHtml(group)}" aria-expanded="${this.collapsedNavGroups.has(group) ? 'false' : 'true'}"><span>${group}</span><svg class="kubernetes-nav-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>${sections.map(([id, label]) => `<button type="button" class="no-drag kubernetes-section-link ${activeSection === id ? 'active' : ''}" data-section="${id}" ${activeSection === id ? 'aria-current="page"' : ''}>${label}</button>`).join('')}</div>`).join('')}</nav>
+          <nav aria-label="${t('k8s.session.navAria')}">${SECTION_GROUPS.map(([group, sections]) => `<div class="kubernetes-nav-group ${this.collapsedNavGroups.has(group) ? 'collapsed' : ''}"><button type="button" class="no-drag kubernetes-nav-heading" data-nav-group="${escapeHtml(group)}" aria-expanded="${this.collapsedNavGroups.has(group) ? 'false' : 'true'}"><span>${group}</span><svg class="kubernetes-nav-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button><div class="kubernetes-nav-items">${sections.map(([id, label]) => `<button type="button" class="no-drag kubernetes-section-link ${activeSection === id ? 'active' : ''}" data-section="${id}" ${activeSection === id ? 'aria-current="page"' : ''}><i class="ti ${sectionIcon(id)}" aria-hidden="true"></i><span>${label}</span></button>`).join('')}</div></div>`).join('')}</nav>
         </aside>
         <main class="kubernetes-session-content">
           ${state.podActionView ? '' : `<header class="kubernetes-session-header"><div><span>${t('k8s.session.label')}</span><h1>${escapeHtml(sectionTitle)}</h1><p>${escapeHtml(cluster.server || cluster.clusterName || cluster.contextName)}${dashboard?.serverVersion ? ` · ${escapeHtml(dashboard.serverVersion)}` : ''}</p></div><div class="kubernetes-session-actions"><button type="button" id="openKubernetesCreateResource" class="no-drag kubernetes-primary-btn">${t('k8s.session.createResource')}</button></div></header>`}
@@ -2024,16 +2107,16 @@ export class KubernetesSessionPage extends HTMLElement {
         event.target.checked = true;
       }
     });
-    this.querySelectorAll('[data-namespace-option]').forEach(input => {
-      input.addEventListener('change', () => {
-        this.markNamespaceSelectInteracting(true);
-        const set = new Set(Array.isArray(this.namespaceDraft) ? this.namespaceDraft : []);
-        if (input.checked) set.add(input.value);
-        else set.delete(input.value);
-        this.namespaceDraft = [...set];
-        const allCb = this.querySelector('[data-namespace-all]');
-        if (allCb) allCb.checked = this.namespaceDraft.length === 0;
-      });
+    this.bindNamespaceOptionListeners();
+    // 搜尋框：即時過濾 namespace，只重繪選項容器（不整頁重繪），輸入框本身不被替換故焦點不失。
+    this.querySelector('#kubernetesNamespaceFilter')?.addEventListener('input', (event) => {
+      this.markNamespaceSelectInteracting(true);
+      this.namespaceFilter = event.target.value;
+      const container = this.querySelector('#kubernetesNamespaceOptions');
+      if (!container) return;
+      const selected = kubernetesSessionStore.getState().selectedNamespaces || [];
+      container.innerHTML = this.renderNamespaceOptionsHtml(this._nsSpecific || [], new Set(selected), '');
+      this.bindNamespaceOptionListeners();
     });
 
     this.querySelector('#refreshKubernetesSection')?.addEventListener('click', () => this.runManualRefresh());

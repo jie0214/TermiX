@@ -102,6 +102,18 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # 發布備註來源：annotated tag 的訊息（由 scripts/release.sh 依私有 commit 產生）。
+      - name: Extract release notes from tag annotation
+        shell: bash
+        run: |
+          git tag -l --format='%(contents)' "${GITHUB_REF_NAME}" > RELEASE_NOTES.md
+          [ -s RELEASE_NOTES.md ] || echo "Release ${GITHUB_REF_NAME}" > RELEASE_NOTES.md
+          echo "---- release notes ----"; cat RELEASE_NOTES.md
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -111,4 +123,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/**/*
+          body_path: RELEASE_NOTES.md
           generate_release_notes: true
+          append_body: true

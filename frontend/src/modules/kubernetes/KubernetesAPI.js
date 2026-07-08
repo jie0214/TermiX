@@ -91,6 +91,12 @@ export const KubernetesAPI = {
     return callApp('GetKubernetesDashboard', { namespace });
   },
 
+  /** 輕量列出 namespace 名稱（供篩選下拉快速填充，不必等整包 dashboard）。 */
+  async listNamespaces() {
+    const payload = await callApp('GetKubernetesNamespaces');
+    return Array.isArray(payload) ? payload : [];
+  },
+
   /** @param {unknown} request */
   getResourceDetail(request) {
     return callApp('GetKubernetesResourceDetail', request);

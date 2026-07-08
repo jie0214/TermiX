@@ -35,6 +35,10 @@ func (a *App) GetKubernetesDashboard(request KubernetesDashboardRequest) (Kubern
 	return a.kubernetes.Dashboard(a.contextOrBackground(), request)
 }
 
+func (a *App) GetKubernetesNamespaces() ([]string, error) {
+	return a.kubernetes.ListNamespaces(a.contextOrBackground())
+}
+
 func (a *App) GetKubernetesResourceDetail(request KubernetesResourceDetailRequest) (KubernetesResourceDetail, error) {
 	return a.kubernetes.ResourceDetail(a.contextOrBackground(), request)
 }

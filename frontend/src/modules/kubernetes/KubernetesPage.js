@@ -259,7 +259,7 @@ export class KubernetesPage extends HTMLElement {
           ${loadError ? `<div class="kubernetes-load-error" role="alert"><strong>${t('k8s.page.loadFailed')}</strong><span>${escapeHtml(loadError)}</span></div>` : ''}
           <div class="kubernetes-scroll-content">
             ${state.isLoading && state.clusters.length === 0 ? `
-              <div class="kubernetes-state-panel"><span class="kubernetes-spinner"></span><h2>${t('k8s.page.readingKubeconfig')}</h2><p>${t('k8s.page.readingKubeconfigDetail')}</p></div>
+              <div class="kubernetes-state-panel"><span class="kubernetes-spinner"></span><h2>${t('k8s.page.readingKubeconfig')}</h2></div>
             ` : clusters.length > 0 ? `
               <div class="vault-grid kubernetes-grid">${clusters.map(cluster => this.renderCard(cluster, state)).join('')}</div>
             ` : `

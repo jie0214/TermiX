@@ -87,6 +87,8 @@ export function GetHostStartupSnippet(arg1:dto.SSHConfig):Promise<dto.HostStartu
 
 export function GetKubernetesDashboard(arg1:dto.KubernetesDashboardRequest):Promise<dto.KubernetesDashboardSnapshot>;
 
+export function GetKubernetesNamespaces():Promise<Array<string>>;
+
 export function GetKubernetesPodLogs(arg1:dto.KubernetesPodLogsRequest):Promise<dto.KubernetesPodLogs>;
 
 export function GetKubernetesResourceDetail(arg1:dto.KubernetesResourceDetailRequest):Promise<dto.KubernetesResourceDetail>;

@@ -35,6 +35,9 @@ export const kubernetes: DictBundle = {
     'k8s.namespace.countSelected': '{count} namespaces',
     'k8s.namespace.label': 'Namespace',
     'k8s.namespace.scopeHint': 'This resource is not filtered by namespace',
+    'k8s.namespace.searchPlaceholder': 'Search namespaces…',
+    'k8s.namespace.moreHint': '{count} more — type to narrow',
+    'k8s.namespace.noMatch': 'No matching namespace.',
     'k8s.namespace.selectAria': 'Select Namespace',
 
     // ── Pods ──
@@ -116,8 +119,6 @@ export const kubernetes: DictBundle = {
 
     // ── Port Forward ──
     'k8s.forward.title': 'Port Forward',
-    'k8s.forward.intro': 'Forward a cluster port to your machine for local debugging. We pick a free local port to avoid conflicts.',
-    'k8s.forward.introService': 'Forward a Service port to your machine. We resolve it to a running backend Pod automatically.',
     'k8s.forward.suggested': 'Suggested ports',
     'k8s.forward.custom': 'Custom forward',
     'k8s.forward.portConflictHint': 'Choose a different local port if the default is already in use.',
@@ -239,7 +240,6 @@ export const kubernetes: DictBundle = {
     'k8s.page.searchAria': 'Search Kubernetes Cluster',
     'k8s.page.loadFailed': 'Failed to load Kubernetes settings',
     'k8s.page.readingKubeconfig': 'Reading kubeconfig',
-    'k8s.page.readingKubeconfigDetail': 'Loading Kubernetes contexts from the user directory.',
     'k8s.page.noMatch': 'No matching clusters found',
     'k8s.page.noClusters': 'No Kubernetes clusters found yet',
     'k8s.page.noMatchDetail': 'Please adjust your search criteria.',
@@ -319,6 +319,9 @@ export const kubernetes: DictBundle = {
     'k8s.namespace.countSelected': '{count} 個 namespace',
     'k8s.namespace.label': 'Namespace',
     'k8s.namespace.scopeHint': '此資源不受 namespace 篩選',
+    'k8s.namespace.searchPlaceholder': '搜尋 namespace…',
+    'k8s.namespace.moreHint': '還有 {count} 個，輸入以縮小範圍',
+    'k8s.namespace.noMatch': '沒有符合的 namespace。',
     'k8s.namespace.selectAria': '選擇 Namespace',
 
     'k8s.pods.searchPlaceholder': '搜尋 Pod',
@@ -393,8 +396,6 @@ export const kubernetes: DictBundle = {
     'k8s.yaml.readonlyHint': 'Secret/Pod 的 YAML 已遮蔽，無法編輯套用。',
 
     'k8s.forward.title': 'Port Forward',
-    'k8s.forward.intro': '將叢集連接埠轉發到本機以便本地除錯，系統會自動挑選未占用的本機埠避免衝突。',
-    'k8s.forward.introService': '將 Service 連接埠轉發到本機，系統會自動解析到一個運行中的後端 Pod。',
     'k8s.forward.suggested': '建議的連接埠',
     'k8s.forward.custom': '自訂轉發',
     'k8s.forward.portConflictHint': '若預設本機埠已被占用，請改用其他埠。',
@@ -508,7 +509,6 @@ export const kubernetes: DictBundle = {
     'k8s.page.searchAria': '搜尋 Kubernetes Cluster',
     'k8s.page.loadFailed': '載入 Kubernetes 設定失敗',
     'k8s.page.readingKubeconfig': '正在讀取 kubeconfig',
-    'k8s.page.readingKubeconfigDetail': '正在載入使用者目錄下的 Kubernetes Context。',
     'k8s.page.noMatch': '找不到符合條件的 Cluster',
     'k8s.page.noClusters': '尚未找到 Kubernetes Cluster',
     'k8s.page.noMatchDetail': '請調整搜尋條件。',
@@ -586,6 +586,9 @@ export const kubernetes: DictBundle = {
     'k8s.namespace.countSelected': '{count} 個の namespace',
     'k8s.namespace.label': 'Namespace',
     'k8s.namespace.scopeHint': 'このリソースは namespace でフィルターされません',
+    'k8s.namespace.searchPlaceholder': 'namespace を検索…',
+    'k8s.namespace.moreHint': '他 {count} 件 — 入力で絞り込み',
+    'k8s.namespace.noMatch': '一致する namespace がありません。',
     'k8s.namespace.selectAria': 'Namespace を選択',
 
     'k8s.pods.searchPlaceholder': 'Pod を検索',
@@ -660,8 +663,6 @@ export const kubernetes: DictBundle = {
     'k8s.yaml.readonlyHint': 'Secret/Pod の YAML はマスクされており、編集・適用できません。',
 
     'k8s.forward.title': 'Port Forward',
-    'k8s.forward.intro': 'クラスターのポートをローカルに転送してデバッグします。競合を避けるため空いているローカルポートを自動選択します。',
-    'k8s.forward.introService': 'Service のポートをローカルに転送します。稼働中のバックエンド Pod へ自動的に解決します。',
     'k8s.forward.suggested': '推奨ポート',
     'k8s.forward.custom': 'カスタム転送',
     'k8s.forward.portConflictHint': '既定のローカルポートが使用中の場合は別のポートを指定してください。',
@@ -775,7 +776,6 @@ export const kubernetes: DictBundle = {
     'k8s.page.searchAria': 'Kubernetes Cluster を検索',
     'k8s.page.loadFailed': 'Kubernetes 設定の読み込みに失敗しました',
     'k8s.page.readingKubeconfig': 'kubeconfig を読み込んでいます',
-    'k8s.page.readingKubeconfigDetail': 'ユーザーディレクトリの Kubernetes Context を読み込んでいます。',
     'k8s.page.noMatch': '条件に一致する Cluster が見つかりません',
     'k8s.page.noClusters': 'Kubernetes Cluster がまだ見つかりません',
     'k8s.page.noMatchDetail': '検索条件を調整してください。',

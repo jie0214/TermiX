@@ -2861,8 +2861,11 @@ kubernetes-session-page {
   min-width: 0;
   padding: 10px;
   border: 1px solid var(--color-border);
-  border-radius: 7px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-text) 4%, transparent);
 }
+.kubernetes-session-cluster-meta { flex: 1; }
+.kubernetes-session-cluster-icon { flex: none; font-size: 16px; color: var(--color-text-muted); }
 
 .kubernetes-session-cluster div { min-width: 0; }
 .kubernetes-session-cluster strong,
@@ -2890,7 +2893,7 @@ kubernetes-session-page {
   padding: 0 9px; font-size: 12px; font-weight: 600; cursor: pointer; text-align: left;
 }
 .kubernetes-namespace-toggle:hover { border-color: var(--color-primary); }
-.kubernetes-namespace-toggle:disabled { cursor: wait; opacity: 0.65; }
+.kubernetes-namespace-toggle:disabled { cursor: not-allowed; opacity: 0.65; }
 .kubernetes-namespace-summary { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kubernetes-namespace-caret { flex: 0 0 auto; color: var(--color-subtext); font-size: 10px; }
 .kubernetes-namespace-panel {
@@ -2911,6 +2914,19 @@ kubernetes-session-page {
 }
 .kubernetes-namespace-option:hover { background: color-mix(in srgb, var(--color-primary) 12%, transparent); }
 .kubernetes-namespace-option input { flex: 0 0 auto; margin: 0; cursor: pointer; }
+/* 搜尋框固定於下拉頂端（top 補面板 6px padding），選項在其下捲動。 */
+.kubernetes-namespace-search {
+  position: sticky; top: -6px; z-index: 1; padding: 2px 1px 5px;
+  background-color: var(--color-bg);
+  background-image: linear-gradient(var(--color-panel-bg), var(--color-panel-bg));
+}
+.kubernetes-namespace-search input {
+  width: 100%; min-height: 30px; box-sizing: border-box; padding: 0 9px; font-size: 12px;
+  border: 1px solid var(--input-border, var(--color-border)); border-radius: 6px;
+  background: var(--input-bg); color: var(--color-text);
+}
+.kubernetes-namespace-options { display: grid; gap: 2px; }
+.kubernetes-namespace-more { padding: 6px 7px; color: var(--color-text-muted); font-size: 11px; font-weight: 500; }
 
 /* Namespace 色點 + 標籤（Pods 表格與下拉選項共用） */
 .kubernetes-namespace-tag { display: inline-flex; align-items: center; gap: 6px; }
@@ -2922,30 +2938,36 @@ kubernetes-session-page {
 .kubernetes-session-nav nav { display: grid; gap: 4px; }
 .kubernetes-nav-group { display: grid; gap: 4px; }
 .kubernetes-nav-group + .kubernetes-nav-group { margin-top: 12px; }
-.kubernetes-nav-heading { display: flex; align-items: center; justify-content: space-between; gap: 6px; width: 100%; margin: 2px 0 6px; padding: 2px 7px; border: 0; background: transparent; color: var(--color-text-muted); font-size: 11px; font-weight: 800; letter-spacing: 0.8px; text-align: left; cursor: pointer; }
-.kubernetes-nav-heading:hover { color: var(--color-subtext); }
+.kubernetes-session-nav .kubernetes-nav-heading { display: flex; align-items: center; justify-content: space-between; gap: 6px; width: 100%; margin: 6px 0 6px; padding: 2px 7px; border: 0; background: transparent; box-shadow: none; color: var(--color-text-muted); font-size: 11px; font-weight: 800; letter-spacing: 0.8px; text-align: left; cursor: pointer; }
+.kubernetes-session-nav .kubernetes-nav-heading:hover { color: var(--color-subtext); }
 .kubernetes-nav-heading:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; border-radius: 4px; }
 .kubernetes-nav-caret { flex: none; transition: transform .15s ease; opacity: 0.8; }
 .kubernetes-nav-group.collapsed .kubernetes-nav-caret { transform: rotate(-90deg); }
-.kubernetes-nav-group.collapsed .kubernetes-section-link { display: none; }
-.kubernetes-nav-group .kubernetes-section-link { position: relative; margin-left: 12px; padding-left: 20px; }
-.kubernetes-nav-group .kubernetes-section-link::before { content: ""; position: absolute; left: 0; top: -4px; bottom: -4px; width: 1px; background: var(--color-border); }
-.kubernetes-nav-group .kubernetes-section-link:last-child::before { bottom: auto; height: calc(50% + 4px); }
-.kubernetes-nav-group .kubernetes-section-link::after { content: ""; position: absolute; left: 0; top: 50%; width: 11px; height: 1px; background: var(--color-border); }
+.kubernetes-nav-group.collapsed .kubernetes-nav-items { display: none; }
+/* 子項目以單一連續左側 rail + 縮排歸屬到群組（乾淨版樹狀線），讓主／附層級清楚。 */
+.kubernetes-nav-items { display: grid; gap: 2px; margin-left: 11px; padding-left: 11px; border-left: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent); }
 
-.kubernetes-section-link {
-  min-height: 34px;
+.kubernetes-session-nav .kubernetes-section-link {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 32px;
   border: 0;
-  border-radius: 5px;
+  border-radius: 6px;
   background: transparent;
+  box-shadow: none;
   color: var(--color-subtext);
   padding: 0 10px;
   text-align: left;
+  font-weight: 500;
   cursor: pointer;
+  transition: background .12s ease, color .12s ease;
 }
-
-.kubernetes-section-link:hover,
-.kubernetes-section-link.active { background: color-mix(in srgb, var(--color-primary) 15%, transparent); color: var(--color-primary); }
+.kubernetes-section-link i { font-size: 16px; flex: none; }
+/* hover 為中性淡底（與「選中」區隔）；選中才用主色 + 左側 accent bar。 */
+.kubernetes-session-nav .kubernetes-section-link:hover { background: color-mix(in srgb, var(--color-text) 8%, transparent); color: var(--color-text); }
+.kubernetes-session-nav .kubernetes-section-link.active { background: color-mix(in srgb, var(--color-primary) 16%, transparent); color: var(--color-primary); box-shadow: inset 3px 0 0 0 var(--color-primary); }
+.kubernetes-session-nav .kubernetes-section-link.active:hover { background: color-mix(in srgb, var(--color-primary) 22%, transparent); color: var(--color-primary); }
 .kubernetes-section-link:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
 .kubernetes-session-content { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; padding: 24px; text-align: left; }
 /* header 固定於頂部，內容（含寬表格）在 scrollbody 內雙向捲動，橫向捲軸固定在視窗底部可見可拖曳。 */
@@ -3663,7 +3685,7 @@ kubernetes-session-page {
 .kubernetes-create-editor textarea { width: 100%; min-height: 100%; margin: 0; resize: none; overflow: auto; padding: 12px 16px; border: 0; border-radius: 0; outline: 0; background: var(--terminal-bg); color: var(--terminal-foreground); font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; tab-size: 2; white-space: pre; }
 .kubernetes-create-editor textarea:focus { box-shadow: inset 2px 0 var(--color-primary); }
 
-.kubernetes-namespace-field select:disabled { cursor: wait; opacity: 0.65; }
+.kubernetes-namespace-field select:disabled { cursor: not-allowed; opacity: 0.65; }
 
 @media (max-width: 760px) {
   .kubernetes-session-layout { grid-template-columns: 190px minmax(0, 1fr); }
@@ -3682,6 +3704,9 @@ kubernetes-session-page {
   .kubernetes-nav-group { display: contents; }
   .kubernetes-nav-group + .kubernetes-nav-group { margin-top: 0; }
   .kubernetes-nav-heading { display: none; }
+  /* 行動版：items 容器改 display:contents，讓按鈕直接排入橫向 nav grid（rail 不適用）。 */
+  .kubernetes-nav-items,
+  .kubernetes-nav-group.collapsed .kubernetes-nav-items { display: contents; }
   .kubernetes-nav-group.collapsed .kubernetes-section-link { display: revert; }
   .kubernetes-nav-group .kubernetes-section-link { margin-left: 0; padding-left: 10px; }
   .kubernetes-nav-group .kubernetes-section-link::before,

@@ -383,6 +383,33 @@ func resourceListError(resource string, err error) error {
 	}
 }
 
+// ListNamespaces 只列出叢集的 namespace 名稱，供 namespace 篩選下拉快速填充。
+// 與 Dashboard 解耦：大叢集時 Dashboard('*') 會列出所有 namespace 的所有資源類型（很慢），
+// 而下拉只需要名稱，故用這支輕量呼叫避免下拉被整包 Dashboard 卡住。
+func (s *Service) ListNamespaces(ctx context.Context) ([]string, error) {
+	s.mu.Lock()
+	if s.activeSession == nil || s.activeClients == nil {
+		s.mu.Unlock()
+		return nil, errors.New("尚未連接 Kubernetes Cluster")
+	}
+	clients := s.activeClients
+	s.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	list, err := clients.core.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, resourceListError("Namespaces", err)
+	}
+	names := make([]string, 0, len(list.Items))
+	for _, item := range list.Items {
+		names = append(names, item.Name)
+	}
+	sort.Strings(names)
+	return names, nil
+}
+
 func namespaceSummary(item corev1.Namespace) dto.KubernetesNamespaceSummary {
 	status := string(item.Status.Phase)
 	if item.DeletionTimestamp != nil {
