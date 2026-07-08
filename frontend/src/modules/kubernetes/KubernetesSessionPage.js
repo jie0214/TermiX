@@ -1985,8 +1985,10 @@ export class KubernetesSessionPage extends HTMLElement {
         </aside>
         <main class="kubernetes-session-content">
           ${state.podActionView ? '' : `<header class="kubernetes-session-header"><div><span>${t('k8s.session.label')}</span><h1>${escapeHtml(sectionTitle)}</h1><p>${escapeHtml(cluster.server || cluster.clusterName || cluster.contextName)}${dashboard?.serverVersion ? ` · ${escapeHtml(dashboard.serverVersion)}` : ''}</p></div><div class="kubernetes-session-actions"><button type="button" id="openKubernetesCreateResource" class="no-drag kubernetes-primary-btn">${t('k8s.session.createResource')}</button></div></header>`}
+          <div class="kubernetes-session-scrollbody">
           ${state.dashboardError && dashboard ? `<div class="kubernetes-session-error compact" role="status"><strong>${dashboardErrorTitle(state.dashboardError, true)}</strong><span>${escapeHtml(state.dashboardError)}</span></div>` : ''}
           ${content}
+          </div>
         </main>
         ${this.renderDetailDrawer(state)}
         ${this.renderCreateDrawer(state)}

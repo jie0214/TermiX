@@ -41,7 +41,7 @@ import { executeFunctionBox } from './modules/controlpanel/ControlPanelRuntime';
 import { showToast } from './components/feedback/toast';
 import { confirmDialog } from './components/feedback/confirmDialog';
 import { getControlPanelDropPosition, getControlPanelThemeStyle, reorderControlPanelComponents } from './modules/controlpanel/ControlPanelLayout';
-import { themeStore } from './stores/ThemeStore';
+import { themeStore, UI_SCALE_OPTIONS } from './stores/ThemeStore';
 import { t } from './i18n/index.ts';
 import { hostStore } from './modules/hostvault/HostStore';
 import { snippetStore } from './modules/snippets/SnippetStore';
@@ -251,6 +251,12 @@ export class TermixApp extends HTMLElement {
 
     // 2. 訂閱 themeStore 來顯示/隱藏全域設定 Modal
     this.unsubscribeTheme = themeStore.subscribe((state) => {
+      // 設定視窗「開啟」的那一刻快照目前主題，供按取消／✕ 時還原（預覽不落地）。
+      if (state.settingsModalOpen && !this._settingsOpenPrev) {
+        this.settingsOriginalTheme = state.theme;
+      }
+      this._settingsOpenPrev = state.settingsModalOpen;
+
       const modal = this.querySelector('#globalSettingsModal');
       const themeSelect = this.querySelector('#themeSelect');
       const localeSelect = this.querySelector('#localeSelect');
@@ -274,7 +280,9 @@ export class TermixApp extends HTMLElement {
       }
       if (themeSelect) {
         themeSelect.value = state.theme;
+        this.syncThemeSwatches();
       }
+      this.syncUiScale();
       if (localeSelect) {
         localeSelect.value = state.locale;
       }
@@ -386,7 +394,7 @@ export class TermixApp extends HTMLElement {
     const sidebarEditMode = this.controlSidebarTab === 'snippets' ? this.snippetPanelEditMode : this.controlPanelEditMode;
     const sidebarEditTitle = sidebarEditMode ? t('app.sidebar.finishArrange') : t('app.sidebar.editArrange');
     this.innerHTML = `
-      <main class="shell" style="display: flex; flex-direction: column; height: 100vh; width: 100vw; overflow: hidden; background: var(--bg-main);">
+      <main class="shell" style="display: flex; flex-direction: column; height: calc(100vh / var(--ui-scale, 1)); width: calc(100vw / var(--ui-scale, 1)); overflow: hidden; background: var(--bg-main);">
         <!-- 頂部 TOPBAR -->
         <header class="topbar" style="display: flex; align-items: center; justify-content: space-between; padding: 0 16px; height: 48px; border-bottom: 1px solid var(--color-border); background: var(--color-titlebar-bg); flex: 0 0 auto; --wails-draggable: drag;">
           <div class="titlebar-content" style="display: flex; align-items: center; flex: 1; min-width: 0; height: 100%; --wails-draggable: drag;">
@@ -440,78 +448,62 @@ export class TermixApp extends HTMLElement {
 
       <!-- Settings 彈窗 Modal -->
       <div id="globalSettingsModal" class="settings-modal hidden" role="dialog" aria-modal="true" style="position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 99999;">
-        <div class="settings-dialog" style="width: min(420px, 100%); background: var(--dialog-bg); border: 1px solid var(--color-border); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column;">
+        <div class="settings-dialog settings-dialog--tabbed" style="width: min(660px, 100%); height: min(600px, 86vh); background: var(--dialog-bg); border: 1px solid var(--color-border); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column;">
           <div class="settings-header" style="padding: 16px 20px; border-bottom: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center;">
             <h2 style="font-weight: 700; font-size: 14px; color: var(--color-text); margin: 0;">${t('app.settings.title')}</h2>
             <button type="button" id="closeGlobalSettings" class="no-drag btn-xs" style="background: transparent; border: none; cursor: pointer; color: var(--color-subtext); font-size: 16px;">&times;</button>
           </div>
-          <div class="settings-body" style="padding: 20px;">
-            <div class="section-title" style="margin-bottom: 12px;">
-              <h3 style="font-size: 13px; color: var(--color-primary); font-weight: 700; text-align: left; text-transform: uppercase;">Theme</h3>
-            </div>
-            <div style="display: grid; gap: 16px;">
-              <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
-                ${t('app.settings.themeLabel')}
-                <select class="no-drag" id="themeSelect" style="background: var(--input-bg); border: 1px solid var(--input-border, var(--color-border)); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
-                  <option value="system">${t('app.theme.system')}</option>
-                  <option value="light">${t('app.theme.light')}</option>
-                  <option value="dark" selected>${t('app.theme.dark')}</option>
-                  <option value="termix">${t('app.theme.termix')}</option>
-                  <option value="graphite">${t('app.theme.graphite')}</option>
-                  <option value="forest">${t('app.theme.forest')}</option>
-                  <option value="copper">${t('app.theme.copper')}</option>
-                  <option value="aurora">${t('app.theme.aurora')}</option>
-                  <optgroup label="${t('app.theme.group.tahoe')}">
-                    <option value="tahoe">${t('app.theme.tahoe')}</option>
-                    <option value="tahoe-glacier">${t('app.theme.tahoeGlacier')}</option>
-                    <option value="tahoe-sunset">${t('app.theme.tahoeSunset')}</option>
-                    <option value="tahoe-nebula">${t('app.theme.tahoeNebula')}</option>
-                    <option value="tahoe-forest">${t('app.theme.tahoeForest')}</option>
-                  </optgroup>
-                  <optgroup label="${t('app.theme.group.glass')}">
-                    <option value="glass-light">${t('app.theme.glassLight')}</option>
-                    <option value="glass-violet">${t('app.theme.glassViolet')}</option>
-                    <option value="glass-emerald">${t('app.theme.glassEmerald')}</option>
-                    <option value="glass-amber">${t('app.theme.glassAmber')}</option>
-                    <option value="glass-rose">${t('app.theme.glassRose')}</option>
-                    <option value="glass-dark">${t('app.theme.glassDark')}</option>
-                  </optgroup>
-
-                </select>
-              </label>
-              <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
-                ${t('app.settings.language')}
-                <select class="no-drag" id="localeSelect" style="background: var(--input-bg); border: 1px solid var(--input-border, var(--color-border)); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
-                  <option value="en">English</option>
-                  <option value="zh-Hant">繁體中文</option>
-                  <option value="ja">日本語</option>
-                </select>
-              </label>
-              <div style="display: flex; flex-direction: column; text-align: left; gap: 8px; font-size: 12px; color: var(--color-subtext);">
-                <span>Text Size</span>
-                <div style="display: grid; grid-template-columns: 34px 1fr 34px; gap: 8px; align-items: center;">
-                  <button type="button" id="terminalTextSizeMinus" class="no-drag" style="height: 34px; border: 1px solid var(--color-border); background: transparent; color: var(--color-text); border-radius: 6px; font-weight: 700; cursor: pointer;">-</button>
-                  <input type="number" id="terminalTextSizeInput" class="no-drag" min="9" max="24" step="0.5" value="${themeStore.getState().terminalTextSize}" style="height: 34px; box-sizing: border-box; background: var(--input-bg); border: 1px solid var(--input-border, var(--color-border)); padding: 8px 12px; border-radius: 6px; color: var(--color-text); text-align: center; font-weight: 700;">
-                  <button type="button" id="terminalTextSizePlus" class="no-drag" style="height: 34px; border: 1px solid var(--color-border); background: transparent; color: var(--color-text); border-radius: 6px; font-weight: 700; cursor: pointer;">+</button>
+          <div class="settings-main" style="display: flex; min-height: 0; flex: 1;">
+            <nav class="settings-rail no-drag" aria-label="${t('app.settings.title')}" role="tablist">
+              <button type="button" class="settings-tab active no-drag" data-settings-tab="appearance" role="tab" aria-selected="true"><i class="ti ti-palette" aria-hidden="true"></i><span>${t('app.settings.tab.appearance')}</span></button>
+              <button type="button" class="settings-tab no-drag" data-settings-tab="terminal" role="tab" aria-selected="false"><i class="ti ti-terminal-2" aria-hidden="true"></i><span>${t('app.settings.tab.terminal')}</span></button>
+              <button type="button" class="settings-tab no-drag" data-settings-tab="general" role="tab" aria-selected="false"><i class="ti ti-settings" aria-hidden="true"></i><span>${t('app.settings.tab.general')}</span></button>
+              <button type="button" class="settings-tab no-drag" data-settings-tab="advanced" role="tab" aria-selected="false"><i class="ti ti-tool" aria-hidden="true"></i><span>${t('app.settings.tab.advanced')}</span></button>
+            </nav>
+            <div class="settings-content">
+              <section data-settings-panel="appearance" role="tabpanel">
+                ${this.renderThemeAppearancePanel()}
+              </section>
+              <section data-settings-panel="terminal" role="tabpanel" hidden>
+                <div style="display: grid; gap: 16px;">
+                  <div style="display: flex; flex-direction: column; text-align: left; gap: 8px; font-size: 12px; color: var(--color-subtext);">
+                    <span>${t('app.settings.textSize')}</span>
+                    <div style="display: grid; grid-template-columns: 34px 1fr 34px; gap: 8px; align-items: center;">
+                      <button type="button" id="terminalTextSizeMinus" class="no-drag" style="height: 34px; border: 1px solid var(--color-border); background: transparent; color: var(--color-text); border-radius: 6px; font-weight: 700; cursor: pointer;">-</button>
+                      <input type="number" id="terminalTextSizeInput" class="no-drag" min="9" max="24" step="0.5" value="${themeStore.getState().terminalTextSize}" style="height: 34px; box-sizing: border-box; background: var(--input-bg); border: 1px solid var(--input-border, var(--color-border)); padding: 8px 12px; border-radius: 6px; color: var(--color-text); text-align: center; font-weight: 700;">
+                      <button type="button" id="terminalTextSizePlus" class="no-drag" style="height: 34px; border: 1px solid var(--color-border); background: transparent; color: var(--color-text); border-radius: 6px; font-weight: 700; cursor: pointer;">+</button>
+                    </div>
+                  </div>
+                  <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
+                    ${t('app.settings.localShell')}
+                    <input type="text" id="localTerminalPathInput" class="no-drag" list="localTerminalPathOptions" value="${escapeHtml(themeStore.getState().localTerminalPath)}" autocomplete="off" spellcheck="false" style="height: 34px; box-sizing: border-box; background: var(--input-bg); border: 1px solid var(--input-border, var(--color-border)); padding: 8px 12px; border-radius: 6px; color: var(--color-text); font-family: monospace;">
+                    <datalist id="localTerminalPathOptions">
+                      ${['/bin/bash', '/bin/csh', '/bin/dash', '/bin/ksh', '/bin/sh', '/bin/tcsh', '/bin/zsh'].map(path => `<option value="${path}"></option>`).join('')}
+                    </datalist>
+                    <small style="color: var(--color-text-muted);">${t('app.settings.localShellHint')}</small>
+                  </label>
                 </div>
-              </div>
-              <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
-                Local Terminal Path
-                <input type="text" id="localTerminalPathInput" class="no-drag" list="localTerminalPathOptions" value="${escapeHtml(themeStore.getState().localTerminalPath)}" autocomplete="off" spellcheck="false" style="height: 34px; box-sizing: border-box; background: var(--input-bg); border: 1px solid var(--input-border, var(--color-border)); padding: 8px 12px; border-radius: 6px; color: var(--color-text); font-family: monospace;">
-                <datalist id="localTerminalPathOptions">
-                  ${['/bin/bash', '/bin/csh', '/bin/dash', '/bin/ksh', '/bin/sh', '/bin/tcsh', '/bin/zsh'].map(path => `<option value="${path}"></option>`).join('')}
-                </datalist>
-                <small style="color: var(--color-text-muted);">${t('app.settings.localShellHint')}</small>
-              </label>
-              <div style="margin-top: 12px; border-top: 1px dashed var(--color-border); padding-top: 12px;">
-                <div style="font-size: 11px; font-weight: 700; color: var(--color-primary); margin-bottom: 6px; text-transform: uppercase;">Tab Debug Logs</div>
-                <div id="tabDebugLogsContainer" style="font-family: monospace; font-size: 10px; color: var(--color-text-muted); max-height: 80px; overflow-y: auto; background: var(--input-bg); padding: 8px; border-radius: 4px; border: 1px solid var(--color-border); white-space: pre-wrap; word-break: break-all;">
+              </section>
+              <section data-settings-panel="general" role="tabpanel" hidden>
+                <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
+                  ${t('app.settings.language')}
+                  <select class="no-drag" id="localeSelect" style="background: var(--input-bg); border: 1px solid var(--input-border, var(--color-border)); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
+                    <option value="en">English</option>
+                    <option value="zh-Hant">繁體中文</option>
+                    <option value="ja">日本語</option>
+                  </select>
+                </label>
+              </section>
+              <section data-settings-panel="advanced" role="tabpanel" hidden>
+                <div style="font-size: 11px; font-weight: 700; color: var(--color-primary); margin-bottom: 6px; text-transform: uppercase;">${t('app.settings.debugLogs')}</div>
+                <div id="tabDebugLogsContainer" style="font-family: monospace; font-size: 10px; color: var(--color-text-muted); max-height: 220px; overflow-y: auto; background: var(--input-bg); padding: 8px; border-radius: 4px; border: 1px solid var(--color-border); white-space: pre-wrap; word-break: break-all;">
                   ${t('app.settings.noDebugLogs')}
                 </div>
-              </div>
+              </section>
             </div>
           </div>
-          <div class="settings-footer" style="padding: 16px 20px; border-top: 1px solid var(--color-border); display: flex; justify-content: flex-end;">
+          <div class="settings-footer" style="padding: 16px 20px; border-top: 1px solid var(--color-border); display: flex; justify-content: flex-end; gap: 10px;">
+            <button type="button" id="cancelGlobalSettings" class="no-drag" style="padding: 6px 14px; background: transparent; border: 1px solid var(--color-border); color: var(--color-text); border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 12px;">${t('common.cancel')}</button>
             <button type="button" id="saveGlobalSettings" class="no-drag primary" style="padding: 6px 14px; background: var(--color-primary); border: none; color: #fff; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 12px;">${t('app.settings.save')}</button>
           </div>
         </div>
@@ -851,6 +843,14 @@ export class TermixApp extends HTMLElement {
     const close = () => {
       themeStore.getState().setSettingsModalOpen(false);
     };
+    // 取消／✕：先把主題還原成開啟視窗時的快照（預覽不落地），再關閉。
+    const cancelSettings = () => {
+      const original = this.settingsOriginalTheme;
+      if (original && original !== themeStore.getState().theme) {
+        themeStore.getState().previewTheme(original);
+      }
+      close();
+    };
     const clampTextSizeInput = () => {
       if (!textSizeInput) return themeStore.getState().terminalTextSize;
       const next = Math.min(24, Math.max(9, Math.round(Number(textSizeInput.value || themeStore.getState().terminalTextSize) * 2) / 2));
@@ -863,8 +863,8 @@ export class TermixApp extends HTMLElement {
       textSizeInput.value = String(Math.min(24, Math.max(9, current + delta)));
     };
 
-    if (closeBtn) closeBtn.addEventListener('click', close);
-    if (cancelBtn) cancelBtn.addEventListener('click', close);
+    if (closeBtn) closeBtn.addEventListener('click', cancelSettings);
+    if (cancelBtn) cancelBtn.addEventListener('click', cancelSettings);
     // 語言切換：立即套用（setLocale 會 reload）
     if (localeSelect) {
       localeSelect.addEventListener('change', () => {
@@ -893,6 +893,146 @@ export class TermixApp extends HTMLElement {
         close();
       });
     }
+
+    // 左側頁籤切換（純 DOM，不動 store）
+    this.querySelectorAll('[data-settings-tab]').forEach((btn) => {
+      btn.addEventListener('click', () => this.showSettingsTab(btn.getAttribute('data-settings-tab')));
+    });
+
+    // 主題色票：點擊即時「預覽」套用（不落地）；按儲存才寫入，按取消／✕ 還原成開啟時的主題。
+    // previewTheme 會更新記憶體 state，subscribe 會回頭同步 #themeSelect 與色票選取態。
+    this.querySelectorAll('[data-theme-opt]').forEach((el) => {
+      el.addEventListener('click', () => {
+        const value = el.getAttribute('data-theme-opt');
+        if (select) select.value = value;
+        themeStore.getState().previewTheme(value);
+      });
+    });
+    this.syncThemeSwatches();
+
+    // UI 介面縮放：點擊即時套用並持久化（zoom）；不影響終端機畫面。
+    this.querySelectorAll('[data-ui-scale]').forEach((el) => {
+      el.addEventListener('click', () => {
+        themeStore.getState().setUiScale(Number(el.getAttribute('data-ui-scale')));
+      });
+    });
+    this.syncUiScale();
+  }
+
+  // 依 themeStore.uiScale 同步介面縮放分段預設的選取態
+  syncUiScale() {
+    const current = themeStore.getState().uiScale;
+    this.querySelectorAll('[data-ui-scale]').forEach((el) => {
+      el.classList.toggle('selected', Number(el.getAttribute('data-ui-scale')) === current);
+    });
+  }
+
+  // 依 #themeSelect 目前值同步基本模式列與色票的選取態
+  syncThemeSwatches() {
+    const select = this.querySelector('#themeSelect');
+    if (!select) return;
+    const value = select.value;
+    this.querySelectorAll('[data-theme-opt]').forEach((el) => {
+      const on = el.getAttribute('data-theme-opt') === value;
+      el.classList.toggle('selected', on);
+      el.setAttribute('aria-checked', on ? 'true' : 'false');
+    });
+  }
+
+  // 切換設定視窗的頁籤面板
+  showSettingsTab(name) {
+    if (!name) return;
+    this.querySelectorAll('[data-settings-tab]').forEach((btn) => {
+      const on = btn.getAttribute('data-settings-tab') === name;
+      btn.classList.toggle('active', on);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    this.querySelectorAll('[data-settings-panel]').forEach((panel) => {
+      panel.hidden = panel.getAttribute('data-settings-panel') !== name;
+    });
+  }
+
+  // 外觀頁籤：基本模式列（系統/淺色/深色）＋分組色票，並保留隱藏 <select> 供既有儲存邏輯讀取
+  renderThemeAppearancePanel() {
+    const modes = [
+      ['system', 'ti-device-desktop', 'app.settings.mode.system'],
+      ['light', 'ti-sun', 'app.settings.mode.light'],
+      ['dark', 'ti-moon', 'app.settings.mode.dark']
+    ];
+    const groups = [
+      ['app.theme.group.standard', [
+        ['termix', '#121315', '#9eff2b', 'app.theme.termix'],
+        ['graphite', '#15171a', '#a3b0c2', 'app.theme.graphite'],
+        ['forest', '#0f1f1a', '#34d399', 'app.theme.forest'],
+        ['copper', '#261714', '#fb923c', 'app.theme.copper'],
+        ['aurora', '#14162b', '#38bdf8', 'app.theme.aurora']
+      ]],
+      ['app.theme.group.tahoe', [
+        ['tahoe', '#16212d', '#8fd8ff', 'app.theme.tahoe'],
+        ['tahoe-glacier', '#091120', '#38bdf8', 'app.theme.tahoeGlacier'],
+        ['tahoe-sunset', '#1e110d', '#f97316', 'app.theme.tahoeSunset'],
+        ['tahoe-nebula', '#090514', '#a855f7', 'app.theme.tahoeNebula'],
+        ['tahoe-forest', '#05140b', '#22c55e', 'app.theme.tahoeForest']
+      ]],
+      ['app.theme.group.glass', [
+        ['glass-light', '#c7d2dd', '#5b6b7d', 'app.theme.glassLight'],
+        ['glass-dark', '#1e293b', '#cbd5e1', 'app.theme.glassDark'],
+        ['glass-violet', '#241b3a', '#c4b5fd', 'app.theme.glassViolet'],
+        ['glass-emerald', '#0f2a22', '#6ee7b7', 'app.theme.glassEmerald'],
+        ['glass-amber', '#2a1e0e', '#fdba74', 'app.theme.glassAmber'],
+        ['glass-rose', '#2a1420', '#fda4c0', 'app.theme.glassRose']
+      ]]
+    ];
+    const modeRow = modes.map(([id, icon, labelKey]) =>
+      `<button type="button" class="theme-mode-btn no-drag" data-theme-opt="${id}" role="radio" aria-checked="false"><i class="ti ${icon}" aria-hidden="true"></i><span>${t(labelKey)}</span></button>`
+    ).join('');
+    const groupsHtml = groups.map(([titleKey, items]) => {
+      const cards = items.map(([id, bg, ac, labelKey]) => {
+        const label = t(labelKey);
+        return `<button type="button" class="theme-swatch no-drag" data-theme-opt="${id}" role="radio" aria-checked="false" title="${escapeHtml(label)}">${this.themeSwatchDot(bg, ac)}<span>${escapeHtml(label)}</span><i class="ti ti-check theme-swatch-check" aria-hidden="true"></i></button>`;
+      }).join('');
+      return `<div class="theme-swatch-group"><div class="theme-swatch-group-title">${t(titleKey)}</div><div class="theme-swatch-grid">${cards}</div></div>`;
+    }).join('');
+    return `
+      <p class="settings-panel-desc">${t('app.settings.themeLabel')}</p>
+      <select class="no-drag" id="themeSelect" style="display: none;" aria-hidden="true" tabindex="-1">
+        <option value="system">${t('app.theme.system')}</option>
+        <option value="light">${t('app.theme.light')}</option>
+        <option value="dark" selected>${t('app.theme.dark')}</option>
+        <option value="termix">${t('app.theme.termix')}</option>
+        <option value="graphite">${t('app.theme.graphite')}</option>
+        <option value="forest">${t('app.theme.forest')}</option>
+        <option value="copper">${t('app.theme.copper')}</option>
+        <option value="aurora">${t('app.theme.aurora')}</option>
+        <option value="tahoe">${t('app.theme.tahoe')}</option>
+        <option value="tahoe-glacier">${t('app.theme.tahoeGlacier')}</option>
+        <option value="tahoe-sunset">${t('app.theme.tahoeSunset')}</option>
+        <option value="tahoe-nebula">${t('app.theme.tahoeNebula')}</option>
+        <option value="tahoe-forest">${t('app.theme.tahoeForest')}</option>
+        <option value="glass-light">${t('app.theme.glassLight')}</option>
+        <option value="glass-violet">${t('app.theme.glassViolet')}</option>
+        <option value="glass-emerald">${t('app.theme.glassEmerald')}</option>
+        <option value="glass-amber">${t('app.theme.glassAmber')}</option>
+        <option value="glass-rose">${t('app.theme.glassRose')}</option>
+        <option value="glass-dark">${t('app.theme.glassDark')}</option>
+      </select>
+      <div class="theme-mode-row">${modeRow}</div>
+      ${groupsHtml}
+      <div class="theme-swatch-group">
+        <div class="theme-swatch-group-title">${t('app.settings.uiScale')}</div>
+        <div class="ui-scale-row">
+          ${UI_SCALE_OPTIONS.map((s) => `<button type="button" class="ui-scale-btn no-drag" data-ui-scale="${s}">${Math.round(s * 100)}%</button>`).join('')}
+        </div>
+        <small style="display: block; margin-top: 8px; color: var(--color-text-muted); font-size: 11px;">${t('app.settings.uiScaleHint')}</small>
+      </div>
+    `;
+  }
+
+  themeSwatchDot(bg, ac) {
+    const s = 26;
+    const r = s / 2 - 1;
+    const c = s / 2;
+    return `<svg width="${s}" height="${s}" viewBox="0 0 ${s} ${s}" class="theme-swatch-dot" aria-hidden="true"><circle cx="${c}" cy="${c}" r="${r}" fill="${bg}"></circle><path d="M ${c} 1 A ${r} ${r} 0 0 1 ${c} ${s - 1} Z" fill="${ac}"></path><circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="rgba(255,255,255,0.18)"></circle></svg>`;
   }
 
   // ==========================================

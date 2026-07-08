@@ -1154,6 +1154,8 @@ p {
   min-height: 0;
   padding: 0;
   overflow: hidden;
+  /* UI 介面縮放：只縮放 .shell（尺寸由 App.js 以 calc(100vX/scale) 內嵌設定，縮放後剛好填滿視窗）。 */
+  zoom: var(--ui-scale, 1);
 }
 
 .main-content {
@@ -1171,7 +1173,7 @@ p {
 .host-sidebar {
   flex: 0 0 260px;
   width: 260px;
-  height: 100vh;
+  height: 100%;
   border-right: 1px solid var(--color-border);
   background: var(--color-panel-bg);
   display: flex;
@@ -1864,6 +1866,96 @@ textarea {
   min-width: 100px;
 }
 
+/* 全域設定視窗：左側頁籤版型（外觀/終端機/一般/進階）＋ 主題色票 */
+.settings-main { min-height: 0; }
+.settings-rail {
+  width: 168px;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 10px;
+  border-right: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-panel-bg) 55%, transparent);
+}
+.settings-tab {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--color-subtext);
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+}
+.settings-tab i { font-size: 16px; }
+.settings-tab:hover { background: color-mix(in srgb, var(--color-text) 6%, transparent); color: var(--color-text); }
+.settings-tab.active { background: color-mix(in srgb, var(--color-primary) 14%, transparent); color: var(--color-primary); font-weight: 700; }
+.settings-content { flex: 1 1 auto; min-width: 0; overflow-y: auto; padding: 18px 20px; }
+.settings-content [data-settings-panel][hidden] { display: none; }
+.settings-panel-desc { margin: 0 0 14px; font-size: 12px; color: var(--color-subtext); }
+.theme-mode-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 18px; }
+.theme-mode-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 10px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+}
+.theme-mode-btn i { font-size: 15px; }
+.theme-mode-btn:hover { border-color: var(--color-primary); }
+.theme-mode-btn.selected { border: 2px solid var(--color-primary); background: color-mix(in srgb, var(--color-primary) 12%, transparent); color: var(--color-primary); }
+.theme-swatch-group { margin-bottom: 16px; }
+.theme-swatch-group-title { font-size: 11px; font-weight: 700; color: var(--color-subtext); margin-bottom: 8px; }
+.theme-swatch-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.theme-swatch {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--input-bg);
+  color: var(--color-text);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  min-width: 0;
+}
+.theme-swatch:hover { border-color: var(--color-primary); }
+.theme-swatch > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.2; }
+.theme-swatch.selected { border: 2px solid var(--color-primary); background: color-mix(in srgb, var(--color-primary) 10%, transparent); }
+.theme-swatch-dot { flex: 0 0 auto; display: block; }
+.theme-swatch-check { margin-left: auto; font-size: 14px; color: var(--color-primary); display: none; }
+.theme-swatch.selected .theme-swatch-check { display: block; }
+.ui-scale-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.ui-scale-btn {
+  padding: 9px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+}
+.ui-scale-btn:hover { border-color: var(--color-primary); }
+.ui-scale-btn.selected { border: 2px solid var(--color-primary); background: color-mix(in srgb, var(--color-primary) 12%, transparent); color: var(--color-primary); }
+
 /* 原有的通用對話框 */
 .dialog-backdrop {
   position: fixed;
@@ -2027,7 +2119,7 @@ textarea {
   flex: 1;
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100%;
   overflow: hidden;
 }
 
@@ -2855,11 +2947,13 @@ kubernetes-session-page {
 .kubernetes-section-link:hover,
 .kubernetes-section-link.active { background: color-mix(in srgb, var(--color-primary) 15%, transparent); color: var(--color-primary); }
 .kubernetes-section-link:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
-.kubernetes-session-content { min-width: 0; min-height: 0; overflow: auto; padding: 24px; text-align: left; }
+.kubernetes-session-content { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; padding: 24px; text-align: left; }
+/* header 固定於頂部，內容（含寬表格）在 scrollbody 內雙向捲動，橫向捲軸固定在視窗底部可見可拖曳。 */
+.kubernetes-session-scrollbody { flex: 1 1 auto; min-height: 0; min-width: 0; overflow: auto; }
 .kubernetes-session-content > header > span { color: var(--color-primary); font-size: 11px; font-weight: 800; letter-spacing: 0.8px; text-transform: uppercase; }
 .kubernetes-session-content > header h1 { margin: 5px 0; color: var(--color-text); font-size: 22px; }
 .kubernetes-session-content > header p { margin: 0; color: var(--color-subtext); font: 11px monospace; }
-.kubernetes-session-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.kubernetes-session-header { flex: 0 0 auto; display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .kubernetes-session-actions { display: flex; align-items: center; gap: 8px; }
 .kubernetes-session-header > div > span { color: var(--color-primary); font-size: 11px; font-weight: 800; letter-spacing: 0.8px; text-transform: uppercase; }
 .kubernetes-session-header > div h1 { margin: 5px 0; color: var(--color-text); font-size: 22px; }
@@ -2923,15 +3017,33 @@ kubernetes-session-page {
 .kubernetes-session-error.compact { margin-top: 16px; padding: 10px 12px; }
 .kubernetes-session-error strong { font-size: 12px; }
 .kubernetes-session-error span { font-size: 11px; }
-.kubernetes-resource-table-wrap { margin-top: 22px; overflow: auto; border: 1px solid var(--color-border); border-radius: 9px; }
+.kubernetes-resource-table-wrap { margin-top: 12px; overflow: visible; }
 /*
  * 橫向可捲動性提示（⑩）：對「可能橫向溢出」的容器保留常駐、低透明度的 thumb，
  * 覆蓋全域「平常透明」規則（此處特異度較高，不動 scrollbarAutohide.ts）。
  * .is-scrolling 時仍由全域規則顯示較明顯顏色。
  */
+.kubernetes-session-scrollbody::-webkit-scrollbar,
+.kubernetes-resource-table-wrap::-webkit-scrollbar,
+.kubernetes-shell-view::-webkit-scrollbar,
+.kubernetes-pod-action-view::-webkit-scrollbar { width: 12px; height: 12px; }
+/* kubernetes 內容/表格橫向溢出時，提供常駐、清楚且可用滑鼠拖曳的捲軸（覆蓋全域透明自動隱藏）。 */
+.kubernetes-session-scrollbody::-webkit-scrollbar-thumb,
 .kubernetes-resource-table-wrap::-webkit-scrollbar-thumb,
+.kubernetes-shell-view::-webkit-scrollbar-thumb,
+.kubernetes-pod-action-view::-webkit-scrollbar-thumb,
 .kubernetes-pod-detail-tabs::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--color-text-muted) 18%, transparent);
+  background: color-mix(in srgb, var(--color-text-muted) 45%, transparent);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.kubernetes-session-scrollbody::-webkit-scrollbar-thumb:hover,
+.kubernetes-resource-table-wrap::-webkit-scrollbar-thumb:hover,
+.kubernetes-shell-view::-webkit-scrollbar-thumb:hover,
+.kubernetes-pod-action-view::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-text-muted) 72%, transparent);
+  background-clip: padding-box;
 }
 .kubernetes-section-toolbar { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 22px; }
 /* 通用 section 搜尋框：icon + input，靠右與 Refresh 並排。 */
@@ -2976,8 +3088,8 @@ kubernetes-session-page {
 .kubernetes-pod-action-view h1 { margin: 0 0 4px; color: var(--color-text); font-size: 17px; }
 .kubernetes-pod-action-view p { margin: 0; color: var(--color-subtext); font: 10px monospace; }
 .kubernetes-session-logs { flex: 1; min-height: 360px; margin: 14px 0 0; padding: 14px; overflow: auto; border: 1px solid var(--color-border); border-radius: 8px; background: var(--terminal-bg, #0b0f19); color: var(--terminal-foreground, #d7e0e5); font: 11px/1.55 monospace; white-space: pre-wrap; }
-.kubernetes-shell-view { height: calc(100vh - 105px); }
-.kubernetes-pod-shell-terminal { flex: 1; min-height: 320px; margin-top: 14px; padding: 8px; overflow: hidden; border: 1px solid var(--color-border); border-radius: 8px; background: var(--terminal-bg, #0b0f19); }
+.kubernetes-shell-view { height: calc(100% - 105px); overflow: auto; }
+.kubernetes-pod-shell-terminal { flex: 1; min-height: 320px; margin-top: 14px; padding: 8px; overflow: hidden; border: 1px solid var(--color-border); border-radius: 8px; background: var(--terminal-bg, #0b0f19); /* 與主終端機一致：反向縮放維持獨立，字級不隨 UI 縮放 */ zoom: calc(1 / var(--ui-scale, 1)); }
 .kubernetes-resource-row { cursor: pointer; transition: background-color .12s ease, color .12s ease; }
 .kubernetes-resource-row:hover,
 .kubernetes-resource-row:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; background: color-mix(in srgb, var(--color-primary) 10%, transparent); }
@@ -4022,6 +4134,9 @@ control-panel-page {
   min-height: 0;
   overflow: hidden;
   background: var(--terminal-bg);
+  /* UI 以 :root 的 zoom 等比縮放；終端機畫面以 1/scale 反向縮放相消，維持獨立、
+     字級只由「終端機文字大小」控制，fit 於淨縮放 1.0 的座標空間運作不受影響。 */
+  zoom: calc(1 / var(--ui-scale, 1));
 }
 
 /* xterm.js 內部元素必須完全繞過 Wails 拖曳放區放攔截，否則隱藏 textarea 無法接收鍵盤事件 */

@@ -150,9 +150,22 @@ func (m *Manager) getSession(config dto.SSHConfig) (*session, bool, string, erro
 	go terminal.readPipe(stdout)
 	go terminal.readPipe(stderr)
 
+	// 握手完成後的 Shell 啟動與 sudo 初始化原本不受 ctx 控制，取消時會卡到各步驟逾時
+	// （sudo/whoami 各 15 秒）。此看門狗於 ctx 取消時直接關閉 session，讓 Shell() 與
+	// sudo 期間的 execute() 立即透過 t.closed 解除阻塞並回報取消，避免長時間卡在取消中。
+	connectSettled := make(chan struct{})
+	defer close(connectSettled)
+	go func() {
+		select {
+		case <-ctx.Done():
+			terminal.close()
+		case <-connectSettled:
+		}
+	}()
+
 	if err := sshSession.Shell(); err != nil {
 		terminal.close()
-		return nil, false, intro.String(), err
+		return nil, false, intro.String(), cancelOrErr(ctx, err)
 	}
 
 	if strings.TrimSpace(config.SudoPassword) != "" {
@@ -164,7 +177,7 @@ func (m *Manager) getSession(config dto.SSHConfig) (*session, bool, string, erro
 		}
 		if err != nil {
 			terminal.close()
-			return nil, false, intro.String(), fmt.Errorf("sudo shell 啟動失敗：%w", err)
+			return nil, false, intro.String(), cancelOrErr(ctx, fmt.Errorf("sudo shell 啟動失敗：%w", err))
 		}
 		terminal.isSudo = true
 		output, err = terminal.execute("whoami", 15*time.Second)
@@ -173,11 +186,11 @@ func (m *Manager) getSession(config dto.SSHConfig) (*session, bool, string, erro
 		}
 		if err != nil {
 			terminal.close()
-			return nil, false, intro.String(), fmt.Errorf("sudo shell 啟動失敗：%w", err)
+			return nil, false, intro.String(), cancelOrErr(ctx, fmt.Errorf("sudo shell 啟動失敗：%w", err))
 		}
 		if !commandOutputHasLine(output, "root") {
 			terminal.close()
-			return nil, false, intro.String(), fmt.Errorf("sudo shell 啟動失敗：whoami = %s", strings.TrimSpace(output))
+			return nil, false, intro.String(), cancelOrErr(ctx, fmt.Errorf("sudo shell 啟動失敗：whoami = %s", strings.TrimSpace(output)))
 		}
 	}
 
@@ -194,6 +207,16 @@ func (m *Manager) getSession(config dto.SSHConfig) (*session, bool, string, erro
 	go terminal.keepaliveLoop()
 
 	return terminal, true, intro.String(), nil
+}
+
+// cancelOrErr 在 ctx 已被使用者取消時回報一致的取消訊息，否則回傳原始錯誤。
+// 握手後（Shell/sudo）階段被看門狗關閉 session 時，底層會回傳「session 已關閉」之類
+// 的錯誤，這裡統一翻譯成與 dial/握手階段相同的取消語意。
+func cancelOrErr(ctx context.Context, err error) error {
+	if ctx.Err() == context.Canceled {
+		return errors.New("連線已被使用者取消")
+	}
+	return err
 }
 
 func sudoPromptMarker(seq uint64) string {

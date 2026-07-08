@@ -7,9 +7,13 @@ const DEFAULT_SETTINGS = {
   theme: 'dark',
   terminalTextSize: 12.5,
   localTerminalPath: '/bin/zsh',
-  locale: DEFAULT_LOCALE
+  locale: DEFAULT_LOCALE,
+  uiScale: 1
 };
 const THEME_OPTIONS = ['system', 'light', 'dark', 'purple-dark', 'termix', 'tahoe', 'graphite', 'forest', 'copper', 'aurora', 'tahoe-glacier', 'tahoe-sunset', 'tahoe-nebula', 'tahoe-forest', 'glass-light', 'glass-dark', 'glass-violet', 'glass-emerald', 'glass-amber', 'glass-rose'];
+// UI 介面縮放的分段預設（90% / 100% / 110% / 125%）。整體 UI 以 CSS zoom 等比縮放，
+// 終端機畫面另以 1/scale 反向縮放維持獨立（見 style.css .xterm-pane-container）。
+export const UI_SCALE_OPTIONS = [0.9, 1, 1.1, 1.25];
 
 export function normalizeTerminalTextSize(value) {
   const parsed = Number(value);
@@ -22,7 +26,8 @@ function normalizeSettings(settings = {}) {
     theme: THEME_OPTIONS.includes(settings.theme) ? settings.theme : DEFAULT_SETTINGS.theme,
     terminalTextSize: normalizeTerminalTextSize(settings.terminalTextSize ?? DEFAULT_SETTINGS.terminalTextSize),
     localTerminalPath: String(settings.localTerminalPath || DEFAULT_SETTINGS.localTerminalPath).trim() || DEFAULT_SETTINGS.localTerminalPath,
-    locale: LOCALES.includes(settings.locale) ? settings.locale : DEFAULT_SETTINGS.locale
+    locale: LOCALES.includes(settings.locale) ? settings.locale : DEFAULT_SETTINGS.locale,
+    uiScale: UI_SCALE_OPTIONS.includes(Number(settings.uiScale)) ? Number(settings.uiScale) : DEFAULT_SETTINGS.uiScale
   };
 }
 
@@ -40,6 +45,7 @@ export const themeStore = createStore((set, get) => ({
   terminalTextSize: DEFAULT_SETTINGS.terminalTextSize,
   localTerminalPath: DEFAULT_SETTINGS.localTerminalPath,
   locale: DEFAULT_SETTINGS.locale,
+  uiScale: DEFAULT_SETTINGS.uiScale,
   settingsModalOpen: false,
 
   loadSettings: async () => {
@@ -48,23 +54,29 @@ export const themeStore = createStore((set, get) => ({
       saveSettings(settings);
       set(settings);
       applyTheme(settings.theme);
+      applyUiScale(settings.uiScale);
       setActiveLocale(settings.locale);
     } catch (backendError) {
       try {
         const settings = readLocalSettings();
         set(settings);
         applyTheme(settings.theme);
+        applyUiScale(settings.uiScale);
         setActiveLocale(settings.locale);
       } catch (localError) {
         set(DEFAULT_SETTINGS);
         applyTheme(DEFAULT_SETTINGS.theme);
+        applyUiScale(DEFAULT_SETTINGS.uiScale);
         setActiveLocale(DEFAULT_SETTINGS.locale);
       }
     }
   },
 
   setLocale: async (locale) => {
-    const next = normalizeSettings({ ...get(), locale });
+    // 主題以「已落地」的值為準（讀 localStorage），避免把設定視窗中未儲存的預覽主題
+    // 因切換語言而一併寫入。textSize/localTerminalPath 未被預覽改動，沿用 get() 即可。
+    const savedTheme = readLocalSettings().theme;
+    const next = normalizeSettings({ ...get(), theme: savedTheme, locale });
     set(next);
     saveSettings(next);
     try {
@@ -85,6 +97,29 @@ export const themeStore = createStore((set, get) => ({
       await HostAPI.saveAppSettings(next);
     } catch (e) {
       console.error('[TermiX] SaveAppSettings(theme) 失敗，已暫存於本機', e);
+    }
+  },
+
+  // 僅即時套用主題（含記憶體 state，讓 xterm 等訂閱者同步換色），不寫入 localStorage 或後端。
+  // 供設定視窗「預覽」用：按儲存才呼叫 saveSettings 落地，按取消則 previewTheme 回原值即可還原。
+  previewTheme: (theme) => {
+    const next = THEME_OPTIONS.includes(theme) ? theme : get().theme;
+    set({ theme: next });
+    applyTheme(next);
+  },
+
+  // UI 介面縮放：即時套用並持久化。落地時 theme 以「已儲存值」為準、且不動記憶體中的 theme，
+  // 避免夾帶或覆蓋設定視窗內未儲存的主題預覽。
+  setUiScale: async (uiScale) => {
+    const scale = normalizeSettings({ ...get(), uiScale }).uiScale;
+    set({ uiScale: scale });
+    applyUiScale(scale);
+    const persisted = normalizeSettings({ ...get(), theme: readLocalSettings().theme });
+    saveSettings(persisted);
+    try {
+      await HostAPI.saveAppSettings(persisted);
+    } catch (e) {
+      console.error('[TermiX] SaveAppSettings(uiScale) 失敗，已暫存於本機', e);
     }
   },
 
@@ -149,6 +184,14 @@ function applyTheme(theme) {
   } else {
     applyThemeClass(theme);
   }
+}
+
+// 於 :root 設 --ui-scale；實際縮放由 .shell 的 zoom: var(--ui-scale) 套用（見 style.css）。
+// 縮放 .shell（而非 html）並將 .shell 尺寸設為 calc(100vX / scale)，縮放後剛好填滿視窗、
+// 不會像 zoom html 那樣讓 100vh/100vw 版面溢出被裁切。終端機容器再以 1/scale 反向相消維持獨立。
+function applyUiScale(scale) {
+  const value = UI_SCALE_OPTIONS.includes(Number(scale)) ? Number(scale) : DEFAULT_SETTINGS.uiScale;
+  document.documentElement.style.setProperty('--ui-scale', String(value));
 }
 
 function applyThemeClass(normalizedTheme) {

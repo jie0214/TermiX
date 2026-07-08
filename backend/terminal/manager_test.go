@@ -1,6 +1,8 @@
 package terminal
 
 import (
+	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -422,6 +424,23 @@ func TestCancelConnectBeforeSessionRegistration(t *testing.T) {
 	}
 	if _, exists := manager.pendingCancels[SessionKey(config)]; exists {
 		t.Fatalf("pending cancel should be consumed")
+	}
+}
+
+func TestCancelOrErr(t *testing.T) {
+	original := errors.New("sudo shell 啟動失敗：session 已關閉")
+
+	// 未取消時原樣回傳，握手後階段的真實錯誤不被掩蓋。
+	if got := cancelOrErr(context.Background(), original); got != original {
+		t.Fatalf("cancelOrErr(active) = %v, want passthrough", got)
+	}
+
+	// ctx 已被使用者取消時，翻譯成與 dial/握手階段一致的取消訊息。
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	got := cancelOrErr(ctx, original)
+	if got == nil || !strings.Contains(got.Error(), "連線已被使用者取消") {
+		t.Fatalf("cancelOrErr(canceled) = %v, want user cancel message", got)
 	}
 }
 
