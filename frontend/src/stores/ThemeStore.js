@@ -1,6 +1,7 @@
 import { createStore } from 'zustand/vanilla';
 import { HostAPI } from '../modules/hostvault/HostAPI';
 import { LOCALES, DEFAULT_LOCALE, setActiveLocale } from '../i18n/index.ts';
+import { normalizeShortcutMap } from '../domain/shortcuts.ts';
 
 const GLOBAL_SETTINGS_KEY = 'termix-global-settings';
 const DEFAULT_SETTINGS = {
@@ -8,7 +9,8 @@ const DEFAULT_SETTINGS = {
   terminalTextSize: 12.5,
   localTerminalPath: '/bin/zsh',
   locale: DEFAULT_LOCALE,
-  uiScale: 1
+  uiScale: 1,
+  shortcuts: {}
 };
 const THEME_OPTIONS = ['system', 'light', 'dark', 'purple-dark', 'termix', 'tahoe', 'graphite', 'forest', 'copper', 'aurora', 'tahoe-glacier', 'tahoe-sunset', 'tahoe-nebula', 'tahoe-forest', 'glass-light', 'glass-dark', 'glass-violet', 'glass-emerald', 'glass-amber', 'glass-rose'];
 // UI 介面縮放的分段預設（90% / 100% / 110% / 125%）。整體 UI 以 CSS zoom 等比縮放，
@@ -27,7 +29,8 @@ function normalizeSettings(settings = {}) {
     terminalTextSize: normalizeTerminalTextSize(settings.terminalTextSize ?? DEFAULT_SETTINGS.terminalTextSize),
     localTerminalPath: String(settings.localTerminalPath || DEFAULT_SETTINGS.localTerminalPath).trim() || DEFAULT_SETTINGS.localTerminalPath,
     locale: LOCALES.includes(settings.locale) ? settings.locale : DEFAULT_SETTINGS.locale,
-    uiScale: UI_SCALE_OPTIONS.includes(Number(settings.uiScale)) ? Number(settings.uiScale) : DEFAULT_SETTINGS.uiScale
+    uiScale: UI_SCALE_OPTIONS.includes(Number(settings.uiScale)) ? Number(settings.uiScale) : DEFAULT_SETTINGS.uiScale,
+    shortcuts: normalizeShortcutMap(settings.shortcuts)
   };
 }
 
@@ -46,6 +49,7 @@ export const themeStore = createStore((set, get) => ({
   localTerminalPath: DEFAULT_SETTINGS.localTerminalPath,
   locale: DEFAULT_SETTINGS.locale,
   uiScale: DEFAULT_SETTINGS.uiScale,
+  shortcuts: {},
   settingsModalOpen: false,
 
   loadSettings: async () => {
@@ -131,6 +135,19 @@ export const themeStore = createStore((set, get) => ({
       await HostAPI.saveAppSettings(next);
     } catch (e) {
       console.error('[TermiX] SaveAppSettings(text size) 失敗，已暫存於本機', e);
+    }
+  },
+
+  // 快捷鍵覆寫表：即時套用並持久化。theme 以「已儲存值」為準，避免夾帶設定視窗內未儲存的主題預覽。
+  setShortcuts: async (shortcuts) => {
+    const normalized = normalizeShortcutMap(shortcuts);
+    set({ shortcuts: normalized });
+    const persisted = normalizeSettings({ ...get(), shortcuts: normalized, theme: readLocalSettings().theme });
+    saveSettings(persisted);
+    try {
+      await HostAPI.saveAppSettings(persisted);
+    } catch (e) {
+      console.error('[TermiX] SaveAppSettings(shortcuts) 失敗，已暫存於本機', e);
     }
   },
 

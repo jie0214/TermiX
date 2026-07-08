@@ -14,6 +14,7 @@ import { confirmDialog } from '../../components/feedback/confirmDialog';
 import { themeStore } from '../../stores/ThemeStore';
 import { Terminal } from '@xterm/xterm';
 import { t } from '../../i18n/index.ts';
+import { matchShortcut, resolveShortcuts, detectPlatform } from '../../domain/shortcuts.ts';
 
 /**
  * 從 CSS 自訂屬性讀取目前主題的終端機配色，生成 xterm.js theme 物件。
@@ -669,6 +670,18 @@ export class TerminalPage extends HTMLElement {
           theme: getXtermTheme()
         });
         terminalStore.getState().setXtermInstance(sessionKey, term);
+
+        // 快捷鍵攔截：事件時序上 xterm 的 keydown（掛在 helper textarea）先於 document 的
+        // 全域派發器（bubble 階段）觸發，故必須在此告訴 xterm「這是快捷鍵，別送進 PTY」，
+        // 否則等 document 派發器 preventDefault 已來不及。命中任何綁定即回傳 false（xterm 不處理），
+        // 動作本身仍由 document 的 handleShortcut 執行。裸 Ctrl+C/X/V 等未綁定者回傳 true，照送 PTY。
+        term.attachCustomKeyEventHandler((e) => {
+          if (e.type !== 'keydown') return true;
+          const platform = detectPlatform();
+          const resolved = resolveShortcuts(themeStore.getState().shortcuts, platform);
+          return matchShortcut(e, resolved, platform) === null;
+        });
+
         // 在 term 實例上掛可變屬性，記錄「當前」綁定的 sessionKey。
         // 首次建立時等於此 pane 的 sessionKey；重連遷移 / 分割視窗重用（re-parent）時會同步更新。
         // onData 內一律讀此屬性而非閉包常數，確保重連換綁後輸入仍送到正確 session。

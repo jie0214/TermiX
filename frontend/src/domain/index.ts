@@ -53,6 +53,20 @@ export type {
 } from './kubernetes';
 export { THEME_IDS } from './settings';
 export type { AppSettings, SettingsState, ThemeId } from './settings';
+export {
+  SHORTCUT_ACTIONS,
+  TAB_INDEX_ACTION_ID,
+  detectPlatform,
+  matchShortcut,
+  eventToBinding,
+  isValidBinding,
+  normalizeShortcutMap,
+  bindingToTokens,
+  renderBinding,
+  resolveBinding,
+  resolveShortcuts,
+} from './shortcuts';
+export type { Platform, KeyBinding, ShortcutMap, ShortcutAction, ShortcutMatch } from './shortcuts';
 export type {
   AutocompleteResult,
   SSHConfig,

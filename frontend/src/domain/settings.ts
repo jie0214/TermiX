@@ -1,3 +1,5 @@
+import type { ShortcutMap } from './shortcuts';
+
 export const THEME_IDS = [
   'system',
   'light',
@@ -31,6 +33,8 @@ export interface AppSettings {
   terminalTextSize: number;
   localTerminalPath: string;
   locale: LocaleId;
+  /** 快捷鍵覆寫表（僅存與平台預設不同者）；"" 表示使用者停用該動作。 */
+  shortcuts: ShortcutMap;
 }
 
 export interface SettingsState extends AppSettings {

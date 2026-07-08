@@ -43,6 +43,7 @@ import { confirmDialog } from './components/feedback/confirmDialog';
 import { getControlPanelDropPosition, getControlPanelThemeStyle, reorderControlPanelComponents } from './modules/controlpanel/ControlPanelLayout';
 import { themeStore, UI_SCALE_OPTIONS } from './stores/ThemeStore';
 import { t } from './i18n/index.ts';
+import { matchShortcut, resolveShortcuts, detectPlatform, eventToBinding, bindingToTokens, SHORTCUT_ACTIONS, TAB_INDEX_ACTION_ID } from './domain/shortcuts.ts';
 import { hostStore } from './modules/hostvault/HostStore';
 import { snippetStore } from './modules/snippets/SnippetStore';
 import { pasteSnippetToSession, runSnippetInSession } from './modules/snippets/SnippetRuntime';
@@ -66,6 +67,28 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+// 快捷鍵派發用：這些動作僅在終端聚焦時才攔截（其餘情境放行原生行為）。
+const TERMINAL_ONLY_ACTIONS = new Set(['copy', 'paste', 'selectAll']);
+
+// 快捷鍵鍵帽的行內樣式（沿用設定面板以行內樣式為主的慣例）。
+const KEYCAP_STYLE = 'display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 6px;border:1px solid var(--color-border);border-radius:5px;background:var(--input-bg);color:var(--color-text);font-size:11px;font-weight:700;font-family:monospace;';
+
+// 依平台預設，將某動作的覆寫寫入 map（等於預設則移除覆寫，讓其回退預設）。就地變動傳入的 map。
+function setShortcutOverride(map, actionId, binding, platform) {
+  const def = SHORTCUT_ACTIONS.find((a) => a.id === actionId)?.defaults[platform];
+  if (binding === def) delete map[actionId];
+  else map[actionId] = binding;
+}
+
+// 判斷焦點是否落在「非終端」的可編輯元素（設定/表單輸入、contenteditable）。
+// xterm 的 helper textarea 不算（視為終端聚焦），故排除之。
+function isEditableNonTerminal(el) {
+  if (!el) return false;
+  if (el.classList?.contains('xterm-helper-textarea')) return false;
+  const tag = el.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable === true;
 }
 
 function extractInfoBoxValue(itemKey, output) {
@@ -145,7 +168,7 @@ export class TermixApp extends HTMLElement {
     // 頂部 Workspace Tabs 的結構指紋；用於避免 terminalStore 高頻變更（如 PTY 輸出、
     // activePaneSessionKey 切換）導致整列 Tabs 不必要地重建與重綁事件（H4）。
     this.lastTabsFingerprint = null;
-    this.handleSnippetShortcut = this.handleSnippetShortcut.bind(this);
+    this.handleShortcut = this.handleShortcut.bind(this);
   }
 
   // 計算頂部 Workspace Tabs 的結構指紋。
@@ -203,7 +226,7 @@ export class TermixApp extends HTMLElement {
     this.setupTabListeners();
     this.setupSidebarListeners();
     this.setupSettingsListeners();
-    document.addEventListener('keydown', this.handleSnippetShortcut);
+    document.addEventListener('keydown', this.handleShortcut);
 
     // 1. 訂閱 terminalStore 來動態重繪頂部 Workspace Tabs
     this.unsubscribeTerminal = terminalStore.subscribe((state, prevState) => {
@@ -264,7 +287,9 @@ export class TermixApp extends HTMLElement {
       const localTerminalPathInput = this.querySelector('#localTerminalPathInput');
       if (modal) {
         modal.classList.toggle('hidden', !state.settingsModalOpen);
+        if (!state.settingsModalOpen) this.stopRecordingShortcut();
         if (state.settingsModalOpen) {
+          this.refreshShortcutRows();
           const logsContainer = this.querySelector('#tabDebugLogsContainer');
           if (logsContainer) {
             try {
@@ -383,7 +408,7 @@ export class TermixApp extends HTMLElement {
     if (this.unsubscribeTheme) this.unsubscribeTheme();
     if (this.unsubscribeKubernetesSession) this.unsubscribeKubernetesSession();
     if (this.sidebarTimer) clearInterval(this.sidebarTimer);
-    document.removeEventListener('keydown', this.handleSnippetShortcut);
+    document.removeEventListener('keydown', this.handleShortcut);
     this.runtimeEventOffs.forEach((off) => off());
     this.runtimeEventOffs = [];
     if (this.disposeRouter) this.disposeRouter();
@@ -457,6 +482,7 @@ export class TermixApp extends HTMLElement {
             <nav class="settings-rail no-drag" aria-label="${t('app.settings.title')}" role="tablist">
               <button type="button" class="settings-tab active no-drag" data-settings-tab="appearance" role="tab" aria-selected="true"><i class="ti ti-palette" aria-hidden="true"></i><span>${t('app.settings.tab.appearance')}</span></button>
               <button type="button" class="settings-tab no-drag" data-settings-tab="terminal" role="tab" aria-selected="false"><i class="ti ti-terminal-2" aria-hidden="true"></i><span>${t('app.settings.tab.terminal')}</span></button>
+              <button type="button" class="settings-tab no-drag" data-settings-tab="shortcuts" role="tab" aria-selected="false"><i class="ti ti-keyboard" aria-hidden="true"></i><span>${t('app.settings.tab.shortcuts')}</span></button>
               <button type="button" class="settings-tab no-drag" data-settings-tab="general" role="tab" aria-selected="false"><i class="ti ti-settings" aria-hidden="true"></i><span>${t('app.settings.tab.general')}</span></button>
               <button type="button" class="settings-tab no-drag" data-settings-tab="advanced" role="tab" aria-selected="false"><i class="ti ti-tool" aria-hidden="true"></i><span>${t('app.settings.tab.advanced')}</span></button>
             </nav>
@@ -483,6 +509,9 @@ export class TermixApp extends HTMLElement {
                     <small style="color: var(--color-text-muted);">${t('app.settings.localShellHint')}</small>
                   </label>
                 </div>
+              </section>
+              <section data-settings-panel="shortcuts" role="tabpanel" hidden>
+                ${this.renderShortcutsPanel()}
               </section>
               <section data-settings-panel="general" role="tabpanel" hidden>
                 <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
@@ -789,9 +818,97 @@ export class TermixApp extends HTMLElement {
     });
   }
 
-  handleSnippetShortcut(event) {
-    if (event.key !== '.' || (!event.metaKey && !event.ctrlKey)) return;
+  // 全域快捷鍵派發器：單一 keydown → 依平台生效表比對 → 派發到 handler。
+  handleShortcut(event) {
+    if (this._recordingAction) return; // 錄製中不派發（雙保險，錄製監聽已於 capture 階段吞鍵）
+    const active = document.activeElement;
+    // 焦點在「非終端」的可編輯欄位（設定/表單輸入）時，一律讓原生編輯行為生效，不攔截。
+    // xterm 的 helper textarea 例外（視為終端聚焦，快捷鍵照常生效）。
+    if (isEditableNonTerminal(active)) return;
+
+    const platform = detectPlatform();
+    const resolved = resolveShortcuts(themeStore.getState().shortcuts, platform);
+    const match = matchShortcut(event, resolved, platform);
+    if (!match) return;
+
+    // 終端專屬動作（複製/貼上/全選）僅在終端聚焦時攔截；否則放行原生，
+    // 避免在 Vaults 等頁面把 macOS ⌘C 複製頁面選字給吃掉。
+    const inTerminal = Boolean(active?.classList?.contains('xterm-helper-textarea'));
+    if (TERMINAL_ONLY_ACTIONS.has(match.actionId) && !inTerminal) return;
+
+    const handler = this.getShortcutHandlers()[match.actionId];
+    if (!handler) return;
     event.preventDefault();
+    handler(match);
+  }
+
+  // actionId → 動作。分頁類動作直接 click 對應的 .session-tab（重用既有切換/關閉 handler，
+  // 涵蓋 Vaults／Kubernetes／Workspace 三種特殊分頁），不重寫切換語意。
+  getShortcutHandlers() {
+    return {
+      nextTab: () => this.focusTabByOffset(1),
+      prevTab: () => this.focusTabByOffset(-1),
+      closeTab: () => this.closeActiveTab(),
+      newLocalTerminal: () => this.createLocalTerminal(),
+      openSnippets: () => this.openSnippets(),
+      openSettings: () => themeStore.getState().setSettingsModalOpen(true),
+      copy: () => this.copyTerminalSelection(),
+      paste: () => this.pasteToTerminal(),
+      selectAll: () => this.selectAllInTerminal(),
+      [TAB_INDEX_ACTION_ID]: (m) => this.focusTabByIndex(m.index),
+    };
+  }
+
+  // 當前作用中的 xterm 實例（活動 pane）；無則回傳 null。
+  getActiveTerm() {
+    const state = terminalStore.getState();
+    return state.xtermInstances[state.activePaneSessionKey] || null;
+  }
+
+  copyTerminalSelection() {
+    const term = this.getActiveTerm();
+    if (!term || !term.hasSelection()) return;
+    navigator.clipboard?.writeText(term.getSelection()).catch(() => {});
+  }
+
+  // 經 term.paste() 走既有 onData 路徑（含 bracketed paste / reconnect 緩衝 / 廣播）。
+  pasteToTerminal() {
+    const term = this.getActiveTerm();
+    if (!term) return;
+    navigator.clipboard?.readText().then((text) => {
+      if (text) term.paste(text);
+    }).catch(() => {});
+  }
+
+  selectAllInTerminal() {
+    const term = this.getActiveTerm();
+    if (!term) return;
+    term.selectAll();
+  }
+
+  getOrderedTabEls() {
+    return [...this.querySelectorAll('#sessionTabs .session-tab:not(.session-tab-add)')];
+  }
+
+  focusTabByOffset(delta) {
+    const tabs = this.getOrderedTabEls();
+    if (tabs.length < 2) return;
+    let idx = tabs.findIndex((el) => el.classList.contains('active'));
+    if (idx === -1) idx = 0;
+    tabs[(idx + delta + tabs.length) % tabs.length].click();
+  }
+
+  focusTabByIndex(n) {
+    const el = this.getOrderedTabEls()[n - 1];
+    if (el) el.click();
+  }
+
+  closeActiveTab() {
+    const active = this.querySelector('#sessionTabs .session-tab.active');
+    active?.querySelector('.close-tab')?.click();
+  }
+
+  openSnippets() {
     const sidebar = this.querySelector('#controlSidebar');
     const toggleBtn = this.querySelector('#toggleControlSidebar');
     if (!sidebar) return;
@@ -899,6 +1016,20 @@ export class TermixApp extends HTMLElement {
       btn.addEventListener('click', () => this.showSettingsTab(btn.getAttribute('data-settings-tab')));
     });
 
+    // 快捷鍵面板：事件委派（錄製/單項還原/全部還原），避免每次重繪重綁。
+    const shortcutsPanel = this.querySelector('[data-settings-panel="shortcuts"]');
+    if (shortcutsPanel) {
+      shortcutsPanel.addEventListener('click', (e) => {
+        const recBtn = e.target.closest('[data-shortcut-record]');
+        if (recBtn) { this.startRecordingShortcut(recBtn.getAttribute('data-shortcut-record')); return; }
+        const resetBtn = e.target.closest('[data-shortcut-reset]');
+        if (resetBtn) { this.resetShortcut(resetBtn.getAttribute('data-shortcut-reset')); return; }
+        const conflictBtn = e.target.closest('[data-shortcut-conflict]');
+        if (conflictBtn) { this.resolvePendingConflict(conflictBtn.getAttribute('data-shortcut-conflict') === 'reassign'); return; }
+        if (e.target.closest('#shortcutsResetAll')) { this.resetAllShortcuts(); }
+      });
+    }
+
     // 主題色票：點擊即時「預覽」套用（不落地）；按儲存才寫入，按取消／✕ 還原成開啟時的主題。
     // previewTheme 會更新記憶體 state，subscribe 會回頭同步 #themeSelect 與色票選取態。
     this.querySelectorAll('[data-theme-opt]').forEach((el) => {
@@ -950,6 +1081,177 @@ export class TermixApp extends HTMLElement {
     this.querySelectorAll('[data-settings-panel]').forEach((panel) => {
       panel.hidden = panel.getAttribute('data-settings-panel') !== name;
     });
+    // 離開快捷鍵頁籤時中止進行中的錄製；進入時重繪一次以反映最新狀態。
+    if (name !== 'shortcuts') this.stopRecordingShortcut();
+    else this.refreshShortcutRows();
+  }
+
+  // ── Shortcuts 設定面板 ───────────────────────────────────────────────
+
+  // 靜態外殼：標題列（含全部還原）＋ 由 refreshShortcutRows() 填入的列表容器。
+  renderShortcutsPanel() {
+    return `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <small style="color:var(--color-text-muted);">${t('shortcut.recordHint')}</small>
+        <button type="button" id="shortcutsResetAll" class="no-drag" style="padding:4px 10px; background:transparent; border:1px solid var(--color-border); color:var(--color-subtext); border-radius:4px; cursor:pointer; font-size:11px; font-weight:700;">${t('shortcut.resetAll')}</button>
+      </div>
+      <div id="shortcutsList">${this.renderShortcutRowsHtml()}</div>
+    `;
+  }
+
+  renderShortcutRowsHtml() {
+    const platform = detectPlatform();
+    const overrides = themeStore.getState().shortcuts;
+    const resolved = resolveShortcuts(overrides, platform);
+    let html = '';
+    // 衝突橫幅（內嵌處理，不用彈窗——設定視窗 z-index 高於通用 confirmDialog）。
+    if (this._pendingConflict) {
+      const labelOf = (id) => t(SHORTCUT_ACTIONS.find((a) => a.id === id).labelKey);
+      const { actionId, conflictId } = this._pendingConflict;
+      html += `
+        <div style="border:1px solid var(--color-primary); background:color-mix(in srgb, var(--color-primary) 12%, transparent); border-radius:6px; padding:10px 12px; margin-bottom:6px;">
+          <div style="font-size:12px; color:var(--color-text); white-space:pre-line; margin-bottom:8px;">${escapeHtml(t('shortcut.conflictMessage', { other: labelOf(conflictId), current: labelOf(actionId) }))}</div>
+          <div style="display:flex; gap:8px; justify-content:flex-end;">
+            <button type="button" data-shortcut-conflict="cancel" class="no-drag" style="padding:4px 12px; background:transparent; border:1px solid var(--color-border); color:var(--color-text); border-radius:4px; cursor:pointer; font-size:11px; font-weight:700;">${t('common.cancel')}</button>
+            <button type="button" data-shortcut-conflict="reassign" class="no-drag" style="padding:4px 12px; background:var(--color-primary); border:none; color:#fff; border-radius:4px; cursor:pointer; font-size:11px; font-weight:700;">${t('common.confirm')}</button>
+          </div>
+        </div>`;
+    }
+    for (const cat of ['tabs', 'terminal', 'app']) {
+      const actions = SHORTCUT_ACTIONS.filter((a) => a.category === cat);
+      if (!actions.length) continue;
+      html += `<div style="font-size:11px; font-weight:700; color:var(--color-primary); text-transform:uppercase; margin:14px 0 6px;">${t('shortcut.category.' + cat)}</div>`;
+      for (const a of actions) {
+        const overridden = Object.prototype.hasOwnProperty.call(overrides, a.id);
+        html += this.renderShortcutRow(a.id, t(a.labelKey), resolved[a.id], { overridden, recording: this._recordingAction === a.id });
+      }
+      // 固定的分頁數字跳轉列，緊接在分頁類動作之後（不可重新綁定）。
+      if (cat === 'tabs') {
+        const prefix = platform === 'mac' ? '⌘' : 'Ctrl';
+        html += this.renderShortcutRow(TAB_INDEX_ACTION_ID, t('shortcut.action.focusTabByIndex'), null, { fixed: true, fixedTokens: [prefix, '1…9'] });
+      }
+    }
+    return html;
+  }
+
+  renderShortcutRow(actionId, label, binding, opts = {}) {
+    const { overridden = false, recording = false, fixed = false, fixedTokens = [] } = opts;
+    let right;
+    if (fixed) {
+      right = `${fixedTokens.map((tk) => `<kbd style="${KEYCAP_STYLE}">${escapeHtml(tk)}</kbd>`).join('<span style="opacity:.5;margin:0 1px;"></span>')}
+        <span style="margin-left:8px; font-size:10px; color:var(--color-text-muted);">${t('shortcut.fixedHint')}</span>`;
+    } else if (recording) {
+      right = `<button type="button" data-shortcut-record="${actionId}" class="no-drag" style="padding:3px 10px; border:1px solid var(--color-primary); background:color-mix(in srgb, var(--color-primary) 14%, transparent); color:var(--color-primary); border-radius:5px; cursor:pointer; font-size:11px; font-weight:700;">${t('shortcut.recording')}</button>
+        ${this._recordingNeedModifier ? `<span style="margin-left:8px; font-size:10px; color:var(--color-danger, #f87171);">${t('shortcut.needModifier')}</span>` : ''}`;
+    } else {
+      const tokens = bindingToTokens(binding, detectPlatform());
+      const caps = tokens.length
+        ? tokens.map((tk) => `<kbd style="${KEYCAP_STYLE}">${escapeHtml(tk)}</kbd>`).join('<span style="opacity:.5;margin:0 1px;"></span>')
+        : `<span style="font-size:11px; color:var(--color-text-muted);">${t('shortcut.disabled')}</span>`;
+      right = `<button type="button" data-shortcut-record="${actionId}" class="no-drag" title="${escapeHtml(label)}" style="display:inline-flex; align-items:center; gap:3px; padding:3px 8px; border:1px solid transparent; background:transparent; border-radius:5px; cursor:pointer;">${caps}</button>
+        ${overridden ? `<button type="button" data-shortcut-reset="${actionId}" class="no-drag" title="${t('shortcut.resetTitle')}" style="margin-left:4px; width:22px; height:22px; border:none; background:transparent; color:var(--color-subtext); cursor:pointer;"><i class="ti ti-rotate-2" aria-hidden="true"></i></button>` : ''}`;
+    }
+    return `
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; padding:6px 0; border-bottom:1px solid color-mix(in srgb, var(--color-border) 45%, transparent);">
+        <span style="font-size:12px; color:var(--color-text);">${escapeHtml(label)}</span>
+        <span style="display:inline-flex; align-items:center; white-space:nowrap;">${right}</span>
+      </div>
+    `;
+  }
+
+  refreshShortcutRows() {
+    const list = this.querySelector('#shortcutsList');
+    if (list) list.innerHTML = this.renderShortcutRowsHtml();
+  }
+
+  startRecordingShortcut(actionId) {
+    if (this._recordingAction) this.stopRecordingShortcut();
+    this._recordingAction = actionId;
+    this._recordingNeedModifier = false;
+    // capture 階段攔截並吞掉按鍵，避免同時觸發全域派發器或送入 xterm。
+    this._recordingKeydown = (e) => this.handleRecordingKey(e);
+    document.addEventListener('keydown', this._recordingKeydown, true);
+    this.refreshShortcutRows();
+  }
+
+  stopRecordingShortcut() {
+    if (this._recordingKeydown) {
+      document.removeEventListener('keydown', this._recordingKeydown, true);
+      this._recordingKeydown = null;
+    }
+    this._recordingAction = null;
+    this._recordingNeedModifier = false;
+    this._pendingConflict = null;
+  }
+
+  handleRecordingKey(e) {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (['Meta', 'Control', 'Alt', 'Shift'].includes(e.key)) return; // 等待完整組合
+    const actionId = this._recordingAction;
+    if (e.key === 'Escape') {
+      this.stopRecordingShortcut();
+      this.refreshShortcutRows();
+      return;
+    }
+    if (e.key === 'Backspace' || e.key === 'Delete') {
+      this.stopRecordingShortcut();
+      this.finishRecordingShortcut(actionId, ''); // 停用
+      return;
+    }
+    const binding = eventToBinding(e);
+    if (!binding) {
+      this._recordingNeedModifier = true;
+      this.refreshShortcutRows();
+      return;
+    }
+    this.stopRecordingShortcut();
+    this.finishRecordingShortcut(actionId, binding);
+  }
+
+  finishRecordingShortcut(actionId, binding) {
+    const platform = detectPlatform();
+    const overrides = { ...themeStore.getState().shortcuts };
+    const resolved = resolveShortcuts(overrides, platform);
+    // 衝突偵測：另一動作目前生效為相同組合（停用 binding='' 不算衝突）。
+    const conflictId = binding
+      ? Object.keys(resolved).find((id) => id !== actionId && resolved[id] === binding)
+      : undefined;
+    if (conflictId) {
+      // 交由內嵌衝突橫幅讓使用者確認改綁或取消。
+      this._pendingConflict = { actionId, binding, conflictId };
+      this.refreshShortcutRows();
+      return;
+    }
+    setShortcutOverride(overrides, actionId, binding, platform);
+    themeStore.getState().setShortcuts(overrides);
+    this.refreshShortcutRows();
+  }
+
+  // 內嵌衝突橫幅的回應：accept=改綁（停用被搶走的動作），否則放棄本次變更。
+  resolvePendingConflict(accept) {
+    const pending = this._pendingConflict;
+    this._pendingConflict = null;
+    if (accept && pending) {
+      const platform = detectPlatform();
+      const overrides = { ...themeStore.getState().shortcuts };
+      setShortcutOverride(overrides, pending.conflictId, '', platform);
+      setShortcutOverride(overrides, pending.actionId, pending.binding, platform);
+      themeStore.getState().setShortcuts(overrides);
+    }
+    this.refreshShortcutRows();
+  }
+
+  resetShortcut(actionId) {
+    const overrides = { ...themeStore.getState().shortcuts };
+    delete overrides[actionId];
+    themeStore.getState().setShortcuts(overrides);
+    this.refreshShortcutRows();
+  }
+
+  resetAllShortcuts() {
+    themeStore.getState().setShortcuts({});
+    this.refreshShortcutRows();
   }
 
   // 外觀頁籤：基本模式列（系統/淺色/深色）＋分組色票，並保留隱藏 <select> 供既有儲存邏輯讀取
