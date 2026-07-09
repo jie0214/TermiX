@@ -9,7 +9,29 @@ func (a *App) ConnectHostTerminal(request HostConnectionRequest) OperationResult
 	if err != nil {
 		return failure(err)
 	}
-	return a.terminal.Connect(config)
+	result := a.terminal.Connect(config)
+	// 連線成功後於背景偵測遠端 OS 並寫回 host（輔助功能，失敗一律略過，不影響連線）。
+	if result.Success && request.HostID != "" && result.SessionKey != "" {
+		go a.detectAndPersistHostOS(request.HostID, result.SessionKey)
+	}
+	return result
+}
+
+// detectAndPersistHostOS 於背景偵測遠端 OS，若與現有值不同則寫回 host.OSID。
+func (a *App) detectAndPersistHostOS(hostID string, sessionKey string) {
+	osID := a.terminal.DetectOS(sessionKey)
+	if osID == "" {
+		return
+	}
+	ctx := a.contextOrBackground()
+	host, err := a.hostVault.GetHost(ctx, hostID)
+	if err != nil || host.OSID == osID {
+		return
+	}
+	host.OSID = osID
+	if _, _, err := a.hostVault.SaveHost(ctx, SaveHostRequest{Host: host}); err != nil {
+		return
+	}
 }
 
 func (a *App) CancelConnectHostTerminal(request HostConnectionRequest) OperationResult {

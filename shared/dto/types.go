@@ -54,6 +54,7 @@ type HostProfile struct {
 	GroupID       string              `json:"groupId" yaml:"groupId"`
 	AWSInstanceID string              `json:"awsInstanceId" yaml:"awsInstanceId"`
 	GCPInstanceID string              `json:"gcpInstanceId" yaml:"gcpInstanceId"`
+	OSID          string              `json:"osId" yaml:"osId"`
 	Config        PersistedHostConfig `json:"config" yaml:"config"`
 	CreatedAt     string              `json:"createdAt" yaml:"createdAt"`
 	UpdatedAt     string              `json:"updatedAt" yaml:"updatedAt"`
@@ -264,6 +265,8 @@ type KubernetesSession struct {
 
 type KubernetesDashboardRequest struct {
 	Namespace string `json:"namespace" yaml:"namespace"`
+	// Scope 為 "core" 時只抓 Overview 所需的核心資源（快速首屏）；空或其他值＝抓全部資源。
+	Scope string `json:"scope" yaml:"scope"`
 }
 
 type KubernetesResourceDetailRequest struct {
@@ -471,6 +474,7 @@ type KubernetesPodSummary struct {
 	MemoryUsageBytes  int64                           `json:"memoryUsageBytes"`
 	CreationTimestamp string                          `json:"creationTimestamp"`
 	Containers        []KubernetesPodContainerSummary `json:"containers"`
+	Labels            map[string]string               `json:"labels"`
 }
 
 type KubernetesPodContainerSummary struct {
@@ -483,9 +487,10 @@ type KubernetesWorkloadSummary struct {
 	Namespace         string `json:"namespace"`
 	DesiredReplicas   int32  `json:"desiredReplicas"`
 	ReadyReplicas     int32  `json:"readyReplicas"`
-	AvailableReplicas int32  `json:"availableReplicas"`
-	Status            string `json:"status"`
-	CreationTimestamp string `json:"creationTimestamp"`
+	AvailableReplicas int32             `json:"availableReplicas"`
+	Status            string            `json:"status"`
+	CreationTimestamp string            `json:"creationTimestamp"`
+	Selector          map[string]string `json:"selector"`
 }
 
 type KubernetesJobSummary struct {
@@ -513,9 +518,10 @@ type KubernetesServiceSummary struct {
 	Type              string `json:"type"`
 	ClusterIP         string `json:"clusterIp"`
 	ExternalAddresses string `json:"externalAddresses"`
-	Ports             string `json:"ports"`
-	PortNumbers       []int  `json:"portNumbers"`
-	CreationTimestamp string `json:"creationTimestamp"`
+	Ports             string            `json:"ports"`
+	PortNumbers       []int             `json:"portNumbers"`
+	CreationTimestamp string            `json:"creationTimestamp"`
+	Selector          map[string]string `json:"selector"`
 }
 
 type KubernetesIngressSummary struct {
@@ -713,6 +719,8 @@ type KubernetesDashboardSnapshot struct {
 	Namespace                 string                                      `json:"namespace"`
 	ServerVersion             string                                      `json:"serverVersion"`
 	GeneratedAt               string                                      `json:"generatedAt"`
+	// Partial＝此快照僅含核心資源（scope=core 的首屏結果），前端不應據此判定其餘 section 為空。
+	Partial                   bool                                        `json:"partial"`
 	Namespaces                []string                                    `json:"namespaces"`
 	NamespaceDetails          []KubernetesNamespaceSummary                `json:"namespaceDetails"`
 	Overview                  KubernetesOverviewCounts                    `json:"overview"`

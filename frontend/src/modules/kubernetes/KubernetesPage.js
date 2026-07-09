@@ -13,6 +13,34 @@ function escapeHtml(value) {
     .replace(/'/g, '&#039;');
 }
 
+// 雲端供應商 / Kubernetes 產品圖示（線稿，白色 stroke 配彩色底）。
+// 六邊形（pointy-top）共用給 EKS / GKE。
+const HEX = `M12 2.3 20.4 7.15V16.85L12 21.7 3.6 16.85V7.15Z`;
+// EKS：六邊形 + K
+const EKS_GLYPH = `<path d="${HEX}"/><path d="M10.4 7.8V16.2M10.4 12 14.9 7.8M10.4 12 14.9 16.2"/>`;
+// GKE：六邊形 + 等角立方體
+const GKE_GLYPH = `<path d="${HEX}"/><path d="M12 8 15.5 10 12 12 8.5 10Z"/><path d="M8.5 10V14L12 16V12Z"/><path d="M15.5 10V14L12 16V12Z"/>`;
+// AKS：Azure「A」雙三角形（實心）
+const AKS_GLYPH = `<g fill="currentColor" stroke="none"><path d="M10.6 4 4 20h5l1.2-3.6h4.4L13.4 13h-2.3l1.3-4L16 20h4L13.6 4Z"/></g>`;
+// 通用 Kubernetes：船舵輪（外圈 + 輪轂 + 7 輪輻 + 把手）
+const K8S_WHEEL_GLYPH = `<circle cx="12" cy="12" r="8.4"/><circle cx="12" cy="12" r="2.4"/><path d="M12 9.6 12 3.6M13.88 10.5 18.57 6.76M14.34 12.53 20.19 13.87M13.04 14.16 15.64 19.57M10.96 14.16 8.36 19.57M9.66 12.53 3.81 13.87M10.12 10.5 5.43 6.76"/><g fill="currentColor" stroke="none"><circle cx="12" cy="2.4" r="0.9"/><circle cx="19.51" cy="6.01" r="0.9"/><circle cx="21.36" cy="14.14" r="0.9"/><circle cx="16.17" cy="20.65" r="0.9"/><circle cx="7.83" cy="20.65" r="0.9"/><circle cx="2.64" cy="14.14" r="0.9"/><circle cx="4.49" cy="6.01" r="0.9"/></g>`;
+
+// 依 cluster 的 context / cluster 名稱 / server 判斷供應商，
+// 回傳 { bg, glyph, label }；無法判定時回傳通用 Kubernetes 圖示（船舵輪）。
+function detectClusterProvider(cluster) {
+  const hay = `${cluster.clusterName || ''} ${cluster.contextName || ''} ${cluster.server || ''}`.toLowerCase();
+  if (hay.includes('eks') || hay.includes('arn:aws') || hay.includes('eks.amazonaws')) {
+    return { bg: '#FF9900', glyph: EKS_GLYPH, label: 'EKS' };
+  }
+  if (hay.includes('gke_') || hay.includes('.gke.') || hay.includes('container.googleapis') || hay.includes('gke')) {
+    return { bg: '#4285F4', glyph: GKE_GLYPH, label: 'GKE' };
+  }
+  if (hay.includes('azmk8s.io') || hay.includes('aks') || hay.includes('azure')) {
+    return { bg: '#0078D4', glyph: AKS_GLYPH, label: 'AKS' };
+  }
+  return { bg: '#326CE5', glyph: K8S_WHEEL_GLYPH, label: '' };
+}
+
 function renderEditIcon() {
   return `
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -139,17 +167,21 @@ export class KubernetesPage extends HTMLElement {
   renderCard(cluster, state) {
     const sessionState = kubernetesSessionStore.getState();
     const connecting = sessionState.connectionStatus === 'connecting' && this.connectingClusterId === cluster.id;
+    const provider = detectClusterProvider(cluster);
+    const iconStyle = ` style="background:${provider.bg};color:#fff;"`;
+    const iconGlyph = provider.glyph;
     return `
       <article class="vault-card kubernetes-card ${cluster.isCurrent ? 'is-current' : ''}" data-cluster-id="${escapeHtml(cluster.id)}">
         <div class="kubernetes-card-body">
-          <div class="vault-card-icon kubernetes-card-icon" aria-hidden="true">
+          <div class="vault-card-icon kubernetes-card-icon"${iconStyle} aria-hidden="true">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 2.5 20 7v10l-8 4.5L4 17V7l8-4.5z"/><circle cx="12" cy="12" r="2.5"/><path d="M12 5.5v4M12 14.5v4M6.5 9l3.5 2M14 13l3.5 2M17.5 9 14 11M10 13l-3.5 2"/>
+              ${iconGlyph}
             </svg>
           </div>
           <div class="vault-card-info kubernetes-card-info">
             <div class="kubernetes-card-heading">
               <div class="vault-card-title" title="${escapeHtml(cluster.displayName)}">${escapeHtml(cluster.displayName)}</div>
+              ${provider ? `<span class="kubernetes-provider-badge">${provider.label}</span>` : ''}
               ${cluster.isCurrent ? `<span class="kubernetes-current-badge">${t('k8s.page.currentBadge')}</span>` : ''}
             </div>
             <div class="kubernetes-card-context" title="${escapeHtml(cluster.contextName)}">${t('k8s.page.contextPrefix')}${escapeHtml(cluster.contextName)}</div>

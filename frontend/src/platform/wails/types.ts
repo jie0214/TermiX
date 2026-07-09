@@ -15,6 +15,8 @@ export interface WailsRuntime {
   EventsOff(eventName: string, ...additionalEventNames: string[]): void;
   EventsOffAll(): void;
   BrowserOpenURL?(url: string): void;
+  ClipboardGetText?(): Promise<string>;
+  ClipboardSetText?(text: string): Promise<boolean>;
 }
 
 declare global {

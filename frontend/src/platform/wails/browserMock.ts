@@ -115,6 +115,7 @@ function createAppMock(): WailsAppBindings {
     SaveBackupFile: async () =>
       operationResult(true, '/tmp/mock-backup.json'),
     SaveKubernetesResourceYAML: async (filename: string) => `/tmp/${filename}`,
+    SaveKubernetesPodLogs: async (filename: string) => `/tmp/${filename}`,
     StartKubernetesPodShell: async (request) => ({
       sessionId: 'mock-kubernetes-shell',
       namespace: request.namespace,

@@ -191,6 +191,10 @@ export interface WailsAppContract {
     defaultFilename: string,
     content: string,
   ): Promise<string>;
+  SaveKubernetesPodLogs(
+    defaultFilename: string,
+    content: string,
+  ): Promise<string>;
 
   CheckForUpdate(): Promise<UpdateInfo>;
 

@@ -33,6 +33,10 @@ export interface AppSettings {
   terminalTextSize: number;
   localTerminalPath: string;
   locale: LocaleId;
+  /** Kubernetes 叢集探索用的 kubeconfig 路徑；空＝使用預設 ~/.kube/config。 */
+  kubeconfigPath: string;
+  /** Kubernetes 連線時的預設 namespace；profile／context 未指定時採用。 */
+  defaultNamespace: string;
   /** 快捷鍵覆寫表（僅存與平台預設不同者）；"" 表示使用者停用該動作。 */
   shortcuts: ShortcutMap;
 }

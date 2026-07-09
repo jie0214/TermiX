@@ -64,8 +64,10 @@ func normalizePath(path string) (string, error) {
 	return filepath.Clean(abs), nil
 }
 
-func (s *Service) List(ctx context.Context) ([]dto.KubernetesClusterProfile, error) {
-	path, err := defaultKubeconfigPath()
+// List 掃描 kubeconfig 探索叢集。kubeconfigPath 為使用者於設定指定的路徑；
+// 空字串時 normalizePath 會回退為預設 ~/.kube/config（支援 ~ 展開）。
+func (s *Service) List(ctx context.Context, kubeconfigPath string) ([]dto.KubernetesClusterProfile, error) {
+	path, err := normalizePath(kubeconfigPath)
 	if err != nil {
 		return nil, err
 	}
@@ -221,6 +223,12 @@ func (s *Service) Connect(request dto.KubernetesConnectRequest) (dto.KubernetesS
 	if displayName == "" {
 		displayName = contextName
 	}
+	// namespace 優先取 kubeconfig context 指定值；未指定時回退到 request.Namespace
+	// （由呼叫端填入設定中的全域預設 namespace）。
+	namespace := strings.TrimSpace(scalarValue(mappingValue(contextNode, "namespace")))
+	if namespace == "" {
+		namespace = strings.TrimSpace(request.Namespace)
+	}
 	session := dto.KubernetesSession{
 		SessionID:      "kubernetes-tab",
 		ClusterID:      strings.TrimSpace(request.ClusterID),
@@ -229,7 +237,7 @@ func (s *Service) Connect(request dto.KubernetesConnectRequest) (dto.KubernetesS
 		ClusterName:    clusterName,
 		Server:         strings.TrimSpace(scalarValue(mappingValue(clusterNode, "server"))),
 		KubeconfigPath: path,
-		Namespace:      strings.TrimSpace(scalarValue(mappingValue(contextNode, "namespace"))),
+		Namespace:      namespace,
 		ConnectedAt:    time.Now().UTC().Format(time.RFC3339Nano),
 	}
 	clients, err := s.clientFactory(session)

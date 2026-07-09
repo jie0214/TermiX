@@ -510,6 +510,7 @@ export namespace dto {
 	    groupId: string;
 	    awsInstanceId: string;
 	    gcpInstanceId: string;
+	    osId: string;
 	    config: PersistedHostConfig;
 	    createdAt: string;
 	    updatedAt: string;
@@ -526,6 +527,7 @@ export namespace dto {
 	        this.groupId = source["groupId"];
 	        this.awsInstanceId = source["awsInstanceId"];
 	        this.gcpInstanceId = source["gcpInstanceId"];
+	        this.osId = source["osId"];
 	        this.config = this.convertValues(source["config"], PersistedHostConfig);
 	        this.createdAt = source["createdAt"];
 	        this.updatedAt = source["updatedAt"];
@@ -895,6 +897,7 @@ export namespace dto {
 	}
 	export class KubernetesDashboardRequest {
 	    namespace: string;
+	    scope: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new KubernetesDashboardRequest(source);
@@ -903,6 +906,7 @@ export namespace dto {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.namespace = source["namespace"];
+	        this.scope = source["scope"];
 	    }
 	}
 	export class KubernetesEventSummary {
@@ -1216,6 +1220,7 @@ export namespace dto {
 	    ports: string;
 	    portNumbers: number[];
 	    creationTimestamp: string;
+	    selector: Record<string, string>;
 	
 	    static createFrom(source: any = {}) {
 	        return new KubernetesServiceSummary(source);
@@ -1231,6 +1236,7 @@ export namespace dto {
 	        this.ports = source["ports"];
 	        this.portNumbers = source["portNumbers"];
 	        this.creationTimestamp = source["creationTimestamp"];
+	        this.selector = source["selector"];
 	    }
 	}
 	export class KubernetesJobSummary {
@@ -1263,6 +1269,7 @@ export namespace dto {
 	    availableReplicas: number;
 	    status: string;
 	    creationTimestamp: string;
+	    selector: Record<string, string>;
 	
 	    static createFrom(source: any = {}) {
 	        return new KubernetesWorkloadSummary(source);
@@ -1277,6 +1284,7 @@ export namespace dto {
 	        this.availableReplicas = source["availableReplicas"];
 	        this.status = source["status"];
 	        this.creationTimestamp = source["creationTimestamp"];
+	        this.selector = source["selector"];
 	    }
 	}
 	export class KubernetesPodContainerSummary {
@@ -1324,6 +1332,7 @@ export namespace dto {
 	    memoryUsageBytes: number;
 	    creationTimestamp: string;
 	    containers: KubernetesPodContainerSummary[];
+	    labels: Record<string, string>;
 	
 	    static createFrom(source: any = {}) {
 	        return new KubernetesPodSummary(source);
@@ -1343,6 +1352,7 @@ export namespace dto {
 	        this.memoryUsageBytes = source["memoryUsageBytes"];
 	        this.creationTimestamp = source["creationTimestamp"];
 	        this.containers = this.convertValues(source["containers"], KubernetesPodContainerSummary);
+	        this.labels = source["labels"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -1472,6 +1482,7 @@ export namespace dto {
 	    namespace: string;
 	    serverVersion: string;
 	    generatedAt: string;
+	    partial: boolean;
 	    namespaces: string[];
 	    namespaceDetails: KubernetesNamespaceSummary[];
 	    overview: KubernetesOverviewCounts;
@@ -1516,6 +1527,7 @@ export namespace dto {
 	        this.namespace = source["namespace"];
 	        this.serverVersion = source["serverVersion"];
 	        this.generatedAt = source["generatedAt"];
+	        this.partial = source["partial"];
 	        this.namespaces = source["namespaces"];
 	        this.namespaceDetails = this.convertValues(source["namespaceDetails"], KubernetesNamespaceSummary);
 	        this.overview = this.convertValues(source["overview"], KubernetesOverviewCounts);

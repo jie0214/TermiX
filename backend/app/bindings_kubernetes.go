@@ -1,9 +1,32 @@
 package app
 
-import "github.com/wailsapp/wails/v2/pkg/runtime"
+import (
+	"encoding/json"
+	"strings"
+
+	"github.com/wailsapp/wails/v2/pkg/runtime"
+)
+
+// kubernetesSetting 讀取 AppSettings 中的字串設定（kubeconfigPath / defaultNamespace）；
+// 讀取失敗、缺鍵或非字串一律回傳空字串（呼叫端據此回退預設行為）。
+func (a *App) kubernetesSetting(key string) string {
+	settings, err := a.hostVault.GetSettings(a.contextOrBackground())
+	if err != nil {
+		return ""
+	}
+	raw, ok := settings[key]
+	if !ok {
+		return ""
+	}
+	var value string
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(value)
+}
 
 func (a *App) ListKubernetesClusters() ([]KubernetesClusterProfile, error) {
-	return a.kubernetes.List(a.ctx)
+	return a.kubernetes.List(a.ctx, a.kubernetesSetting("kubeconfigPath"))
 }
 
 func (a *App) SaveKubernetesCluster(profile KubernetesClusterProfile) (KubernetesClusterProfile, error) {
@@ -20,6 +43,13 @@ func (a *App) SwitchKubernetesContext(request KubernetesContextSwitchRequest) er
 }
 
 func (a *App) ConnectKubernetesCluster(request KubernetesConnectRequest) (KubernetesSession, error) {
+	// 該 cluster 未指定 namespace 時，套用設定中的全域預設 namespace 作為 session（操作用）預設。
+	// '*'（All Namespaces）為初始篩選偏好、非真實 namespace，不應寫入 session，故略過。
+	if strings.TrimSpace(request.Namespace) == "" {
+		if ns := a.kubernetesSetting("defaultNamespace"); ns != "*" {
+			request.Namespace = ns
+		}
+	}
 	return a.kubernetes.Connect(request)
 }
 

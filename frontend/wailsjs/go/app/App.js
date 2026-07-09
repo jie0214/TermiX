@@ -286,6 +286,10 @@ export function SaveKubernetesCluster(arg1) {
   return window['go']['app']['App']['SaveKubernetesCluster'](arg1);
 }
 
+export function SaveKubernetesPodLogs(arg1, arg2) {
+  return window['go']['app']['App']['SaveKubernetesPodLogs'](arg1, arg2);
+}
+
 export function SaveKubernetesResourceYAML(arg1, arg2) {
   return window['go']['app']['App']['SaveKubernetesResourceYAML'](arg1, arg2);
 }

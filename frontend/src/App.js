@@ -45,11 +45,12 @@ import { themeStore, UI_SCALE_OPTIONS } from './stores/ThemeStore';
 import { t } from './i18n/index.ts';
 import { matchShortcut, resolveShortcuts, detectPlatform, eventToBinding, bindingToTokens, SHORTCUT_ACTIONS, TAB_INDEX_ACTION_ID } from './domain/shortcuts.ts';
 import { hostStore } from './modules/hostvault/HostStore';
+import { HostAPI } from './modules/hostvault/HostAPI';
 import { snippetStore } from './modules/snippets/SnippetStore';
 import { pasteSnippetToSession, runSnippetInSession } from './modules/snippets/SnippetRuntime';
 import { kubernetesSessionStore, KUBERNETES_SESSION_ID } from './modules/kubernetes/KubernetesSessionStore';
 import { getAppBinding } from './platform/wails/bindings.ts';
-import { onWailsEvent } from './platform/wails/events.ts';
+import { onWailsEvent, getClipboardText, setClipboardText } from './platform/wails/events.ts';
 import { mountLegacyRouter } from './routing/legacyRouter.js';
 import './modules/hostvault/HostListPage';
 import './modules/terminal/TerminalPage';
@@ -483,6 +484,7 @@ export class TermixApp extends HTMLElement {
               <button type="button" class="settings-tab active no-drag" data-settings-tab="appearance" role="tab" aria-selected="true"><i class="ti ti-palette" aria-hidden="true"></i><span>${t('app.settings.tab.appearance')}</span></button>
               <button type="button" class="settings-tab no-drag" data-settings-tab="terminal" role="tab" aria-selected="false"><i class="ti ti-terminal-2" aria-hidden="true"></i><span>${t('app.settings.tab.terminal')}</span></button>
               <button type="button" class="settings-tab no-drag" data-settings-tab="shortcuts" role="tab" aria-selected="false"><i class="ti ti-keyboard" aria-hidden="true"></i><span>${t('app.settings.tab.shortcuts')}</span></button>
+              <button type="button" class="settings-tab no-drag" data-settings-tab="kubernetes" role="tab" aria-selected="false"><i class="ti ti-cloud" aria-hidden="true"></i><span>${t('app.settings.tab.kubernetes')}</span></button>
               <button type="button" class="settings-tab no-drag" data-settings-tab="general" role="tab" aria-selected="false"><i class="ti ti-settings" aria-hidden="true"></i><span>${t('app.settings.tab.general')}</span></button>
               <button type="button" class="settings-tab no-drag" data-settings-tab="advanced" role="tab" aria-selected="false"><i class="ti ti-tool" aria-hidden="true"></i><span>${t('app.settings.tab.advanced')}</span></button>
             </nav>
@@ -507,6 +509,31 @@ export class TermixApp extends HTMLElement {
                       ${['/bin/bash', '/bin/csh', '/bin/dash', '/bin/ksh', '/bin/sh', '/bin/tcsh', '/bin/zsh'].map(path => `<option value="${path}"></option>`).join('')}
                     </datalist>
                     <small style="color: var(--color-text-muted);">${t('app.settings.localShellHint')}</small>
+                  </label>
+                </div>
+              </section>
+              <section data-settings-panel="kubernetes" role="tabpanel" hidden>
+                <div style="display: grid; gap: 16px;">
+                  <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
+                    ${t('app.settings.k8s.kubeconfigPath')}
+                    <div style="display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center;">
+                      <input type="text" id="kubeconfigPathInput" class="no-drag" value="${escapeHtml(themeStore.getState().kubeconfigPath)}" placeholder="~/.kube/config" autocomplete="off" spellcheck="false" style="height: 34px; box-sizing: border-box; background: var(--input-bg); border: 1px solid var(--input-border, var(--color-border)); padding: 8px 12px; border-radius: 6px; color: var(--color-text); font-family: monospace;">
+                      <button type="button" id="kubeconfigBrowseBtn" class="no-drag" style="height: 34px; padding: 0 14px; border: 1px solid var(--color-border); background: transparent; color: var(--color-text); border-radius: 6px; cursor: pointer; font-size: 12px;">${t('app.settings.k8s.browse')}</button>
+                    </div>
+                    <small style="color: var(--color-text-muted);">${t('app.settings.k8s.kubeconfigHint')}</small>
+                  </label>
+                  <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
+                    ${t('app.settings.k8s.defaultNamespace')}
+                    ${(() => {
+                      const dns = themeStore.getState().defaultNamespace;
+                      const isSpecific = Boolean(dns) && dns !== '*';
+                      return `<select id="defaultNamespaceMode" class="no-drag" style="height: 34px; box-sizing: border-box; background: var(--input-bg); border: 1px solid var(--input-border, var(--color-border)); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
+                      <option value="all"${isSpecific ? '' : ' selected'}>${t('app.settings.k8s.defaultNamespaceAll')}</option>
+                      <option value="specific"${isSpecific ? ' selected' : ''}>${t('app.settings.k8s.defaultNamespaceSpecific')}</option>
+                    </select>
+                    <input type="text" id="defaultNamespaceInput" class="no-drag"${isSpecific ? '' : ' hidden'} value="${escapeHtml(isSpecific ? dns : '')}" placeholder="my-namespace" autocomplete="off" spellcheck="false" style="height: 34px; box-sizing: border-box; background: var(--input-bg); border: 1px solid var(--input-border, var(--color-border)); padding: 8px 12px; border-radius: 6px; color: var(--color-text); font-family: monospace;">`;
+                    })()}
+                    <small style="color: var(--color-text-muted);">${t('app.settings.k8s.defaultNamespaceHint')}</small>
                   </label>
                 </div>
               </section>
@@ -868,14 +895,15 @@ export class TermixApp extends HTMLElement {
   copyTerminalSelection() {
     const term = this.getActiveTerm();
     if (!term || !term.hasSelection()) return;
-    navigator.clipboard?.writeText(term.getSelection()).catch(() => {});
+    setClipboardText(term.getSelection());
   }
 
   // 經 term.paste() 走既有 onData 路徑（含 bracketed paste / reconnect 緩衝 / 廣播）。
+  // 剪貼簿讀取走 Wails 原生 runtime，避免 WKWebView 擋掉 navigator.clipboard.readText 導致無法貼上。
   pasteToTerminal() {
     const term = this.getActiveTerm();
     if (!term) return;
-    navigator.clipboard?.readText().then((text) => {
+    getClipboardText().then((text) => {
       if (text) term.paste(text);
     }).catch(() => {});
   }
@@ -954,6 +982,14 @@ export class TermixApp extends HTMLElement {
     const localeSelect = this.querySelector('#localeSelect');
     const textSizeInput = this.querySelector('#terminalTextSizeInput');
     const localTerminalPathInput = this.querySelector('#localTerminalPathInput');
+    const kubeconfigPathInput = this.querySelector('#kubeconfigPathInput');
+    const defaultNamespaceInput = this.querySelector('#defaultNamespaceInput');
+    const defaultNamespaceMode = this.querySelector('#defaultNamespaceMode');
+    const kubeconfigBrowseBtn = this.querySelector('#kubeconfigBrowseBtn');
+    // 預設 namespace 模式：'all' 存 '*'（明確 All Namespaces，連線時覆蓋 context）；'specific' 存輸入值。
+    const resolveDefaultNamespace = () => (defaultNamespaceMode && defaultNamespaceMode.value === 'specific' && defaultNamespaceInput)
+      ? defaultNamespaceInput.value
+      : '*';
     const textSizeMinus = this.querySelector('#terminalTextSizeMinus');
     const textSizePlus = this.querySelector('#terminalTextSizePlus');
 
@@ -1005,9 +1041,30 @@ export class TermixApp extends HTMLElement {
         themeStore.getState().saveSettings({
           theme: select.value,
           terminalTextSize: clampTextSizeInput(),
-          localTerminalPath: localTerminalPathInput.value
+          localTerminalPath: localTerminalPathInput.value,
+          kubeconfigPath: kubeconfigPathInput ? kubeconfigPathInput.value : themeStore.getState().kubeconfigPath,
+          defaultNamespace: defaultNamespaceMode ? resolveDefaultNamespace() : themeStore.getState().defaultNamespace
         });
         close();
+      });
+    }
+    // 預設 namespace 模式切換：選「指定」才顯示輸入框，選「All」則隱藏。
+    if (defaultNamespaceMode && defaultNamespaceInput) {
+      defaultNamespaceMode.addEventListener('change', () => {
+        const specific = defaultNamespaceMode.value === 'specific';
+        defaultNamespaceInput.hidden = !specific;
+        if (specific) defaultNamespaceInput.focus();
+      });
+    }
+    // kubeconfig 路徑「瀏覽」：開原生檔案選擇器，選定後填入輸入框（不立即存檔，按儲存才落地）。
+    if (kubeconfigBrowseBtn && kubeconfigPathInput) {
+      kubeconfigBrowseBtn.addEventListener('click', async () => {
+        try {
+          const selected = await HostAPI.selectFile(t('app.settings.k8s.kubeconfigBrowseTitle'));
+          if (selected) kubeconfigPathInput.value = selected;
+        } catch (e) {
+          console.error('[TermiX] 選擇 kubeconfig 檔案失敗', e);
+        }
       });
     }
 

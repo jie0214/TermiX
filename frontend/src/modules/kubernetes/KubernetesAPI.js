@@ -87,8 +87,8 @@ export const KubernetesAPI = {
   },
 
   /** @param {string} namespace */
-  getDashboard(namespace) {
-    return callApp('GetKubernetesDashboard', { namespace });
+  getDashboard(namespace, scope = '') {
+    return callApp('GetKubernetesDashboard', { namespace, scope });
   },
 
   /** 輕量列出 namespace 名稱（供篩選下拉快速填充，不必等整包 dashboard）。 */
@@ -178,5 +178,13 @@ export const KubernetesAPI = {
    */
   saveResourceYAML(defaultFilename, content) {
     return callApp('SaveKubernetesResourceYAML', defaultFilename, content);
+  },
+
+  /**
+   * @param {string} defaultFilename
+   * @param {string} content
+   */
+  savePodLogs(defaultFilename, content) {
+    return callApp('SaveKubernetesPodLogs', defaultFilename, content);
   }
 };

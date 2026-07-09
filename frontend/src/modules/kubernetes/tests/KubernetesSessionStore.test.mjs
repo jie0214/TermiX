@@ -302,7 +302,7 @@ test('網路中斷時保留目前 Namespace 與最後成功資料', async () => 
   assert.equal(store.getState().dashboardError, '無法連線至 Kubernetes API Server。');
 });
 
-test('選擇 Namespace 會查詢新 Dashboard 並在成功後提交狀態', async () => {
+test('選擇 Namespace 為前端過濾，不重抓 Dashboard', async () => {
   const requests = [];
   const store = createKubernetesSessionStore({
     connectCluster: async (request) => sessionFor(request),
@@ -316,12 +316,67 @@ test('選擇 Namespace 會查詢新 Dashboard 並在成功後提交狀態', asyn
   await store.getState().loadDashboard('default');
   await store.getState().selectNamespace('monitoring');
 
-  assert.deepEqual(requests, ['default', 'monitoring']);
+  // 已有 dashboard（全 namespace 資料）時，選取只更新前端狀態、不重抓 → 切換即時呈現。
+  assert.deepEqual(requests, ['default']);
   assert.equal(store.getState().selectedNamespace, 'monitoring');
-  assert.equal(store.getState().dashboard.namespace, 'monitoring');
+  assert.deepEqual(store.getState().selectedNamespaces, ['monitoring']);
 });
 
-test('重新整理會使用目前 Namespace 並替換 Dashboard', async () => {
+test('設定的預設 namespace 覆蓋 context：All 與具體名稱', async () => {
+  const withSetting = async (defaultNamespace, run) => {
+    const original = globalThis.localStorage;
+    globalThis.localStorage = { getItem: () => JSON.stringify({ defaultNamespace }), setItem() {}, removeItem() {} };
+    try { await run(); } finally {
+      if (original === undefined) delete globalThis.localStorage; else globalThis.localStorage = original;
+    }
+  };
+
+  // '*'（All）：即使 context 帶 namespace（monitoring），初始篩選仍為 All（空陣列）。
+  await withSetting('*', async () => {
+    const store = createKubernetesSessionStore({
+      connectCluster: async (request) => sessionFor(request),
+      getDashboard: async (namespace) => dashboardFor(namespace)
+    });
+    await store.getState().connectCluster(cluster('a', 'monitoring'));
+    assert.deepEqual(store.getState().selectedNamespaces, []);
+    assert.equal(store.getState().selectedNamespace, '');
+  });
+
+  // 具體名稱：覆蓋 context 的 monitoring，改為單選 kube-system。
+  await withSetting('kube-system', async () => {
+    const store = createKubernetesSessionStore({
+      connectCluster: async (request) => sessionFor(request),
+      getDashboard: async (namespace) => dashboardFor(namespace)
+    });
+    await store.getState().connectCluster(cluster('a', 'monitoring'));
+    assert.deepEqual(store.getState().selectedNamespaces, ['kube-system']);
+    assert.equal(store.getState().selectedNamespace, 'kube-system');
+  });
+});
+
+test('首屏漸進載入：先抓 core 首屏、再抓 full 補齊', async () => {
+  const scopes = [];
+  const store = createKubernetesSessionStore({
+    connectCluster: async (request) => sessionFor(request),
+    getDashboard: async (namespace, scope) => {
+      scopes.push(scope);
+      return { ...dashboardFor(namespace), partial: scope === 'core' };
+    }
+  });
+
+  await store.getState().connectCluster(cluster('a'));
+  await store.getState().loadDashboardProgressive('*');
+
+  // core 先、full 後；最終 dashboard 為 full（partial=false）。
+  assert.deepEqual(scopes, ['core', '']);
+  assert.equal(store.getState().dashboard.partial, false);
+
+  // 已有 dashboard 時再次 progressive 只抓 full（不重複 core）。
+  await store.getState().loadDashboardProgressive('*');
+  assert.deepEqual(scopes, ['core', '', '']);
+});
+
+test('重新整理以 * 抓取全部 Namespace 並替換 Dashboard', async () => {
   let generatedAt = '2026-06-19T08:00:00Z';
   const requests = [];
   const store = createKubernetesSessionStore({
@@ -337,33 +392,29 @@ test('重新整理會使用目前 Namespace 並替換 Dashboard', async () => {
   generatedAt = '2026-06-19T08:05:00Z';
   await store.getState().refreshDashboard();
 
-  assert.deepEqual(requests, ['monitoring', 'monitoring']);
+  // 首次 loadDashboard() 沿用預設 namespace；輪詢／refresh 一律以 '*' 抓全部（供前端過濾）。
+  assert.deepEqual(requests, ['monitoring', '*']);
   assert.equal(store.getState().lastUpdatedAt, generatedAt);
 });
 
-test('Namespace 查詢失敗會保留舊 Snapshot、選取值與更新時間', async () => {
-  let shouldFail = false;
-  const oldDashboard = dashboardFor('default');
+test('多選 Namespace 為前端過濾，不重抓 Dashboard', async () => {
+  const requests = [];
   const store = createKubernetesSessionStore({
     connectCluster: async (request) => sessionFor(request),
     getDashboard: async (namespace) => {
-      if (shouldFail) throw new Error('Namespace 查詢失敗。');
-      return namespace === 'default' ? oldDashboard : dashboardFor(namespace);
+      requests.push(namespace);
+      return dashboardFor(namespace);
     }
   });
 
   await store.getState().connectCluster(cluster('a'));
   await store.getState().loadDashboard('default');
-  shouldFail = true;
-  await assert.rejects(store.getState().selectNamespace('monitoring'), /Namespace 查詢失敗/);
+  await store.getState().setSelectedNamespaces(['monitoring', 'kube-system']);
 
-  const state = store.getState();
-  assert.equal(state.dashboard, oldDashboard);
-  assert.deepEqual(state.namespaces, oldDashboard.namespaces);
-  assert.equal(state.selectedNamespace, 'default');
-  assert.equal(state.dashboardLoading, false);
-  assert.equal(state.dashboardError, 'Namespace 查詢失敗。');
-  assert.equal(state.lastUpdatedAt, oldDashboard.generatedAt);
+  // 多選同樣只更新前端狀態、不重抓。
+  assert.deepEqual(requests, ['default']);
+  assert.deepEqual(store.getState().selectedNamespaces, ['monitoring', 'kube-system']);
+  assert.equal(store.getState().selectedNamespace, '');
 });
 
 test('切換叢集後忽略前一個 Session 尚未完成的 Dashboard 回應', async () => {
@@ -480,7 +531,7 @@ test('Dashboard API 以物件傳遞 Namespace 給動態 Wails binding', async ()
 
   try {
     const result = await KubernetesAPI.getDashboard('monitoring');
-    assert.deepEqual(requests, [{ namespace: 'monitoring' }]);
+    assert.deepEqual(requests, [{ namespace: 'monitoring', scope: '' }]);
     assert.equal(result.namespace, 'monitoring');
   } finally {
     if (originalWindow === undefined) delete globalThis.window;

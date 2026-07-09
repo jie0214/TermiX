@@ -10,6 +10,8 @@ const DEFAULT_SETTINGS = {
   localTerminalPath: '/bin/zsh',
   locale: DEFAULT_LOCALE,
   uiScale: 1,
+  kubeconfigPath: '',
+  defaultNamespace: '',
   shortcuts: {}
 };
 const THEME_OPTIONS = ['system', 'light', 'dark', 'purple-dark', 'termix', 'tahoe', 'graphite', 'forest', 'copper', 'aurora', 'tahoe-glacier', 'tahoe-sunset', 'tahoe-nebula', 'tahoe-forest', 'glass-light', 'glass-dark', 'glass-violet', 'glass-emerald', 'glass-amber', 'glass-rose'];
@@ -30,6 +32,8 @@ function normalizeSettings(settings = {}) {
     localTerminalPath: String(settings.localTerminalPath || DEFAULT_SETTINGS.localTerminalPath).trim() || DEFAULT_SETTINGS.localTerminalPath,
     locale: LOCALES.includes(settings.locale) ? settings.locale : DEFAULT_SETTINGS.locale,
     uiScale: UI_SCALE_OPTIONS.includes(Number(settings.uiScale)) ? Number(settings.uiScale) : DEFAULT_SETTINGS.uiScale,
+    kubeconfigPath: String(settings.kubeconfigPath ?? DEFAULT_SETTINGS.kubeconfigPath).trim(),
+    defaultNamespace: String(settings.defaultNamespace ?? DEFAULT_SETTINGS.defaultNamespace).trim(),
     shortcuts: normalizeShortcutMap(settings.shortcuts)
   };
 }
@@ -49,6 +53,8 @@ export const themeStore = createStore((set, get) => ({
   localTerminalPath: DEFAULT_SETTINGS.localTerminalPath,
   locale: DEFAULT_SETTINGS.locale,
   uiScale: DEFAULT_SETTINGS.uiScale,
+  kubeconfigPath: DEFAULT_SETTINGS.kubeconfigPath,
+  defaultNamespace: DEFAULT_SETTINGS.defaultNamespace,
   shortcuts: {},
   settingsModalOpen: false,
 
@@ -151,8 +157,8 @@ export const themeStore = createStore((set, get) => ({
     }
   },
 
-  saveSettings: async ({ theme, terminalTextSize, localTerminalPath }) => {
-    const next = normalizeSettings({ ...get(), theme, terminalTextSize, localTerminalPath });
+  saveSettings: async ({ theme, terminalTextSize, localTerminalPath, kubeconfigPath, defaultNamespace }) => {
+    const next = normalizeSettings({ ...get(), theme, terminalTextSize, localTerminalPath, kubeconfigPath, defaultNamespace });
     set(next);
     saveSettings(next);
     applyTheme(next.theme);

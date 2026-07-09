@@ -82,6 +82,52 @@ func (a *App) SaveKubernetesResourceYAML(defaultFilename string, content string)
 	return path, nil
 }
 
+const maxKubernetesPodLogsBytes = 8 * 1024 * 1024
+
+// SaveKubernetesPodLogs 跳出儲存對話框並將 Pod Logs 內容寫入使用者選擇的位置。
+// WKWebView 對 <a download> 支援不佳（常無反應），故走 Wails 原生存檔對話框。
+func (a *App) SaveKubernetesPodLogs(defaultFilename string, content string) (string, error) {
+	if strings.TrimSpace(content) == "" {
+		return "", fmt.Errorf("Pod Logs 不可為空")
+	}
+	if len(content) > maxKubernetesPodLogsBytes {
+		return "", fmt.Errorf("Pod Logs 內容過大")
+	}
+	filename := strings.TrimSpace(defaultFilename)
+	if filename == "" {
+		filename = "pod-logs.log"
+	}
+	if !hasLogExtension(filename) {
+		filename += ".log"
+	}
+	path, err := wailsruntime.SaveFileDialog(a.ctx, wailsruntime.SaveDialogOptions{
+		Title:           "儲存 Pod Logs",
+		DefaultFilename: filename,
+		Filters: []wailsruntime.FileFilter{
+			{DisplayName: "Log Files (*.log; *.txt)", Pattern: "*.log;*.txt"},
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("開啟 Logs 儲存視窗失敗")
+	}
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", nil
+	}
+	if !hasLogExtension(path) {
+		path += ".log"
+	}
+	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+		return "", fmt.Errorf("儲存 Pod Logs 失敗")
+	}
+	return path, nil
+}
+
+func hasLogExtension(filename string) bool {
+	lower := strings.ToLower(strings.TrimSpace(filename))
+	return strings.HasSuffix(lower, ".log") || strings.HasSuffix(lower, ".txt")
+}
+
 func normalizeYAMLFilename(filename string) string {
 	filename = strings.TrimSpace(filename)
 	if filename == "" {

@@ -94,7 +94,7 @@ func TestSavePreservesUserAndCreatesBackup(t *testing.T) {
 	if info.Mode().Perm() != 0640 {
 		t.Fatalf("mode = %o, want 640", info.Mode().Perm())
 	}
-	listed, err := svc.List(context.Background())
+	listed, err := svc.List(context.Background(), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,6 +174,32 @@ func TestConnectKubernetesCluster(t *testing.T) {
 	active := svc.GetActiveSession()
 	if active == nil || *active != session {
 		t.Fatalf("GetActiveSession() = %+v, want %+v", active, session)
+	}
+}
+
+// context 未指定 namespace 時，Connect 回退採用 request.Namespace（由 binding 填入設定的全域預設）。
+func TestConnectFallsBackToRequestNamespace(t *testing.T) {
+	config := strings.Replace(testConfig, "users:", `  - name: prod
+    context:
+      cluster: dev-cluster
+      user: oidc-user
+users:`, 1)
+	path := writeTestConfig(t, config)
+
+	session, err := newTestService(t).Connect(dto.KubernetesConnectRequest{ContextName: "prod", KubeconfigPath: path, Namespace: "team-x"})
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+	if session.Namespace != "team-x" {
+		t.Fatalf("context 無 namespace 時應回退 request.Namespace，got %q", session.Namespace)
+	}
+
+	empty, err := newTestService(t).Connect(dto.KubernetesConnectRequest{ContextName: "prod", KubeconfigPath: path})
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+	if empty.Namespace != "" {
+		t.Fatalf("context 與 request 皆無 namespace 時應為空，got %q", empty.Namespace)
 	}
 }
 

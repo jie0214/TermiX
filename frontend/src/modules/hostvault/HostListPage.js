@@ -39,6 +39,72 @@ function escapeHtml(str) {
             .replace(/'/g, '&#039;');
 }
 
+// 目前有作用中終端 session 的 hostId 集合（用於主機卡片連線狀態點）。
+function getActiveHostSet() {
+  const sessions = terminalStore.getState().sessions || {};
+  const ids = new Set();
+  for (const s of Object.values(sessions)) {
+    const id = s?.config?.hostId;
+    if (id) ids.add(id);
+  }
+  return ids;
+}
+
+// 將作用中 hostId 集合序列化為穩定字串，供訂閱回呼便宜比對。
+function getActiveHostKey() {
+  return [...getActiveHostSet()].sort().join(',');
+}
+
+// OS 圖示對應（連線時偵測到的 osId → 卡片圖示底色與標籤）。
+// 除 ubuntu 有專屬圖示外，其餘以底色 + OS 名稱 chip 區分，避免逐一手繪各發行版 logo。
+const HOST_OS_ICONS = {
+  ubuntu:    { bg: '#E95420', label: 'Ubuntu' },
+  debian:    { bg: '#A80030', label: 'Debian' },
+  centos:    { bg: '#932279', label: 'CentOS' },
+  rhel:      { bg: '#EE0000', label: 'RHEL' },
+  redhat:    { bg: '#EE0000', label: 'RHEL' },
+  rocky:     { bg: '#10B981', label: 'Rocky' },
+  almalinux: { bg: '#0D597F', label: 'AlmaLinux' },
+  fedora:    { bg: '#51A2DA', label: 'Fedora' },
+  alpine:    { bg: '#0D597F', label: 'Alpine' },
+  arch:      { bg: '#1793D1', label: 'Arch' },
+  amzn:      { bg: '#FF9900', label: 'Amazon Linux' },
+  opensuse:  { bg: '#30BA78', label: 'openSUSE' },
+  'opensuse-leap': { bg: '#30BA78', label: 'openSUSE' },
+  suse:      { bg: '#30BA78', label: 'SUSE' },
+  darwin:    { bg: '#A2AAAD', label: 'macOS' },
+  freebsd:   { bg: '#AB2B28', label: 'FreeBSD' }
+};
+
+// 依排序偏好回傳排序後的 hosts 陣列（不修改傳入陣列）。
+// name/host 用 localeCompare；updated/created 依時間戳比較。
+function sortHosts(hosts, sortBy = 'name', sortDir = 'asc') {
+  const dir = sortDir === 'desc' ? -1 : 1;
+  const nameOf = (h) => (h.alias || h.label || '').toLowerCase();
+  const hostOf = (h) => (h.config?.host || '').toLowerCase();
+  const timeOf = (h, field) => {
+    const v = Date.parse(h[field] || '');
+    return Number.isFinite(v) ? v : 0;
+  };
+  const sorted = [...hosts];
+  sorted.sort((a, b) => {
+    let cmp;
+    if (sortBy === 'host') {
+      cmp = hostOf(a).localeCompare(hostOf(b));
+    } else if (sortBy === 'updated') {
+      cmp = timeOf(a, 'updatedAt') - timeOf(b, 'updatedAt');
+    } else if (sortBy === 'created') {
+      cmp = timeOf(a, 'createdAt') - timeOf(b, 'createdAt');
+    } else {
+      cmp = nameOf(a).localeCompare(nameOf(b));
+    }
+    // 同鍵時以名稱作穩定 tie-break，避免時間相同的項目順序抖動
+    if (cmp === 0 && sortBy !== 'name') cmp = nameOf(a).localeCompare(nameOf(b));
+    return cmp * dir;
+  });
+  return sorted;
+}
+
 function normalizeTerminalBootstrapOutput(output) {
   const sanitized = sanitizeTerminalLogOutput(output).trim();
   return sanitized ? `${sanitized}\n\n` : t('hostvault.connectSuccess');
@@ -518,6 +584,33 @@ export class HostListPage extends HTMLElement {
     this.unsubscribeSnippet = snippetStore.subscribe(() => {
       this.renderIfChanged();
     });
+
+    // 監聽終端 session 變化以更新主機卡片的連線狀態點。terminalStore 會在每次
+    // 終端輸出時觸發訂閱，故先以「有連線的 hostId 集合」做便宜比對，只有集合實際
+    // 變動（session 開啟/關閉）時才進行整頁指紋比對與重繪，避免串流輸出造成頻繁重算。
+    if (this.unsubscribeTerminal) {
+      this.unsubscribeTerminal();
+      this.unsubscribeTerminal = null;
+    }
+    this.lastActiveHostKey = getActiveHostKey();
+    this.osRefreshScheduled = this.osRefreshScheduled || new Set();
+    this.unsubscribeTerminal = terminalStore.subscribe(() => {
+      const activeIds = getActiveHostSet();
+      const key = [...activeIds].sort().join(',');
+      if (key === this.lastActiveHostKey) return;
+      const prevIds = new Set(this.lastActiveHostKey ? this.lastActiveHostKey.split(',') : []);
+      this.lastActiveHostKey = key;
+      this.renderIfChanged();
+      // 新連上的主機：延遲重新載入一次，讓後端的 OS 偵測結果（os_id）反映到卡片上。
+      for (const id of activeIds) {
+        if (!prevIds.has(id) && !this.osRefreshScheduled.has(id)) {
+          this.osRefreshScheduled.add(id);
+          setTimeout(() => {
+            hostStore.getState().refreshHosts().catch(() => {});
+          }, 4000);
+        }
+      }
+    });
   }
 
   // 訂閱回呼共用入口：僅在視圖指紋實際改變時才整頁重建並重綁事件（H2）。
@@ -603,6 +696,7 @@ export class HostListPage extends HTMLElement {
   disconnectedCallback() {
     if (this.unsubscribe) this.unsubscribe();
     if (this.unsubscribeSnippet) this.unsubscribeSnippet();
+    if (this.unsubscribeTerminal) this.unsubscribeTerminal();
     window.removeEventListener(LOGS_CHANGED_EVENT, this.handleLogsChanged);
   }
 
@@ -1344,6 +1438,10 @@ export class HostListPage extends HTMLElement {
         loadError: h.loadError,
         activeGroupId: h.activeGroupId,
         searchQuery: h.searchQuery,
+        sortBy: h.sortBy,
+        sortDir: h.sortDir,
+        viewMode: h.viewMode,
+        activeHostIds: getActiveHostKey(),
         drawerOpen: h.drawerOpen,
         drawerMode: h.drawerMode,
         selectedHost: h.selectedHost,
@@ -1392,6 +1490,9 @@ export class HostListPage extends HTMLElement {
       // 頂層只顯示無群組的主機
       filteredHosts = state.hosts.filter(item => !item.groupId);
     }
+
+    // 2. 依偏好排序（不改動 store 內順序，僅作用於當前顯示的 hosts）
+    filteredHosts = sortHosts(filteredHosts, state.sortBy, state.sortDir);
 
     const currentGroup = state.groups.find(g => g.id === activeGroupId);
 
@@ -1482,7 +1583,7 @@ export class HostListPage extends HTMLElement {
         groupsGridHtml = `
           <div id="vaultGroupsSection" class="vault-section">
             <h3 style="font-size: 14px; font-weight: 700; color: var(--color-text-muted); margin-bottom: 12px; text-align: left; letter-spacing: 0.5px; text-transform: uppercase;">${sectionTitle}</h3>
-            <div id="vaultGroupsGrid" class="vault-grid">${groupsHtml || `<div style="color: var(--color-text-muted); font-size: 13px;">${t('hostvault.noGroups')}</div>`}</div>
+            <div id="vaultGroupsGrid" class="vault-grid${state.viewMode === 'list' ? ' list-view' : ''}">${groupsHtml || `<div style="color: var(--color-text-muted); font-size: 13px;">${t('hostvault.noGroups')}</div>`}</div>
           </div>
         `;
       }
@@ -1491,22 +1592,61 @@ export class HostListPage extends HTMLElement {
     // 渲染 Hosts Grid
     let hostsGridHtml = "";
     if (selectedTab === 'hosts') {
+      // 目前有連線的 hostId 集合（狀態點）與群組名稱查表（群組 chip）。
+      const activeHostIds = getActiveHostSet();
+      const groupNameById = new Map(state.groups.map(g => [g.id, g.name]));
       const hostsHtml = filteredHosts.map(item => {
-        const isAws = (item.config?.host || '').toLowerCase().includes('aws') || (item.alias || '').toLowerCase().includes('aws');
-        const isUbuntu = (item.config?.host || '').toLowerCase().includes('ubuntu') || (item.alias || '').toLowerCase().includes('ubuntu');
+        const host = (item.config?.host || '').toLowerCase();
+        const alias = (item.alias || '').toLowerCase();
+        const osId = (item.osId || '').toLowerCase();
+        const isAws = Boolean(item.awsInstanceId) || host.includes('aws') || alias.includes('aws');
+        const isGcp = Boolean(item.gcpInstanceId) || host.includes('gcp') || alias.includes('gcp');
+        const serverSvg = `<rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>`;
+        const cubeSvg = `<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>`;
+        const ubuntuSvg = `<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="8"/><line x1="12" y1="16" x2="12" y2="22"/>`;
         let iconBg = "var(--color-primary)";
-        let iconSvg = `<rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>`;
+        let iconSvg = serverSvg;
+        let osLabel = '';
 
+        // 優先顯示雲端 provider（AWS/GCP）圖示，其次依偵測到的 OS，皆無則通用伺服器圖示。
         if (isAws) {
           iconBg = "#FF9900";
-          iconSvg = `<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>`;
-        } else if (isUbuntu) {
+          iconSvg = cubeSvg;
+        } else if (isGcp) {
+          iconBg = "#4285F4";
+          iconSvg = cubeSvg;
+        } else if (osId && HOST_OS_ICONS[osId]) {
+          iconBg = HOST_OS_ICONS[osId].bg;
+          osLabel = HOST_OS_ICONS[osId].label;
+          // Amazon Linux 屬 AWS，沿用雲端方塊圖案；Ubuntu 有專屬圖案。
+          if (osId === 'ubuntu') iconSvg = ubuntuSvg;
+          else if (osId === 'amzn') iconSvg = cubeSvg;
+        } else if (osId) {
+          // 偵測到但未在對應表：仍以 OS 名稱標示，圖示維持通用伺服器
+          osLabel = osId.charAt(0).toUpperCase() + osId.slice(1);
+        } else if (host.includes('ubuntu') || alias.includes('ubuntu')) {
+          // 尚未連線偵測前，沿用名稱比對的保底行為
           iconBg = "#E95420";
-          iconSvg = `<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="8"/><line x1="12" y1="16" x2="12" y2="22"/>`;
+          iconSvg = ubuntuSvg;
+          osLabel = 'Ubuntu';
         }
+
+        // 連線狀態點：有作用中 SSH session 時為 online（綠），否則 idle（灰）。
+        const isOnline = activeHostIds.has(item.id);
+        const statusLabel = isOnline ? t('hostvault.statusOnline') : t('hostvault.statusIdle');
+
+        // 中繼資料 chips：port 一律顯示；群組名僅在跨群組情境（搜尋結果或非目前群組）顯示，避免與當前目錄重複。
+        const port = item.config?.port;
+        const groupName = item.groupId && item.groupId !== activeGroupId ? groupNameById.get(item.groupId) : '';
+        const chips = [];
+        if (osLabel) chips.push(`<span class="vault-chip vault-chip-os">${escapeHtml(osLabel)}</span>`);
+        if (port) chips.push(`<span class="vault-chip">:${escapeHtml(String(port))}</span>`);
+        if (groupName) chips.push(`<span class="vault-chip vault-chip-group">${escapeHtml(groupName)}</span>`);
+        const metaHtml = chips.length ? `<div class="vault-card-meta">${chips.join('')}</div>` : '';
 
         return `
           <div class="vault-card history-item" data-id="${item.id}" draggable="true" title="${t('hostvault.hostCardTitle', { label: item.label })}" role="button" tabindex="0" aria-label="${t('hostvault.connectTo', { name: item.alias || item.label })}">
+            <span class="vault-card-status ${isOnline ? 'online' : 'idle'}" title="${statusLabel}" aria-label="${statusLabel}"></span>
             <div class="vault-card-icon" style="background: ${iconBg};">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                 ${iconSvg}
@@ -1515,6 +1655,7 @@ export class HostListPage extends HTMLElement {
             <div class="vault-card-info">
               <div class="vault-card-title">${item.alias || item.label}</div>
               <div class="vault-card-details">ssh, ${item.config?.username}@${item.config?.host}</div>
+              ${metaHtml}
             </div>
             <button type="button" aria-label="${t('hostvault.editHostSettings')}" class="no-drag vault-card-edit-btn" data-id="${item.id}" title="${t('hostvault.editHostSettings')}" style="background: transparent; border: none; padding: 6px; cursor: pointer; color: var(--color-subtext); display: inline-flex; align-items: center; justify-content: center; margin-left: auto;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -1546,18 +1687,32 @@ export class HostListPage extends HTMLElement {
       hostsGridHtml = `
         <div id="vaultHostsSection" class="vault-section" style="margin-top: 24px;">
           <h3 style="font-size: 14px; font-weight: 700; color: var(--color-text-muted); margin-bottom: 12px; text-align: left; letter-spacing: 0.5px; text-transform: uppercase;">Hosts${isInitialLoading ? `<span class="host-loading-indicator" role="status" aria-live="polite" style="margin-left: 8px; font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--color-subtext); font-size: 11px;">${t('common.loading')}</span>` : ''}</h3>
-          <div id="vaultHostsGrid" class="vault-grid">${hostsGridInnerHtml}</div>
+          <div id="vaultHostsGrid" class="vault-grid${state.viewMode === 'list' ? ' list-view' : ''}">${hostsGridInnerHtml}</div>
         </div>
       `;
     }
+
+    // Hosts 排序選項與檢視切換（工具列右側）
+    const SORT_OPTIONS = [
+      { by: 'name', dir: 'asc', label: 'Name A–Z' },
+      { by: 'name', dir: 'desc', label: 'Name Z–A' },
+      { by: 'host', dir: 'asc', label: 'Address A–Z' },
+      { by: 'host', dir: 'desc', label: 'Address Z–A' },
+      { by: 'updated', dir: 'desc', label: 'Recently updated' },
+      { by: 'created', dir: 'desc', label: 'Recently created' }
+    ];
+    const activeSort = SORT_OPTIONS.find(o => o.by === state.sortBy && o.dir === state.sortDir) || SORT_OPTIONS[0];
+    const sortItemsHtml = SORT_OPTIONS.map(o =>
+      `<button type="button" class="no-drag termix-dropdown-item${o === activeSort ? ' active' : ''}" data-sort-by="${o.by}" data-sort-dir="${o.dir}">${o.label}</button>`
+    ).join('');
 
     let mainBoardHtml = "";
     if (selectedTab === 'hosts') {
       mainBoardHtml = `
           <div class="vault-search-bar" style="display: flex; gap: 10px; margin-bottom: 20px; align-items: center; flex: 0 0 auto;">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="search-icon"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input class="no-drag" id="vaultSearchInput" placeholder="Find a host or ssh user@hostname..." autocomplete="off" value="${state.searchQuery}" style="flex: 1; background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
-            <button type="button" id="vaultSearchConnectBtn" class="no-drag primary" style="padding: 8px 18px; font-weight: 700; background: var(--color-primary); border: none; border-radius: 6px; color: #fff; cursor: pointer;">CONNECT</button>
+            <input class="no-drag" id="vaultSearchInput" placeholder="Find a host or ssh user@hostname..." autocomplete="off" value="${state.searchQuery}" style="flex: 1; background: transparent; border: none; padding: 8px 12px; color: var(--color-text);">
+            <button type="button" id="vaultSearchConnectBtn" class="no-drag primary" style="padding: 8px 18px; font-weight: 700; background: var(--color-primary); border: none; border-radius: 999px; color: #fff; cursor: pointer;">CONNECT</button>
           </div>
 
           <div class="vault-toolbar" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex: 0 0 auto;">
@@ -1586,6 +1741,26 @@ export class HostListPage extends HTMLElement {
                   <button type="button" class="no-drag termix-dropdown-item" id="importHostsJsonBtn">Import JSON</button>
                   <button type="button" class="no-drag termix-dropdown-item" id="importHostsYamlBtn">Import YAML</button>
                 </div>
+              </div>
+            </div>
+
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <div class="termix-dropdown no-drag">
+                <button class="no-drag termix-dropdown-trigger" type="button" id="hostSortDropdownBtn" style="min-height: 32px; font-weight: 700; font-size: 12px; border: 1px solid var(--color-primary); color: var(--color-primary); background: transparent; padding: 0 12px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;" title="Sort hosts">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M6 12h12M10 18h4"/></svg>
+                  ${activeSort.label} ▼
+                </button>
+                <div class="termix-dropdown-menu" style="right: 0; left: auto;">
+                  ${sortItemsHtml}
+                </div>
+              </div>
+              <div class="vault-view-toggle no-drag" style="display: inline-flex; border: 1px solid var(--color-primary); border-radius: 4px; overflow: hidden;">
+                <button type="button" class="no-drag vault-view-btn" data-view-mode="grid" title="Grid view" aria-label="Grid view" aria-pressed="${state.viewMode === 'grid'}" style="min-height: 32px; width: 34px; display: inline-flex; align-items: center; justify-content: center; border: none; cursor: pointer; background: ${state.viewMode === 'grid' ? 'var(--color-primary)' : 'transparent'}; color: ${state.viewMode === 'grid' ? '#fff' : 'var(--color-primary)'};">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                </button>
+                <button type="button" class="no-drag vault-view-btn" data-view-mode="list" title="List view" aria-label="List view" aria-pressed="${state.viewMode === 'list'}" style="min-height: 32px; width: 34px; display: inline-flex; align-items: center; justify-content: center; border: none; border-left: 1px solid var(--color-primary); cursor: pointer; background: ${state.viewMode === 'list' ? 'var(--color-primary)' : 'transparent'}; color: ${state.viewMode === 'list' ? '#fff' : 'var(--color-primary)'};">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                </button>
               </div>
             </div>
           </div>
@@ -3240,6 +3415,20 @@ export class HostListPage extends HTMLElement {
         hostStore.getState().setSearchQuery(e.target.value);
       });
     }
+
+    // 12.1 排序下拉項目
+    this.querySelectorAll('[data-sort-by]').forEach(item => {
+      item.addEventListener('click', () => {
+        hostStore.getState().setHostSort(item.getAttribute('data-sort-by'), item.getAttribute('data-sort-dir'));
+      });
+    });
+
+    // 12.2 卡片 / 列表檢視切換
+    this.querySelectorAll('.vault-view-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        hostStore.getState().setViewMode(btn.getAttribute('data-view-mode'));
+      });
+    });
 
     // 13. 新增群組彈窗
     const addGroupBtn = this.querySelector('#addGroupBtn');

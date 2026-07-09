@@ -40,6 +40,7 @@ export interface HostProfile {
   groupId: string;
   awsInstanceId: string;
   gcpInstanceId: string;
+  osId: string;
   config: PersistedHostConfig;
   createdAt: string;
   updatedAt: string;

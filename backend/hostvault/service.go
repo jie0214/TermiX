@@ -446,6 +446,11 @@ func (s *Service) normalizeHost(input dto.HostProfile, existing dto.HostProfile,
 	if found {
 		host.CreatedAt = existing.CreatedAt
 		host.Config.SecretRefs = mergeSecretRefs(existing.Config.SecretRefs, host.Config.SecretRefs)
+		// OSID 為連線時自動偵測的伺服器端欄位；未帶值時沿用既有值，
+		// 避免前端一般編輯或 AWS 重新同步時被清空。
+		if host.OSID == "" {
+			host.OSID = existing.OSID
+		}
 	} else {
 		host.CreatedAt = s.now().UTC().Format(time.RFC3339)
 	}

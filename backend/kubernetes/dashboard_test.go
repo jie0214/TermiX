@@ -244,6 +244,46 @@ func minimalDashboardClient() *kubernetesfake.Clientset {
 	return kubernetesfake.NewSimpleClientset(&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "default"}})
 }
 
+// scope=core 只抓 Overview 所需核心資源（快速首屏），且標記 Partial=true；非核心資源（如 ConfigMap）不抓。
+func TestDashboardCoreScopeSkipsNonCoreResources(t *testing.T) {
+	coreClient := kubernetesfake.NewSimpleClientset(
+		&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "default"}},
+		&corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{Name: "api-0", Namespace: "default"},
+			Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: "api"}}},
+			Status:     corev1.PodStatus{Phase: corev1.PodRunning},
+		},
+		&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "api", Namespace: "default"}},
+		&corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: "cfg", Namespace: "default"}},
+	)
+	svc := newDashboardService(coreClient, metricsfake.NewSimpleClientset())
+
+	coreSnap, err := svc.Dashboard(context.Background(), dto.KubernetesDashboardRequest{Namespace: "default", Scope: "core"})
+	if err != nil {
+		t.Fatalf("Dashboard(core) error = %v", err)
+	}
+	if !coreSnap.Partial {
+		t.Fatalf("core scope 應標記 Partial=true：%+v", coreSnap.Partial)
+	}
+	if len(coreSnap.Pods) != 1 || coreSnap.Overview.Services != 1 {
+		t.Fatalf("core scope 應含核心資源：pods=%d services=%d", len(coreSnap.Pods), coreSnap.Overview.Services)
+	}
+	if len(coreSnap.ConfigMaps) != 0 {
+		t.Fatalf("core scope 不應抓非核心資源 ConfigMaps：%+v", coreSnap.ConfigMaps)
+	}
+
+	fullSnap, err := svc.Dashboard(context.Background(), dto.KubernetesDashboardRequest{Namespace: "default"})
+	if err != nil {
+		t.Fatalf("Dashboard(full) error = %v", err)
+	}
+	if fullSnap.Partial {
+		t.Fatalf("full scope 不應標記 Partial")
+	}
+	if len(fullSnap.ConfigMaps) != 1 {
+		t.Fatalf("full scope 應含 ConfigMaps：%+v", fullSnap.ConfigMaps)
+	}
+}
+
 func newDashboardService(coreClient *kubernetesfake.Clientset, metricsClient *metricsfake.Clientset) *Service {
 	session := &dto.KubernetesSession{SessionID: "kubernetes-tab", ClusterName: "test", ContextName: "test"}
 	clients := &clusterClients{core: coreClient, serverVersion: "v1.35.0"}

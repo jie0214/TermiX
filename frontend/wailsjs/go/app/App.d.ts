@@ -145,6 +145,8 @@ export function SaveJSONFile(arg1:string,arg2:string):Promise<dto.OperationResul
 
 export function SaveKubernetesCluster(arg1:dto.KubernetesClusterProfile):Promise<dto.KubernetesClusterProfile>;
 
+export function SaveKubernetesPodLogs(arg1:string,arg2:string):Promise<string>;
+
 export function SaveKubernetesResourceYAML(arg1:string,arg2:string):Promise<string>;
 
 export function SelectFile(arg1:string):Promise<string>;

@@ -209,6 +209,49 @@ func (m *Manager) ExecuteIsolated(sessionKey string, command string) dto.Operati
 	return dto.OperationResult{Success: true, Output: output, IsSudo: terminal.isSudo}
 }
 
+// DetectOS 透過既有 session 的 SSH client 開一次性隔離 exec，靜默讀取遠端
+// /etc/os-release（或退回 uname -s），回傳小寫的 OS 識別字串（如 "ubuntu"、
+// "debian"、"centos"、"darwin"）。不注入 sudo、不污染互動終端；無法判定時回傳 ""。
+func (m *Manager) DetectOS(sessionKey string) string {
+	m.mu.Lock()
+	terminal, exists := m.sessions[sessionKey]
+	m.mu.Unlock()
+	if !exists || terminal.isLocal || terminal.client == nil {
+		return ""
+	}
+
+	output, err := termixssh.RunRemoteCommand(
+		terminal.client,
+		"cat /etc/os-release 2>/dev/null; echo '___TERMIX_UNAME___'; uname -s 2>/dev/null",
+		5*time.Second,
+	)
+	if err != nil {
+		return ""
+	}
+	return parseOSID(output)
+}
+
+// parseOSID 解析 DetectOS 的原始輸出：優先取 os-release 的 ID 欄位，
+// 否則退回 uname 名稱；皆為小寫，無法判定時回傳 ""。
+func parseOSID(raw string) string {
+	parts := strings.SplitN(raw, "___TERMIX_UNAME___", 2)
+	for _, line := range strings.Split(parts[0], "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "ID=") {
+			id := strings.Trim(strings.TrimSpace(strings.TrimPrefix(line, "ID=")), "\"'")
+			if id != "" {
+				return strings.ToLower(id)
+			}
+		}
+	}
+	if len(parts) == 2 {
+		if uname := strings.ToLower(strings.TrimSpace(parts[1])); uname != "" {
+			return uname
+		}
+	}
+	return ""
+}
+
 func (m *Manager) ExecuteTerminalCommand(config dto.SSHConfig, command string) dto.OperationResult {
 	command = strings.TrimSpace(command)
 	if command == "" {

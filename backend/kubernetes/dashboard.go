@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jie0214/TermiX/shared/dto"
@@ -49,170 +50,282 @@ func (s *Service) Dashboard(ctx context.Context, request dto.KubernetesDashboard
 		queryNamespace = metav1.NamespaceAll
 	}
 
-	namespaceList, err := clients.core.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return dto.KubernetesDashboardSnapshot{}, resourceListError("Namespaces", err)
-	}
+	// scope=core 只抓 Overview 所需核心資源（快速首屏）；其餘資源僅在 full scope 抓取。
+	// 所有 List 併發執行，總時間由「循序加總」降為「最慢一項」，大幅縮短大叢集載入。
+	core := strings.EqualFold(strings.TrimSpace(request.Scope), "core")
+	opts := metav1.ListOptions{}
 	resourceErrors := make(map[string]string)
-	nodeItems := []corev1.Node{}
-	if nodeList, listErr := clients.core.CoreV1().Nodes().List(ctx, metav1.ListOptions{}); listErr != nil {
-		if !apierrors.IsForbidden(listErr) {
-			return dto.KubernetesDashboardSnapshot{}, resourceListError("Nodes", listErr)
-		}
-		resourceErrors["nodes"] = resourceListError("Nodes", listErr).Error()
-	} else {
-		nodeItems = nodeList.Items
+	var errMu sync.Mutex
+	recordErr := func(key, name string, err error) {
+		errMu.Lock()
+		resourceErrors[key] = resourceListError(name, err).Error()
+		errMu.Unlock()
 	}
-	podList, err := clients.core.CoreV1().Pods(queryNamespace).List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return dto.KubernetesDashboardSnapshot{}, resourceListError("Pods", err)
-	}
-	deploymentList, err := clients.core.AppsV1().Deployments(queryNamespace).List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return dto.KubernetesDashboardSnapshot{}, resourceListError("Deployments", err)
-	}
-	statefulSetList, err := clients.core.AppsV1().StatefulSets(queryNamespace).List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return dto.KubernetesDashboardSnapshot{}, resourceListError("StatefulSets", err)
-	}
-	daemonSetItems := []appsv1.DaemonSet{}
-	if daemonSetList, listErr := clients.core.AppsV1().DaemonSets(queryNamespace).List(ctx, metav1.ListOptions{}); listErr != nil {
-		resourceErrors["daemonSets"] = resourceListError("DaemonSets", listErr).Error()
-	} else {
-		daemonSetItems = daemonSetList.Items
-	}
-	jobItems := []batchv1.Job{}
-	if jobList, listErr := clients.core.BatchV1().Jobs(queryNamespace).List(ctx, metav1.ListOptions{}); listErr != nil {
-		resourceErrors["jobs"] = resourceListError("Jobs", listErr).Error()
-	} else {
-		jobItems = jobList.Items
-	}
-	cronJobItems := []batchv1.CronJob{}
-	if cronJobList, listErr := clients.core.BatchV1().CronJobs(queryNamespace).List(ctx, metav1.ListOptions{}); listErr != nil {
-		resourceErrors["cronJobs"] = resourceListError("CronJobs", listErr).Error()
-	} else {
-		cronJobItems = cronJobList.Items
-	}
-	serviceItems := []corev1.Service{}
-	if serviceList, listErr := clients.core.CoreV1().Services(queryNamespace).List(ctx, metav1.ListOptions{}); listErr != nil {
-		resourceErrors["services"] = resourceListError("Services", listErr).Error()
-	} else {
-		serviceItems = serviceList.Items
-	}
-	ingressItems := []networkingv1.Ingress{}
-	if ingressList, listErr := clients.core.NetworkingV1().Ingresses(queryNamespace).List(ctx, metav1.ListOptions{}); listErr != nil {
-		resourceErrors["ingresses"] = resourceListError("Ingresses", listErr).Error()
-	} else {
-		ingressItems = ingressList.Items
-	}
-	pvcItems := []corev1.PersistentVolumeClaim{}
-	if pvcList, listErr := clients.core.CoreV1().PersistentVolumeClaims(queryNamespace).List(ctx, metav1.ListOptions{}); listErr != nil {
-		resourceErrors["persistentVolumeClaims"] = resourceListError("PersistentVolumeClaims", listErr).Error()
-	} else {
-		pvcItems = pvcList.Items
-	}
-	pvItems := []corev1.PersistentVolume{}
-	if pvList, listErr := clients.core.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{}); listErr != nil {
-		resourceErrors["persistentVolumes"] = resourceListError("PersistentVolumes", listErr).Error()
-	} else {
-		pvItems = pvList.Items
-	}
-	storageClassItems := []storagev1.StorageClass{}
-	if storageClassList, listErr := clients.core.StorageV1().StorageClasses().List(ctx, metav1.ListOptions{}); listErr != nil {
-		resourceErrors["storageClasses"] = resourceListError("StorageClasses", listErr).Error()
-	} else {
-		storageClassItems = storageClassList.Items
-	}
-	configMapItems := []corev1.ConfigMap{}
-	if configMapList, listErr := clients.core.CoreV1().ConfigMaps(queryNamespace).List(ctx, metav1.ListOptions{}); listErr != nil {
-		resourceErrors["configMaps"] = resourceListError("ConfigMaps", listErr).Error()
-	} else {
-		configMapItems = configMapList.Items
-	}
-	secretItems := []corev1.Secret{}
-	if secretList, listErr := clients.core.CoreV1().Secrets(queryNamespace).List(ctx, metav1.ListOptions{}); listErr != nil {
-		resourceErrors["secrets"] = resourceListError("Secrets", listErr).Error()
-	} else {
-		secretItems = secretList.Items
-	}
-	endpointsItems := []corev1.Endpoints{}
-	if endpointsList, listErr := clients.core.CoreV1().Endpoints(queryNamespace).List(ctx, metav1.ListOptions{}); listErr != nil {
-		resourceErrors["endpoints"] = resourceListError("Endpoints", listErr).Error()
-	} else {
-		endpointsItems = endpointsList.Items
-	}
-	networkPolicyItems := []networkingv1.NetworkPolicy{}
-	if networkPolicyList, listErr := clients.core.NetworkingV1().NetworkPolicies(queryNamespace).List(ctx, metav1.ListOptions{}); listErr != nil {
-		resourceErrors["networkPolicies"] = resourceListError("NetworkPolicies", listErr).Error()
-	} else {
-		networkPolicyItems = networkPolicyList.Items
-	}
-	serviceAccountItems := []corev1.ServiceAccount{}
-	if serviceAccountList, listErr := clients.core.CoreV1().ServiceAccounts(queryNamespace).List(ctx, metav1.ListOptions{}); listErr != nil {
-		resourceErrors["serviceAccounts"] = resourceListError("ServiceAccounts", listErr).Error()
-	} else {
-		serviceAccountItems = serviceAccountList.Items
-	}
-	roleItems := []rbacv1.Role{}
-	if roleList, listErr := clients.core.RbacV1().Roles(queryNamespace).List(ctx, metav1.ListOptions{}); listErr != nil {
-		resourceErrors["roles"] = resourceListError("Roles", listErr).Error()
-	} else {
-		roleItems = roleList.Items
-	}
-	roleBindingItems := []rbacv1.RoleBinding{}
-	if roleBindingList, listErr := clients.core.RbacV1().RoleBindings(queryNamespace).List(ctx, metav1.ListOptions{}); listErr != nil {
-		resourceErrors["roleBindings"] = resourceListError("RoleBindings", listErr).Error()
-	} else {
-		roleBindingItems = roleBindingList.Items
-	}
-	clusterRoleItems := []rbacv1.ClusterRole{}
-	if clusterRoleList, listErr := clients.core.RbacV1().ClusterRoles().List(ctx, metav1.ListOptions{}); listErr != nil {
-		resourceErrors["clusterRoles"] = resourceListError("ClusterRoles", listErr).Error()
-	} else {
-		clusterRoleItems = clusterRoleList.Items
-	}
-	clusterRoleBindingItems := []rbacv1.ClusterRoleBinding{}
-	if clusterRoleBindingList, listErr := clients.core.RbacV1().ClusterRoleBindings().List(ctx, metav1.ListOptions{}); listErr != nil {
-		resourceErrors["clusterRoleBindings"] = resourceListError("ClusterRoleBindings", listErr).Error()
-	} else {
-		clusterRoleBindingItems = clusterRoleBindingList.Items
-	}
-	hpaItems := []autoscalingv2.HorizontalPodAutoscaler{}
-	if hpaList, listErr := clients.core.AutoscalingV2().HorizontalPodAutoscalers(queryNamespace).List(ctx, metav1.ListOptions{}); listErr != nil {
-		resourceErrors["horizontalPodAutoscalers"] = resourceListError("HorizontalPodAutoscalers", listErr).Error()
-	} else {
-		hpaItems = hpaList.Items
-	}
-	pdbItems := []policyv1.PodDisruptionBudget{}
-	if pdbList, listErr := clients.core.PolicyV1().PodDisruptionBudgets(queryNamespace).List(ctx, metav1.ListOptions{}); listErr != nil {
-		resourceErrors["podDisruptionBudgets"] = resourceListError("PodDisruptionBudgets", listErr).Error()
-	} else {
-		pdbItems = pdbList.Items
-	}
-	resourceQuotaItems := []corev1.ResourceQuota{}
-	if resourceQuotaList, listErr := clients.core.CoreV1().ResourceQuotas(queryNamespace).List(ctx, metav1.ListOptions{}); listErr != nil {
-		resourceErrors["resourceQuotas"] = resourceListError("ResourceQuotas", listErr).Error()
-	} else {
-		resourceQuotaItems = resourceQuotaList.Items
-	}
-	// CRD 為 cluster-scoped，不受 queryNamespace 影響，並改走 dynamic client。
-	// 測試用的 clusterClients 沒有 dynamic（為 nil），故必須 nil-guard 以免 panic。
-	crdItems := []unstructured.Unstructured{}
-	if clients.dynamic != nil {
-		crdGVR := schema.GroupVersionResource{Group: "apiextensions.k8s.io", Version: "v1", Resource: "customresourcedefinitions"}
-		if crdList, listErr := clients.dynamic.Resource(crdGVR).List(ctx, metav1.ListOptions{}); listErr != nil {
-			resourceErrors["customResourceDefinitions"] = resourceListError("CustomResourceDefinitions", listErr).Error()
-		} else {
-			crdItems = crdList.Items
-		}
-	}
-	eventItems := []corev1.Event{}
-	if eventList, listErr := clients.core.CoreV1().Events(queryNamespace).List(ctx, metav1.ListOptions{}); listErr != nil {
-		resourceErrors["events"] = resourceListError("Events", listErr).Error()
-	} else {
-		eventItems = eventList.Items
+	var wg sync.WaitGroup
+	run := func(fn func()) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			fn()
+		}()
 	}
 
+	var (
+		namespaceList           *corev1.NamespaceList
+		namespaceErr            error
+		nodeItems               []corev1.Node
+		nodeErr                 error
+		podList                 *corev1.PodList
+		podErr                  error
+		deploymentList          *appsv1.DeploymentList
+		deploymentErr           error
+		statefulSetList         *appsv1.StatefulSetList
+		statefulSetErr          error
+		daemonSetItems          []appsv1.DaemonSet
+		serviceItems            []corev1.Service
+		eventItems              []corev1.Event
+		jobItems                []batchv1.Job
+		cronJobItems            []batchv1.CronJob
+		ingressItems            []networkingv1.Ingress
+		pvcItems                []corev1.PersistentVolumeClaim
+		pvItems                 []corev1.PersistentVolume
+		storageClassItems       []storagev1.StorageClass
+		configMapItems          []corev1.ConfigMap
+		secretItems             []corev1.Secret
+		endpointsItems          []corev1.Endpoints
+		networkPolicyItems      []networkingv1.NetworkPolicy
+		serviceAccountItems     []corev1.ServiceAccount
+		roleItems               []rbacv1.Role
+		roleBindingItems        []rbacv1.RoleBinding
+		clusterRoleItems        []rbacv1.ClusterRole
+		clusterRoleBindingItems []rbacv1.ClusterRoleBinding
+		hpaItems                []autoscalingv2.HorizontalPodAutoscaler
+		pdbItems                []policyv1.PodDisruptionBudget
+		resourceQuotaItems      []corev1.ResourceQuota
+		crdItems                []unstructured.Unstructured
+	)
+
+	// ── 核心資源（Overview 必需） ──
+	run(func() {
+		if l, e := clients.core.CoreV1().Namespaces().List(ctx, opts); e != nil {
+			namespaceErr = e
+		} else {
+			namespaceList = l
+		}
+	})
+	run(func() {
+		if l, e := clients.core.CoreV1().Nodes().List(ctx, opts); e != nil {
+			if apierrors.IsForbidden(e) {
+				recordErr("nodes", "Nodes", e)
+			} else {
+				nodeErr = e
+			}
+		} else {
+			nodeItems = l.Items
+		}
+	})
+	run(func() {
+		if l, e := clients.core.CoreV1().Pods(queryNamespace).List(ctx, opts); e != nil {
+			podErr = e
+		} else {
+			podList = l
+		}
+	})
+	run(func() {
+		if l, e := clients.core.AppsV1().Deployments(queryNamespace).List(ctx, opts); e != nil {
+			deploymentErr = e
+		} else {
+			deploymentList = l
+		}
+	})
+	run(func() {
+		if l, e := clients.core.AppsV1().StatefulSets(queryNamespace).List(ctx, opts); e != nil {
+			statefulSetErr = e
+		} else {
+			statefulSetList = l
+		}
+	})
+	run(func() {
+		if l, e := clients.core.AppsV1().DaemonSets(queryNamespace).List(ctx, opts); e != nil {
+			recordErr("daemonSets", "DaemonSets", e)
+		} else {
+			daemonSetItems = l.Items
+		}
+	})
+	run(func() {
+		if l, e := clients.core.CoreV1().Services(queryNamespace).List(ctx, opts); e != nil {
+			recordErr("services", "Services", e)
+		} else {
+			serviceItems = l.Items
+		}
+	})
+	run(func() {
+		if l, e := clients.core.CoreV1().Events(queryNamespace).List(ctx, opts); e != nil {
+			recordErr("events", "Events", e)
+		} else {
+			eventItems = l.Items
+		}
+	})
+
+	// ── 其餘資源（僅 full scope） ──
+	if !core {
+		run(func() {
+			if l, e := clients.core.BatchV1().Jobs(queryNamespace).List(ctx, opts); e != nil {
+				recordErr("jobs", "Jobs", e)
+			} else {
+				jobItems = l.Items
+			}
+		})
+		run(func() {
+			if l, e := clients.core.BatchV1().CronJobs(queryNamespace).List(ctx, opts); e != nil {
+				recordErr("cronJobs", "CronJobs", e)
+			} else {
+				cronJobItems = l.Items
+			}
+		})
+		run(func() {
+			if l, e := clients.core.NetworkingV1().Ingresses(queryNamespace).List(ctx, opts); e != nil {
+				recordErr("ingresses", "Ingresses", e)
+			} else {
+				ingressItems = l.Items
+			}
+		})
+		run(func() {
+			if l, e := clients.core.CoreV1().PersistentVolumeClaims(queryNamespace).List(ctx, opts); e != nil {
+				recordErr("persistentVolumeClaims", "PersistentVolumeClaims", e)
+			} else {
+				pvcItems = l.Items
+			}
+		})
+		run(func() {
+			if l, e := clients.core.CoreV1().PersistentVolumes().List(ctx, opts); e != nil {
+				recordErr("persistentVolumes", "PersistentVolumes", e)
+			} else {
+				pvItems = l.Items
+			}
+		})
+		run(func() {
+			if l, e := clients.core.StorageV1().StorageClasses().List(ctx, opts); e != nil {
+				recordErr("storageClasses", "StorageClasses", e)
+			} else {
+				storageClassItems = l.Items
+			}
+		})
+		run(func() {
+			if l, e := clients.core.CoreV1().ConfigMaps(queryNamespace).List(ctx, opts); e != nil {
+				recordErr("configMaps", "ConfigMaps", e)
+			} else {
+				configMapItems = l.Items
+			}
+		})
+		run(func() {
+			if l, e := clients.core.CoreV1().Secrets(queryNamespace).List(ctx, opts); e != nil {
+				recordErr("secrets", "Secrets", e)
+			} else {
+				secretItems = l.Items
+			}
+		})
+		run(func() {
+			if l, e := clients.core.CoreV1().Endpoints(queryNamespace).List(ctx, opts); e != nil {
+				recordErr("endpoints", "Endpoints", e)
+			} else {
+				endpointsItems = l.Items
+			}
+		})
+		run(func() {
+			if l, e := clients.core.NetworkingV1().NetworkPolicies(queryNamespace).List(ctx, opts); e != nil {
+				recordErr("networkPolicies", "NetworkPolicies", e)
+			} else {
+				networkPolicyItems = l.Items
+			}
+		})
+		run(func() {
+			if l, e := clients.core.CoreV1().ServiceAccounts(queryNamespace).List(ctx, opts); e != nil {
+				recordErr("serviceAccounts", "ServiceAccounts", e)
+			} else {
+				serviceAccountItems = l.Items
+			}
+		})
+		run(func() {
+			if l, e := clients.core.RbacV1().Roles(queryNamespace).List(ctx, opts); e != nil {
+				recordErr("roles", "Roles", e)
+			} else {
+				roleItems = l.Items
+			}
+		})
+		run(func() {
+			if l, e := clients.core.RbacV1().RoleBindings(queryNamespace).List(ctx, opts); e != nil {
+				recordErr("roleBindings", "RoleBindings", e)
+			} else {
+				roleBindingItems = l.Items
+			}
+		})
+		run(func() {
+			if l, e := clients.core.RbacV1().ClusterRoles().List(ctx, opts); e != nil {
+				recordErr("clusterRoles", "ClusterRoles", e)
+			} else {
+				clusterRoleItems = l.Items
+			}
+		})
+		run(func() {
+			if l, e := clients.core.RbacV1().ClusterRoleBindings().List(ctx, opts); e != nil {
+				recordErr("clusterRoleBindings", "ClusterRoleBindings", e)
+			} else {
+				clusterRoleBindingItems = l.Items
+			}
+		})
+		run(func() {
+			if l, e := clients.core.AutoscalingV2().HorizontalPodAutoscalers(queryNamespace).List(ctx, opts); e != nil {
+				recordErr("horizontalPodAutoscalers", "HorizontalPodAutoscalers", e)
+			} else {
+				hpaItems = l.Items
+			}
+		})
+		run(func() {
+			if l, e := clients.core.PolicyV1().PodDisruptionBudgets(queryNamespace).List(ctx, opts); e != nil {
+				recordErr("podDisruptionBudgets", "PodDisruptionBudgets", e)
+			} else {
+				pdbItems = l.Items
+			}
+		})
+		run(func() {
+			if l, e := clients.core.CoreV1().ResourceQuotas(queryNamespace).List(ctx, opts); e != nil {
+				recordErr("resourceQuotas", "ResourceQuotas", e)
+			} else {
+				resourceQuotaItems = l.Items
+			}
+		})
+		// CRD 為 cluster-scoped，改走 dynamic client；測試用 clients 可能無 dynamic（nil），需 nil-guard。
+		if clients.dynamic != nil {
+			run(func() {
+				crdGVR := schema.GroupVersionResource{Group: "apiextensions.k8s.io", Version: "v1", Resource: "customresourcedefinitions"}
+				if l, e := clients.dynamic.Resource(crdGVR).List(ctx, opts); e != nil {
+					recordErr("customResourceDefinitions", "CustomResourceDefinitions", e)
+				} else {
+					crdItems = l.Items
+				}
+			})
+		}
+	}
+
+	wg.Wait()
+
+	// 致命錯誤（核心資源讀取失敗）：依序回傳，行為與原循序版本一致。
+	if namespaceErr != nil {
+		return dto.KubernetesDashboardSnapshot{}, resourceListError("Namespaces", namespaceErr)
+	}
+	if nodeErr != nil {
+		return dto.KubernetesDashboardSnapshot{}, resourceListError("Nodes", nodeErr)
+	}
+	if podErr != nil {
+		return dto.KubernetesDashboardSnapshot{}, resourceListError("Pods", podErr)
+	}
+	if deploymentErr != nil {
+		return dto.KubernetesDashboardSnapshot{}, resourceListError("Deployments", deploymentErr)
+	}
+	if statefulSetErr != nil {
+		return dto.KubernetesDashboardSnapshot{}, resourceListError("StatefulSets", statefulSetErr)
+	}
 	snapshot := dto.KubernetesDashboardSnapshot{
 		SessionID:                 session.SessionID,
 		ClusterName:               session.ClusterName,
@@ -250,6 +363,7 @@ func (s *Service) Dashboard(ctx context.Context, request dto.KubernetesDashboard
 		ResourceErrors:            resourceErrors,
 		Events:                    make([]dto.KubernetesEventSummary, 0, len(eventItems)),
 	}
+	snapshot.Partial = core
 	for _, item := range namespaceList.Items {
 		snapshot.Namespaces = append(snapshot.Namespaces, item.Name)
 		snapshot.NamespaceDetails = append(snapshot.NamespaceDetails, namespaceSummary(item))
@@ -470,7 +584,15 @@ func podSummary(item corev1.Pod) dto.KubernetesPodSummary {
 		Name: item.Name, Namespace: item.Namespace, UID: string(item.UID), Phase: string(item.Status.Phase), Status: podDisplayStatus(item),
 		Ready: fmt.Sprintf("%d/%d", ready, len(item.Spec.Containers)), Restarts: restarts, NodeName: item.Spec.NodeName,
 		CreationTimestamp: item.CreationTimestamp.UTC().Format(time.RFC3339), Containers: containers,
+		Labels: item.Labels,
 	}
+}
+
+func matchLabelsMap(selector *metav1.LabelSelector) map[string]string {
+	if selector == nil || len(selector.MatchLabels) == 0 {
+		return nil
+	}
+	return selector.MatchLabels
 }
 
 func podDisplayStatus(item corev1.Pod) string {
@@ -518,6 +640,7 @@ func deploymentSummary(item appsv1.Deployment) dto.KubernetesWorkloadSummary {
 	return dto.KubernetesWorkloadSummary{
 		Name: item.Name, Namespace: item.Namespace, DesiredReplicas: desired, ReadyReplicas: item.Status.ReadyReplicas,
 		AvailableReplicas: item.Status.AvailableReplicas, Status: status, CreationTimestamp: item.CreationTimestamp.UTC().Format(time.RFC3339),
+		Selector: matchLabelsMap(item.Spec.Selector),
 	}
 }
 
@@ -535,6 +658,7 @@ func statefulSetSummary(item appsv1.StatefulSet) dto.KubernetesWorkloadSummary {
 	return dto.KubernetesWorkloadSummary{
 		Name: item.Name, Namespace: item.Namespace, DesiredReplicas: desired, ReadyReplicas: item.Status.ReadyReplicas,
 		AvailableReplicas: item.Status.AvailableReplicas, Status: status, CreationTimestamp: item.CreationTimestamp.UTC().Format(time.RFC3339),
+		Selector: matchLabelsMap(item.Spec.Selector),
 	}
 }
 
@@ -549,6 +673,7 @@ func daemonSetSummary(item appsv1.DaemonSet) dto.KubernetesWorkloadSummary {
 	return dto.KubernetesWorkloadSummary{
 		Name: item.Name, Namespace: item.Namespace, DesiredReplicas: desired, ReadyReplicas: item.Status.NumberReady,
 		AvailableReplicas: item.Status.NumberAvailable, Status: status, CreationTimestamp: item.CreationTimestamp.UTC().Format(time.RFC3339),
+		Selector: matchLabelsMap(item.Spec.Selector),
 	}
 }
 
@@ -628,6 +753,7 @@ func serviceSummary(item corev1.Service) dto.KubernetesServiceSummary {
 		ExternalAddresses: strings.Join(sortedNonEmpty(addresses), ", "), Ports: strings.Join(ports, ", "),
 		PortNumbers:       portNumbers,
 		CreationTimestamp: item.CreationTimestamp.UTC().Format(time.RFC3339),
+		Selector:          item.Spec.Selector,
 	}
 }
 

@@ -37,6 +37,7 @@ export interface KubernetesSession extends KubernetesConnectRequest {
 
 export interface KubernetesDashboardRequest {
   namespace: string;
+  scope?: string;
 }
 
 export interface KubernetesResourceIdentity {

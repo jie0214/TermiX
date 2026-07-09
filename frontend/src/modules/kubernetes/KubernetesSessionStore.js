@@ -4,6 +4,18 @@ import { createResourceTemplate, KUBERNETES_CREATE_RESOURCE_TYPES } from './Kube
 import { showToast } from '../../components/feedback/toast.js';
 import { t } from '../../i18n/index.ts';
 
+// 讀取全域設定中的「預設 namespace」偏好（由 ThemeStore 持久化於 localStorage）。
+// 直接讀 localStorage 而非 import ThemeStore，避免耦合其相依鏈。'*' = All、具體名稱 = 單選、'' = 未設定。
+function readDefaultNamespacePreference() {
+  try {
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('termix-global-settings') : null;
+    if (!raw) return '';
+    return String(JSON.parse(raw)?.defaultNamespace || '').trim();
+  } catch {
+    return '';
+  }
+}
+
 export const KUBERNETES_SESSION_ID = 'kubernetes-tab';
 
 const CREATE_RESOURCE_INITIAL_STATE = Object.freeze({
@@ -192,15 +204,11 @@ function normalizeNamespaceList(list) {
   return result;
 }
 
-// 依多選狀態推導：
-// - fetchNamespace：呼叫 loadDashboard 用的 namespace（恰好選 1 個 → 該值；否則 '*' 抓全部）。
-// - selectedNamespace：相容欄位（恰好選 1 個 → 該值；否則 ''）。
+// dashboard 一律以 '*' 抓取（記憶體恆有全 namespace 資料），namespace 選取改由前端過濾，
+// 讓切換 namespace 能即時呈現、不必每次重抓。selectedNamespace 為相容欄位（恰好選 1 個 → 該值）。
 function deriveNamespaceState(selectedNamespaces) {
   const list = normalizeNamespaceList(selectedNamespaces);
-  if (list.length === 1) {
-    return { selectedNamespaces: list, fetchNamespace: list[0], selectedNamespace: list[0] };
-  }
-  return { selectedNamespaces: list, fetchNamespace: '*', selectedNamespace: '' };
+  return { selectedNamespaces: list, fetchNamespace: '*', selectedNamespace: list.length === 1 ? list[0] : '' };
 }
 
 export function createKubernetesSessionStore(api = KubernetesAPI) {
@@ -241,13 +249,20 @@ export function createKubernetesSessionStore(api = KubernetesAPI) {
         if (requestVersion !== sessionRequestVersion) return session;
         dashboardRequestVersion += 1;
         invalidateResourceRequests();
+        // 初始 namespace 篩選：設定的全域「預設 namespace」為明確值時優先（'*' = All Namespaces、
+        // 具體名稱 = 單選該 namespace），可覆蓋 kubeconfig context 的 namespace；未設定（空）則沿用
+        // 叢集 session 的 namespace（既有行為）。
+        const nsPreference = readDefaultNamespacePreference();
+        const initialNamespaces = nsPreference
+          ? normalizeNamespaceList([nsPreference])
+          : normalizeNamespaceList([session.namespace || request.namespace || '']);
+        const derivedNamespaces = deriveNamespaceState(initialNamespaces);
         set({
           sessionOpen: true,
           connectionStatus: 'connected',
           connectedCluster: session,
-          selectedNamespace: String(session.namespace || request.namespace || ''),
-          // 連線時以 session 預設 namespace 作為初始單選（無則為 All Namespaces）。
-          selectedNamespaces: normalizeNamespaceList([session.namespace || request.namespace || '']),
+          selectedNamespace: derivedNamespaces.selectedNamespace,
+          selectedNamespaces: derivedNamespaces.selectedNamespaces,
           activeSection: 'overview',
           loadError: '',
           dashboard: null,
@@ -379,13 +394,13 @@ export function createKubernetesSessionStore(api = KubernetesAPI) {
       }
     },
 
-    loadDashboard: async (namespace = get().selectedNamespace) => {
+    loadDashboard: async (namespace = get().selectedNamespace, scope = '') => {
       if (!get().connectedCluster) throw new Error(t('k8s.err.notConnected'));
       const targetNamespace = String(namespace || get().connectedCluster.namespace || 'default');
       const requestVersion = ++dashboardRequestVersion;
       set({ dashboardLoading: true, dashboardError: '' });
       try {
-        const dashboard = await api.getDashboard(targetNamespace);
+        const dashboard = await api.getDashboard(targetNamespace, scope);
         if (!dashboard || typeof dashboard !== 'object') {
           throw new Error(t('k8s.err.noDashboard'));
         }
@@ -416,6 +431,18 @@ export function createKubernetesSessionStore(api = KubernetesAPI) {
       }
     },
 
+    // 首屏漸進載入：尚無資料時先抓 core（Overview 所需，快速回應）讓畫面先出，
+    // 再抓 full 補齊其餘 section；已有資料則直接抓 full。core 失敗不阻擋 full。
+    loadDashboardProgressive: async (namespace = get().selectedNamespace) => {
+      if (get().dashboard) return get().loadDashboard(namespace);
+      try {
+        await get().loadDashboard(namespace, 'core');
+      } catch {
+        // core 失敗（例如逾時）就交給後續 full 載入補救，不中斷流程。
+      }
+      return get().loadDashboard(namespace);
+    },
+
     refreshDashboard: async () => {
       // 抓取所用 namespace 由多選狀態推導：恰好選 1 個 → 該 namespace；否則 '*' 抓全部。
       const { fetchNamespace } = deriveNamespaceState(get().selectedNamespaces);
@@ -425,28 +452,18 @@ export function createKubernetesSessionStore(api = KubernetesAPI) {
       // 相容既有單選 API：'*'（All）→ 清空多選陣列；其他 → 設為單一元素陣列。
       const value = String(namespace || 'default');
       const nextSelected = value === '*' ? [] : normalizeNamespaceList([value]);
-      const previousSelected = get().selectedNamespaces;
       const derived = deriveNamespaceState(nextSelected);
-      set({ selectedNamespaces: derived.selectedNamespaces });
-      try {
-        return await get().loadDashboard(derived.fetchNamespace);
-      } catch (error) {
-        // 抓取失敗回復先前選取，避免 UI 勾選狀態與實際資料不一致。
-        set({ selectedNamespaces: normalizeNamespaceList(previousSelected) });
-        throw error;
-      }
+      // 純前端過濾：立即更新選取即重繪呈現；dashboard 已是 '*' 全 namespace 資料，不重抓。
+      set({ selectedNamespaces: derived.selectedNamespaces, selectedNamespace: derived.selectedNamespace });
+      if (!get().dashboard) return get().loadDashboardProgressive('*');
+      return get().dashboard;
     },
-    // 多選：設定完整的 namespace 清單（空陣列 = All Namespaces），並重新載入 dashboard。
+    // 多選：設定完整的 namespace 清單（空陣列 = All Namespaces）。純前端過濾、不重抓。
     setSelectedNamespaces: async (list) => {
-      const previousSelected = get().selectedNamespaces;
       const derived = deriveNamespaceState(list);
-      set({ selectedNamespaces: derived.selectedNamespaces });
-      try {
-        return await get().loadDashboard(derived.fetchNamespace);
-      } catch (error) {
-        set({ selectedNamespaces: normalizeNamespaceList(previousSelected) });
-        throw error;
-      }
+      set({ selectedNamespaces: derived.selectedNamespaces, selectedNamespace: derived.selectedNamespace });
+      if (!get().dashboard) return get().loadDashboardProgressive('*');
+      return get().dashboard;
     },
     // 多選：切換單一 namespace 的勾選狀態（勾任一具體 namespace 會自動取消 All）。
     toggleNamespace: async (namespace) => {

@@ -172,6 +172,10 @@ func runMigrations(db *sql.DB) error {
 		return err
 	}
 
+	if err := ensureColumn(db, "hosts", "os_id", "ALTER TABLE hosts ADD COLUMN os_id TEXT DEFAULT '';"); err != nil {
+		return err
+	}
+
 	if err := ensureColumn(db, "host_groups", "parent_id", "ALTER TABLE host_groups ADD COLUMN parent_id TEXT REFERENCES host_groups(id) ON DELETE SET NULL;"); err != nil {
 		return err
 	}

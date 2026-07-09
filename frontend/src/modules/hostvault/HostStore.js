@@ -13,6 +13,33 @@ const LEGACY_HOSTS_KEY = 'termix-connection-history';
 const HOSTVAULT_MIGRATION_VERSION_KEY = 'hostVaultMigrationVersion';
 const HOSTVAULT_MIGRATION_VERSION = 1;
 
+// Hosts 列表的排序與檢視偏好（純前端 UI 狀態，持久化於 localStorage）
+const VIEW_PREFS_KEY = 'termix-hostvault-view-prefs';
+const VALID_SORT_BY = ['name', 'host', 'updated', 'created'];
+
+function readViewPrefs() {
+  try {
+    const raw = localStorage.getItem(VIEW_PREFS_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (!parsed || typeof parsed !== 'object') return {};
+    return {
+      sortBy: VALID_SORT_BY.includes(parsed.sortBy) ? parsed.sortBy : undefined,
+      sortDir: parsed.sortDir === 'desc' ? 'desc' : (parsed.sortDir === 'asc' ? 'asc' : undefined),
+      viewMode: parsed.viewMode === 'list' ? 'list' : (parsed.viewMode === 'grid' ? 'grid' : undefined)
+    };
+  } catch (e) {
+    return {};
+  }
+}
+
+function persistViewPrefs(prefs) {
+  try {
+    localStorage.setItem(VIEW_PREFS_KEY, JSON.stringify(prefs));
+  } catch (e) {
+    // localStorage 不可用時靜默略過，不影響操作
+  }
+}
+
 async function enrichSecretStatus(hosts = []) {
   const enriched = await Promise.all((Array.isArray(hosts) ? hosts : []).map(async (host) => {
     return enrichHostSecretStatus(host);
@@ -186,6 +213,9 @@ export const hostStore = createStore((set, get) => ({
   loadError: '',
   activeGroupId: null,
   searchQuery: '',
+  sortBy: readViewPrefs().sortBy || 'name',
+  sortDir: readViewPrefs().sortDir || 'asc',
+  viewMode: readViewPrefs().viewMode || 'grid',
   drawerOpen: false,
   drawerMode: 'host',
   selectedHost: null,
@@ -245,6 +275,19 @@ export const hostStore = createStore((set, get) => ({
 
   setActiveGroupId: (activeGroupId) => set({ activeGroupId }),
   setSearchQuery: (searchQuery) => set({ searchQuery }),
+
+  setHostSort: (sortBy, sortDir) => {
+    const nextSortBy = VALID_SORT_BY.includes(sortBy) ? sortBy : 'name';
+    const nextSortDir = sortDir === 'desc' ? 'desc' : 'asc';
+    set({ sortBy: nextSortBy, sortDir: nextSortDir });
+    persistViewPrefs({ sortBy: nextSortBy, sortDir: nextSortDir, viewMode: get().viewMode });
+  },
+
+  setViewMode: (viewMode) => {
+    const nextViewMode = viewMode === 'list' ? 'list' : 'grid';
+    set({ viewMode: nextViewMode });
+    persistViewPrefs({ sortBy: get().sortBy, sortDir: get().sortDir, viewMode: nextViewMode });
+  },
   setDrawerOpen: (drawerOpen) => set({ drawerOpen }),
   setDrawerMode: (drawerMode) => set({ drawerMode }),
   setSelectedHost: (selectedHost) => set({ selectedHost }),
