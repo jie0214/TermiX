@@ -1028,11 +1028,9 @@ export class HostListPage extends HTMLElement {
 
     return `
       <div class="vault-toolbar" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; gap: 12px; flex: 0 0 auto;">
-        <div style="display: flex; flex-direction: column; gap: 4px; text-align: left;">
-          <div style="font-size: 14px; font-weight: 700; color: var(--color-text);">Integrations</div>
-          <div style="font-size: 12px; color: var(--color-text-muted);">${t('hostvault.integrationsDesc')}</div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <button type="button" id="newIntegrationBtn" class="no-drag primary" style="min-height: 32px; font-weight: 700; font-size: 12px; padding: 0 14px; background: var(--color-primary); border: none; border-radius: 4px; color: #fff; cursor: pointer;">+ NEW INTEGRATION</button>
         </div>
-        <button type="button" id="newIntegrationBtn" class="no-drag primary" style="min-height: 32px; font-weight: 700; font-size: 12px; padding: 0 14px; background: var(--color-primary); border: none; border-radius: 4px; color: #fff; cursor: pointer;">+ NEW INTEGRATION</button>
       </div>
 
       <div class="vault-scroll-content" style="flex: 1; min-height: 0; overflow-y: auto;">
@@ -1838,7 +1836,6 @@ export class HostListPage extends HTMLElement {
               <button type="button" id="deleteSelectedLogsBtn" class="no-drag" style="min-height: 32px; font-weight: 700; font-size: 12px; padding: 0 14px; background: #ef4444; border: none; border-radius: 4px; color: #fff; cursor: pointer;">${t('hostvault.deleteSelected')}</button>
               <button type="button" id="clearGlobalLogsBtn" class="no-drag" style="min-height: 32px; font-weight: 700; font-size: 12px; padding: 0 14px; background: #7f1d1d; border: none; border-radius: 4px; color: #fff; cursor: pointer;">${t('hostvault.clearAll')}</button>
             </div>
-            <div style="font-size: 13px; font-weight: 600; color: var(--color-text-muted); text-align: right;">${t('hostvault.logsSubtitle')}</div>
           </div>
 
           <div id="logsTerminalContainer" style="flex: 1; overflow-y: auto; background: rgba(12, 18, 31, 0.5); border: 1px solid rgba(23, 107, 135, 0.15); border-radius: 8px; min-height: 250px;">
@@ -1987,7 +1984,6 @@ export class HostListPage extends HTMLElement {
               <span id="breadcrumbPackageName" style="color: var(--color-text);">${currentPackage ? escapeHtml(currentPackage.name) : ''}</span>
             </div>
           </div>
-          <div style="font-size: 13px; font-weight: 600; color: var(--color-text-muted); text-align: right;">${t('hostvault.snippetsSubtitle')}</div>
         </div>
 
         <div style="display: flex; flex-direction: column; flex: 1; min-height: 0; width: 100%; overflow-y: auto;">
@@ -2101,7 +2097,6 @@ export class HostListPage extends HTMLElement {
               <button type="button" id="generateKeyBtn" class="no-drag primary" style="min-height: 32px; font-weight: 700; font-size: 12px; padding: 0 14px; background: var(--color-primary); border: none; border-radius: 4px; color: #fff; cursor: pointer;">${t('hostvault.keychainGenerate')}</button>
               <button type="button" id="importKeyBtn" class="no-drag" style="min-height: 32px; font-weight: 700; font-size: 12px; padding: 0 14px; background: transparent; border: 1px solid rgba(23,107,135,0.35); border-radius: 4px; color: var(--color-text); cursor: pointer;">${t('hostvault.keychainImport')}</button>
             </div>
-            <div style="font-size: 13px; font-weight: 600; color: var(--color-text-muted); text-align: right;">${t('hostvault.keychainSubtitle')}</div>
           </div>
 
           <div style="flex: 1; overflow-y: auto; background: rgba(12, 18, 31, 0.5); border: 1px solid rgba(23, 107, 135, 0.15); border-radius: 8px; min-height: 250px;">
@@ -2148,10 +2143,6 @@ export class HostListPage extends HTMLElement {
       const emptyText = this.knownHostsLoading ? t('hostvault.knownHostsLoading') : t('hostvault.noKnownHosts');
 
       mainBoardHtml = `
-          <div class="vault-toolbar" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex: 0 0 auto;">
-            <div style="font-size: 13px; font-weight: 600; color: var(--color-text-muted); text-align: right;">${t('hostvault.knownHostsSubtitle')}</div>
-          </div>
-
           <div style="flex: 1; overflow-y: auto; background: rgba(12, 18, 31, 0.5); border: 1px solid rgba(23, 107, 135, 0.15); border-radius: 8px; min-height: 250px;">
             ${hosts.length === 0 ? `
               <div style="padding: 40px; text-align: center; color: var(--color-text-muted); font-size: 14px;">

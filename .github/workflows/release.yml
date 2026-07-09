@@ -107,9 +107,12 @@ jobs:
           fetch-depth: 0
 
       # 發布備註來源：annotated tag 的訊息（由 scripts/release.sh 依私有 commit 產生）。
+      # 注意：actions/checkout 在 tag 觸發時會把 annotated tag 存成 lightweight ref，
+      # 導致 %(contents) 讀不到 tag 訊息，故先強制重抓 annotated tag 物件。
       - name: Extract release notes from tag annotation
         shell: bash
         run: |
+          git fetch --force origin "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
           git tag -l --format='%(contents)' "${GITHUB_REF_NAME}" > RELEASE_NOTES.md
           [ -s RELEASE_NOTES.md ] || echo "Release ${GITHUB_REF_NAME}" > RELEASE_NOTES.md
           echo "---- release notes ----"; cat RELEASE_NOTES.md

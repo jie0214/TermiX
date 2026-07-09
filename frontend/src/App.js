@@ -579,9 +579,13 @@ export class TermixApp extends HTMLElement {
     const isKubernetesOpen = Boolean(kubernetesState.sessionOpen || kubernetesState.connectedCluster);
     const isKubernetesActive = activeWorkspaceId === KUBERNETES_SESSION_ID;
 
+    // 控制台側欄切換鈕僅在「Terminal Session」分頁顯示（Vaults / Control Panel / Kubernetes 皆隱藏）。
+    const isTerminalSessionActive = activeWorkspaceId !== 'host-tab'
+      && activeWorkspaceId !== 'control-panel-tab'
+      && activeWorkspaceId !== KUBERNETES_SESSION_ID;
     const sidebarToggle = this.querySelector('#toggleControlSidebar');
-    if (isKubernetesActive) this.collapseControlSidebar();
-    sidebarToggle?.classList.toggle('hidden', isKubernetesActive);
+    if (!isTerminalSessionActive) this.collapseControlSidebar();
+    sidebarToggle?.classList.toggle('hidden', !isTerminalSessionActive);
 
     const isVaultsActive = (activeWorkspaceId === 'host-tab' || activeWorkspaceId === 'control-panel-tab');
 

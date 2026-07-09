@@ -1642,10 +1642,22 @@ textarea {
 .session-tab-add {
   min-height: 0;
   padding: 5px 10px;
-  border-style: dashed;
   font-size: 16px;
   font-weight: 800;
   line-height: 1;
+  /* 低調的圖示按鈕：去掉繼承自 .session-tab 的虛線邊框、漸層底與陰影 */
+  border: 1px solid transparent;
+  border-left: 1px solid transparent;
+  background: transparent;
+  box-shadow: none;
+  color: var(--color-subtext);
+}
+
+.session-tab-add:hover {
+  transform: none;
+  border-color: transparent;
+  background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+  color: var(--color-primary);
 }
 
 /* 一體式終端機視窗 */
@@ -2506,13 +2518,47 @@ textarea {
 }
 
 /* 卡片/列表檢視切換：分段按鈕改直角並移除全域 button 的內距（否則按鈕被撐寬、圖示顯小），圖示置中 */
+.vault-view-toggle {
+  display: inline-flex;
+  border: 1px solid var(--color-primary);
+  border-radius: 4px;
+  overflow: hidden;
+}
 .vault-view-btn {
+  border: none;
   border-radius: 0;
   padding: 0;
   width: 38px;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
 }
 .vault-view-btn svg {
   display: block;
+}
+/* Kubernetes：搜尋列下方的排序 + 檢視切換控制列（靠右） */
+.kubernetes-view-controls {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.kubernetes-view-controls .termix-dropdown-trigger {
+  min-height: 32px;
+  font-weight: 700;
+  font-size: 12px;
+  border: 1px solid var(--color-primary);
+  color: var(--color-primary);
+  background: transparent;
+  padding: 0 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 /* 卡片基礎樣式 */
@@ -5231,21 +5277,22 @@ control-panel-page {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--tab-border) !important;
-  border-radius: 6px !important;
+  /* 無邊框、透明底：與 session bar 融為一體，僅以圖示呈現 */
+  border: 1px solid transparent !important;
+  border-radius: 999px !important;
   padding: 0 !important;
-  background: var(--tab-bg) !important;
-  color: var(--tab-text) !important;
+  background: transparent !important;
+  color: var(--color-subtext) !important;
   cursor: pointer;
   transition: all 0.2s ease !important;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  box-shadow: none;
   margin: 0 !important;
 }
 
 .session-bar-control-btn:hover {
-  background: var(--tab-hover) !important;
+  background: color-mix(in srgb, var(--color-primary) 14%, transparent) !important;
   color: var(--color-primary) !important;
-  border-color: var(--color-primary) !important;
+  border-color: transparent !important;
 }
 
 .session-bar-control-btn.active {

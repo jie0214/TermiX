@@ -41,6 +41,36 @@ function detectClusterProvider(cluster) {
   return { bg: '#326CE5', glyph: K8S_WHEEL_GLYPH, label: '' };
 }
 
+// 依偏好排序 clusters（不修改傳入陣列）。name/context 用 localeCompare；
+// provider 依偵測到的供應商標籤（EKS/GKE/AKS，通用則排在最後）。
+function sortClusters(clusters, sortBy = 'name', sortDir = 'asc') {
+  const dir = sortDir === 'desc' ? -1 : 1;
+  const nameOf = (c) => (c.displayName || c.contextName || '').toLowerCase();
+  const providerOf = (c) => detectClusterProvider(c).label || 'zzz';
+  const sorted = [...clusters];
+  sorted.sort((a, b) => {
+    let cmp;
+    if (sortBy === 'provider') {
+      cmp = providerOf(a).localeCompare(providerOf(b));
+    } else if (sortBy === 'context') {
+      cmp = (a.contextName || '').toLowerCase().localeCompare((b.contextName || '').toLowerCase());
+    } else {
+      cmp = nameOf(a).localeCompare(nameOf(b));
+    }
+    if (cmp === 0 && sortBy !== 'name') cmp = nameOf(a).localeCompare(nameOf(b));
+    return cmp * dir;
+  });
+  return sorted;
+}
+
+// 排序下拉選項（與 Hosts 一致的風格）。
+const CLUSTER_SORT_OPTIONS = [
+  { by: 'name', dir: 'asc', label: 'Name A–Z' },
+  { by: 'name', dir: 'desc', label: 'Name Z–A' },
+  { by: 'provider', dir: 'asc', label: 'Provider' },
+  { by: 'context', dir: 'asc', label: 'Context' }
+];
+
 function renderEditIcon() {
   return `
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -143,6 +173,9 @@ export class KubernetesPage extends HTMLElement {
         drawerOpen: k.drawerOpen,
         availableUsers: k.availableUsers,
         users: k.users,
+        sortBy: k.sortBy,
+        sortDir: k.sortDir,
+        viewMode: k.viewMode,
         connectionStatus: s.connectionStatus,
         sessionLoadError: s.loadError
       });
@@ -154,14 +187,17 @@ export class KubernetesPage extends HTMLElement {
 
   getFilteredClusters(state) {
     const query = this.searchQuery.trim().toLocaleLowerCase('zh-Hant');
-    if (!query) return state.clusters;
-    return state.clusters.filter((cluster) => [
-      cluster.displayName,
-      cluster.contextName,
-      cluster.clusterName,
-      cluster.server,
-      cluster.namespace
-    ].some(value => String(value || '').toLocaleLowerCase('zh-Hant').includes(query)));
+    let list = state.clusters;
+    if (query) {
+      list = state.clusters.filter((cluster) => [
+        cluster.displayName,
+        cluster.contextName,
+        cluster.clusterName,
+        cluster.server,
+        cluster.namespace
+      ].some(value => String(value || '').toLocaleLowerCase('zh-Hant').includes(query)));
+    }
+    return sortClusters(list, state.sortBy, state.sortDir);
   }
 
   renderCard(cluster, state) {
@@ -271,29 +307,48 @@ export class KubernetesPage extends HTMLElement {
     const sessionState = kubernetesSessionStore.getState();
     const clusters = this.getFilteredClusters(state);
     const loadError = state.loadError || sessionState.loadError || '';
+    const activeSort = CLUSTER_SORT_OPTIONS.find(o => o.by === state.sortBy && o.dir === state.sortDir) || CLUSTER_SORT_OPTIONS[0];
+    const sortItemsHtml = CLUSTER_SORT_OPTIONS.map(o =>
+      `<button type="button" class="no-drag termix-dropdown-item${o === activeSort ? ' active' : ''}" data-sort-by="${o.by}" data-sort-dir="${o.dir}">${o.label}</button>`
+    ).join('');
     this.innerHTML = `
       <div class="kubernetes-page-layout">
         <main class="kubernetes-main-board">
-          <div class="kubernetes-toolbar">
-            <div>
-              <h1>${t('k8s.page.title')}</h1>
-              <p>${t('k8s.page.subtitle')}</p>
-            </div>
-            <div class="kubernetes-toolbar-actions">
-              <button type="button" id="reloadKubernetesBtn" class="no-drag kubernetes-secondary-btn" ${state.isLoading ? 'disabled' : ''}>${state.isLoading ? t('k8s.page.loading') : t('k8s.page.reload')}</button>
-              <button type="button" id="newKubernetesClusterBtn" class="no-drag kubernetes-primary-btn">${t('k8s.page.newClusterButton')}</button>
-            </div>
-          </div>
           <div class="vault-search-bar kubernetes-search-bar">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="search-icon" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             <input class="no-drag" id="kubernetesSearchInput" type="search" placeholder="${t('k8s.page.searchPlaceholder')}" autocomplete="off" value="${escapeHtml(this.searchQuery)}" aria-label="${t('k8s.page.searchAria')}">
+          </div>
+          <div class="vault-toolbar kubernetes-view-controls" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex: 0 0 auto;">
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <button type="button" id="reloadKubernetesBtn" class="no-drag kubernetes-secondary-btn" ${state.isLoading ? 'disabled' : ''}>${state.isLoading ? t('k8s.page.loading') : t('k8s.page.reload')}</button>
+              <button type="button" id="newKubernetesClusterBtn" class="no-drag kubernetes-primary-btn">${t('k8s.page.newClusterButton')}</button>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+            <div class="termix-dropdown no-drag">
+              <button class="no-drag termix-dropdown-trigger" type="button" id="kubernetesSortBtn" title="Sort clusters">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M6 12h12M10 18h4"/></svg>
+                ${activeSort.label} ▼
+              </button>
+              <div class="termix-dropdown-menu" style="right: 0; left: auto;">
+                ${sortItemsHtml}
+              </div>
+            </div>
+            <div class="vault-view-toggle no-drag">
+              <button type="button" class="no-drag vault-view-btn" data-view-mode="grid" title="Grid view" aria-label="Grid view" aria-pressed="${state.viewMode === 'grid'}" style="background: ${state.viewMode === 'grid' ? 'var(--color-primary)' : 'transparent'}; color: ${state.viewMode === 'grid' ? '#fff' : 'var(--color-primary)'};">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+              </button>
+              <button type="button" class="no-drag vault-view-btn" data-view-mode="list" title="List view" aria-label="List view" aria-pressed="${state.viewMode === 'list'}" style="border-left: 1px solid var(--color-primary); background: ${state.viewMode === 'list' ? 'var(--color-primary)' : 'transparent'}; color: ${state.viewMode === 'list' ? '#fff' : 'var(--color-primary)'};">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+              </button>
+            </div>
+            </div>
           </div>
           ${loadError ? `<div class="kubernetes-load-error" role="alert"><strong>${t('k8s.page.loadFailed')}</strong><span>${escapeHtml(loadError)}</span></div>` : ''}
           <div class="kubernetes-scroll-content">
             ${state.isLoading && state.clusters.length === 0 ? `
               <div class="kubernetes-state-panel"><span class="kubernetes-spinner"></span><h2>${t('k8s.page.readingKubeconfig')}</h2></div>
             ` : clusters.length > 0 ? `
-              <div class="vault-grid kubernetes-grid">${clusters.map(cluster => this.renderCard(cluster, state)).join('')}</div>
+              <div class="vault-grid kubernetes-grid${state.viewMode === 'list' ? ' list-view' : ''}">${clusters.map(cluster => this.renderCard(cluster, state)).join('')}</div>
             ` : `
               <div class="kubernetes-state-panel">
                 <div class="kubernetes-empty-icon">K8s</div>
@@ -347,6 +402,34 @@ export class KubernetesPage extends HTMLElement {
       this.validationErrors = {};
       this.operationError = '';
       kubernetesStore.getState().openCreateDrawer();
+    });
+
+    // 排序下拉：trigger 開合 + 點擊外部關閉 + 選項套用
+    const sortTrigger = this.querySelector('#kubernetesSortBtn');
+    if (sortTrigger) {
+      sortTrigger.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const menu = sortTrigger.nextElementSibling;
+        menu?.classList.toggle('show');
+      });
+    }
+    if (!this._k8sDropdownDocHandler) {
+      this._k8sDropdownDocHandler = () => {
+        this.querySelectorAll('.termix-dropdown-menu').forEach(menu => menu.classList.remove('show'));
+      };
+      document.addEventListener('click', this._k8sDropdownDocHandler);
+    }
+    this.querySelectorAll('[data-sort-by]').forEach(item => {
+      item.addEventListener('click', () => {
+        kubernetesStore.getState().setClusterSort(item.getAttribute('data-sort-by'), item.getAttribute('data-sort-dir'));
+      });
+    });
+
+    // 卡片 / 列表檢視切換
+    this.querySelectorAll('.vault-view-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        kubernetesStore.getState().setViewMode(btn.getAttribute('data-view-mode'));
+      });
     });
 
     this.querySelectorAll('.kubernetes-edit-btn').forEach((button) => {

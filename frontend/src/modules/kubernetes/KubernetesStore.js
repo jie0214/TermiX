@@ -16,6 +16,33 @@ function resolveSavedCluster(result, fallback) {
   return normalizeKubernetesCluster(fallback);
 }
 
+// Cluster 清單的排序與檢視偏好（純前端 UI 狀態，持久化於 localStorage）
+const VIEW_PREFS_KEY = 'termix-kubernetes-view-prefs';
+const VALID_SORT_BY = ['name', 'provider', 'context'];
+
+function readViewPrefs() {
+  try {
+    const raw = localStorage.getItem(VIEW_PREFS_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (!parsed || typeof parsed !== 'object') return {};
+    return {
+      sortBy: VALID_SORT_BY.includes(parsed.sortBy) ? parsed.sortBy : undefined,
+      sortDir: parsed.sortDir === 'desc' ? 'desc' : (parsed.sortDir === 'asc' ? 'asc' : undefined),
+      viewMode: parsed.viewMode === 'list' ? 'list' : (parsed.viewMode === 'grid' ? 'grid' : undefined)
+    };
+  } catch (e) {
+    return {};
+  }
+}
+
+function persistViewPrefs(prefs) {
+  try {
+    localStorage.setItem(VIEW_PREFS_KEY, JSON.stringify(prefs));
+  } catch (e) {
+    // localStorage 不可用時靜默略過
+  }
+}
+
 export const kubernetesStore = createStore((set, get) => ({
   clusters: [],
   availableUsers: [],
@@ -25,6 +52,22 @@ export const kubernetesStore = createStore((set, get) => ({
   isLoading: false,
   loadError: '',
   switchingContext: '',
+  sortBy: readViewPrefs().sortBy || 'name',
+  sortDir: readViewPrefs().sortDir || 'asc',
+  viewMode: readViewPrefs().viewMode || 'grid',
+
+  setClusterSort: (sortBy, sortDir) => {
+    const nextSortBy = VALID_SORT_BY.includes(sortBy) ? sortBy : 'name';
+    const nextSortDir = sortDir === 'desc' ? 'desc' : 'asc';
+    set({ sortBy: nextSortBy, sortDir: nextSortDir });
+    persistViewPrefs({ sortBy: nextSortBy, sortDir: nextSortDir, viewMode: get().viewMode });
+  },
+
+  setViewMode: (viewMode) => {
+    const nextViewMode = viewMode === 'list' ? 'list' : 'grid';
+    set({ viewMode: nextViewMode });
+    persistViewPrefs({ sortBy: get().sortBy, sortDir: get().sortDir, viewMode: nextViewMode });
+  },
 
   applyClusters: (payload) => {
     const clusters = normalizeKubernetesClusters(payload);
