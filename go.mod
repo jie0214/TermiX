@@ -8,7 +8,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.24
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.307.0
 	github.com/aws/aws-sdk-go-v2/service/lightsail v1.56.1
-	github.com/creack/pty v1.1.24
+	github.com/aymanbagabas/go-pty v0.2.3
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
 	github.com/sirupsen/logrus v1.9.4
@@ -43,6 +43,7 @@ require (
 	github.com/aws/smithy-go v1.27.1 // indirect
 	github.com/bep/debounce v1.2.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/creack/pty v1.1.24 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/emicklei/go-restful/v3 v3.12.2 // indirect
@@ -85,6 +86,7 @@ require (
 	github.com/samber/lo v1.49.1 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/tkrajina/go-reflector v0.5.8 // indirect
+	github.com/u-root/u-root v0.16.0 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	github.com/wailsapp/go-webview2 v1.0.22 // indirect

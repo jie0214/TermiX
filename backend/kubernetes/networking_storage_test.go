@@ -153,6 +153,13 @@ func TestResourceDetail泛用支援Networking與Storage(t *testing.T) {
 			}
 		})
 	}
+	// events 已從 detail 拆出，改由 ResourceEvents 獨立查詢；cluster-scoped 資源以空 namespace 跨 namespace 查詢。
+	if _, err := svc.ResourceEvents(context.Background(), dto.KubernetesResourceEventsRequest{Kind: "PersistentVolume", Name: "volume"}); err != nil {
+		t.Fatalf("ResourceEvents(PersistentVolume) error = %v", err)
+	}
+	if _, err := svc.ResourceEvents(context.Background(), dto.KubernetesResourceEventsRequest{Kind: "StorageClass", Name: "standard"}); err != nil {
+		t.Fatalf("ResourceEvents(StorageClass) error = %v", err)
+	}
 	var clusterEventLists int
 	for _, action := range client.Actions() {
 		if action.GetVerb() == "list" && action.GetResource().Resource == "events" && action.GetNamespace() == "" {

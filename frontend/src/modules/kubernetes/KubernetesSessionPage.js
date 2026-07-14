@@ -6,6 +6,8 @@ import { confirmDialog } from '../../components/feedback/confirmDialog';
 import { showToast } from '../../components/feedback/toast.js';
 import { suppressScrollbarAutohide } from '../../runtime/scrollbarAutohide';
 import { Terminal } from '@xterm/xterm';
+import { WebglAddon } from '@xterm/addon-webgl';
+import { CanvasAddon } from '@xterm/addon-canvas';
 import { t } from '../../i18n/index.ts';
 
 function escapeHtml(value) {
@@ -310,6 +312,9 @@ export class KubernetesSessionPage extends HTMLElement {
     this.deleteConfirmInput = '';
     // 低風險資源刪除的兩段確認階段（狀態驅動，避免被背景輪詢重繪重置）。
     this.pendingDeleteConfirm = false;
+    // Secret data 已揭露明文的快取（key→明文）；切換資源時清空，避免跨 Secret 殘留。
+    this.revealedSecrets = {};
+    this.revealedSecretsFor = null;
     // YAML 頁籤本地狀態（不污染 store）：編輯草稿 / 是否編輯中 / 搜尋詞。
     this.yamlEditDraft = null;
     this.yamlEditing = false;
@@ -332,6 +337,9 @@ export class KubernetesSessionPage extends HTMLElement {
     // 資源清單通用搜尋詞（純前端、存元件上，避免污染 store）：{ [section]: term }。
     // Pods 沿用既有 this.podSearch，不納入此表。
     this.tableSearch = {};
+    // 資源清單多選狀態（純前端、存元件上）：key = `${kind}|${namespace}|${name}`
+    // → { kind, name, namespace, apiVersion }。切換 section 即清空（見 section 導覽點擊處理）。
+    this.selectedRows = new Map();
     // 使用者手動點擊 Refresh 進行中的旗標（純前端）：期間停用按鈕並顯示「更新中…」，
     // 避免重複點擊；成功/失敗都要清除。與背景 3 秒輪詢的 loading 分開，不互相干擾。
     this.manualRefreshing = false;
@@ -448,6 +456,7 @@ export class KubernetesSessionPage extends HTMLElement {
     this.podLabelFilter = { kind: parsed.kind, name: parsed.name, namespace: parsed.namespace || '', selector: parsed.selector };
     this.podFilter = 'all';
     this.podSearch = '';
+    this.clearSelection();
     const store = kubernetesSessionStore.getState();
     if (store.detailOpen) store.closeResourceDetail();
     store.selectSection('pods');
@@ -712,6 +721,19 @@ export class KubernetesSessionPage extends HTMLElement {
         loader.catch(error => {
           console.error('[Kubernetes][UI][DetailTab] 載入 Port Forward 失敗', error);
         });
+      }
+      return;
+    }
+
+    const secretButton = event.target.closest?.('[data-secret-copy], [data-secret-reveal]');
+    if (secretButton && this.contains(secretButton)) {
+      event.preventDefault();
+      event.stopPropagation();
+      const key = secretButton.getAttribute('data-secret-key') || '';
+      if (secretButton.hasAttribute('data-secret-reveal')) {
+        this.toggleSecretReveal(key);
+      } else {
+        this.copySecretValue(key);
       }
       return;
     }
@@ -1093,7 +1115,7 @@ export class KubernetesSessionPage extends HTMLElement {
           <caption class="kubernetes-table-caption">${escapeHtml(SECTIONS.find(([id]) => id === section)?.[1] || t('k8s.resource.fallback'))}</caption>
           <thead><tr>${definition.columns.map(([key, label]) => this.sortableTh(section, key, label, { type: sortTypeForKey(key) })).join('')}${withActions ? '<th></th>' : ''}</tr></thead>
           <tbody>${items.map(item => `
-            <tr class="kubernetes-resource-row" tabindex="0" role="button"${namespaced && item.namespace ? ` style="border-left-color:${this.namespaceColor(item.namespace)}"` : ''} data-resource-kind="${RESOURCE_KINDS[section]}" data-resource-name="${escapeHtml(item.name)}" data-resource-namespace="${escapeHtml(item.namespace || '')}" data-resource-apiversion="${escapeHtml(RESOURCE_META[section]?.apiVersion || '')}" aria-label="${t('k8s.row.viewDetailAria', { name: escapeHtml(item.name) })}">${definition.columns.map(([key, , formatter]) => (!formatter && ELLIPSIS_KEYS.has(key)) ? this.ellipsisCell(item[key]) : `<td>${formatter ? formatter(item[key]) : escapeHtml(item[key] ?? '-')}</td>`).join('')}${withActions ? `<td class="kubernetes-pod-actions kubernetes-row-actions">${withServiceForward ? `<button data-service-action="forward" data-service="${encodeURIComponent(JSON.stringify(item))}" ${(Array.isArray(item.portNumbers) && item.portNumbers.length) ? '' : 'disabled'}>Forward</button>` : ''}${this.viewPodsIconButton(RESOURCE_KINDS[section], item)}</td>` : ''}</tr>
+            <tr class="kubernetes-resource-row" tabindex="0" role="button"${namespaced && item.namespace ? ` style="border-left-color:${this.namespaceColor(item.namespace)}"` : ''} data-resource-kind="${RESOURCE_KINDS[section]}" data-resource-name="${escapeHtml(item.name)}" data-resource-namespace="${escapeHtml(item.namespace || '')}" data-resource-apiversion="${escapeHtml(RESOURCE_META[section]?.apiVersion || '')}" aria-label="${t('k8s.row.viewDetailAria', { name: escapeHtml(item.name) })}">${definition.columns.map(([key, , formatter]) => (!formatter && ELLIPSIS_KEYS.has(key)) ? this.ellipsisCell(item[key]) : `<td>${formatter ? formatter(item[key]) : escapeHtml(item[key] ?? '-')}</td>`).join('')}${withActions ? `<td class="kubernetes-pod-actions kubernetes-row-actions">${(section === 'deployments' || section === 'statefulsets') ? this.scaleButton(RESOURCE_KINDS[section], RESOURCE_META[section]?.apiVersion || '', item) : ''}${withServiceForward ? `<button data-service-action="forward" data-service="${encodeURIComponent(JSON.stringify(item))}" ${(Array.isArray(item.portNumbers) && item.portNumbers.length) ? '' : 'disabled'}>Forward</button>` : ''}${this.viewPodsIconButton(RESOURCE_KINDS[section], item)}</td>` : ''}</tr>
           `).join('')}</tbody>
         </table>
       </div>`;
@@ -1135,6 +1157,248 @@ export class KubernetesSessionPage extends HTMLElement {
   resourceRowAttrs(section, name, namespace, extraStyle = '') {
     const meta = RESOURCE_META[section] || {};
     return `class="kubernetes-resource-row" tabindex="0" role="button"${extraStyle ? ` style="${extraStyle}"` : ''} data-resource-kind="${escapeHtml(meta.kind || '')}" data-resource-name="${escapeHtml(name ?? '')}" data-resource-namespace="${escapeHtml(namespace || '')}" data-resource-apiversion="${escapeHtml(meta.apiVersion || '')}" aria-label="${t('k8s.row.viewDetailAria', { name: escapeHtml(name ?? '') })}"`;
+  }
+
+  // 多選：以 kind|namespace|name 作為一列的唯一鍵。
+  selectionRowKey(kind, namespace, name) {
+    return `${String(kind || '').toLowerCase()}|${namespace || ''}|${name || ''}`;
+  }
+
+  // 清空目前選取（切換 section 時呼叫）。
+  clearSelection() {
+    if (this.selectedRows.size) this.selectedRows.clear();
+  }
+
+  // 底部選取列：常駐於內容區底部，平時以 translateY 藏在畫面外，有勾選時加 .visible 滑出。
+  // 常駐是為了讓「滑出/滑入」有前後狀態可過渡（選取變動走增量 DOM 更新、不整頁重繪，見 enhanceSelectionColumns）。
+  renderSelectionBar() {
+    const count = this.selectedRows.size;
+    const hasHighRisk = [...this.selectedRows.values()].some(r => isHighRiskKubernetesKind(r.kind));
+    return `<div class="kubernetes-selection-bar${count ? ' visible' : ''} no-drag" role="region" aria-label="${t('k8s.select.deleteSelected')}">`
+      + `<div class="kubernetes-selection-bar-left">`
+      + `<span class="kubernetes-selection-count">${t('k8s.select.count', { count })}</span>`
+      + `<button type="button" id="kubernetesClearSelection" class="no-drag kubernetes-selection-clear">${renderKubernetesIcon('close', 14)}<span>${t('k8s.select.clearAria')}</span></button>`
+      + `<span class="kubernetes-selection-risk"${hasHighRisk ? '' : ' style="display:none"'}>${t('k8s.select.hasHighRisk')}</span>`
+      + `</div>`
+      + `<button type="button" id="kubernetesBulkDelete" class="no-drag kubernetes-danger-btn kubernetes-selection-delete">${renderKubernetesIcon('trash', 14)}<span>${t('k8s.select.deleteSelected')}</span></button>`
+      + `</div>`;
+  }
+
+  // 增量更新底部選取列（勾選變動時呼叫，不整頁重繪，讓滑出動畫成立）。
+  updateSelectionBar() {
+    const bar = this.querySelector('.kubernetes-selection-bar');
+    if (!bar) return;
+    const count = this.selectedRows.size;
+    bar.classList.toggle('visible', count > 0);
+    // 選取列滑出時，捲動容器底部同步縮進一個列高，確保橫向捲軸留在底部列上方、不被遮擋。
+    this.querySelector('.kubernetes-session-scrollbody')?.classList.toggle('has-selection-bar', count > 0);
+    const countEl = bar.querySelector('.kubernetes-selection-count');
+    if (countEl) countEl.textContent = t('k8s.select.count', { count });
+    const risk = bar.querySelector('.kubernetes-selection-risk');
+    if (risk) risk.style.display = [...this.selectedRows.values()].some(r => isHighRiskKubernetesKind(r.kind)) ? '' : 'none';
+  }
+
+  // 依目前列勾選框狀態重算某張表的全選/半選態。
+  updateSelectAllState(table) {
+    const all = table.querySelector('.kubernetes-select-all');
+    if (!all) return;
+    const boxes = [...table.querySelectorAll('tbody .kubernetes-select-row')];
+    const checked = boxes.filter(b => b.checked).length;
+    all.checked = boxes.length > 0 && checked === boxes.length;
+    all.indeterminate = checked > 0 && checked < boxes.length;
+  }
+
+  // 清空選取並同步 DOM（供清除鈕使用，走增量更新讓底部列滑入）。
+  clearSelectionUI() {
+    this.querySelectorAll('.kubernetes-select-row').forEach(cb => { cb.checked = false; });
+    this.querySelectorAll('.kubernetes-resource-row.kubernetes-row-selected').forEach(row => row.classList.remove('kubernetes-row-selected'));
+    this.querySelectorAll('.kubernetes-select-all').forEach(all => { all.checked = false; all.indeterminate = false; });
+    this.selectedRows.clear();
+    this.updateSelectionBar();
+  }
+
+  // 於每次 render 後（setupListeners 內）呼叫：在資源列表（.kubernetes-resource-table，
+  // Events 表為 .kubernetes-eventlist-table 故不受影響）表頭最左注入全選框、每列最左注入列勾選框，
+  // 並綁定事件。因每次 render 皆重建 innerHTML，重繪後再注入不會重複；勾選態依 this.selectedRows 還原。
+  enhanceSelectionColumns() {
+    this.querySelectorAll('.kubernetes-resource-table').forEach(table => {
+      const headRow = table.querySelector('thead > tr');
+      const bodyRows = [...table.querySelectorAll('tbody > tr.kubernetes-resource-row')];
+      if (!headRow || !bodyRows.length || headRow.querySelector('.kubernetes-select-th')) return;
+
+      const th = document.createElement('th');
+      th.className = 'kubernetes-select-th';
+      th.setAttribute('scope', 'col');
+      const selectAll = document.createElement('input');
+      selectAll.type = 'checkbox';
+      selectAll.className = 'kubernetes-select-all no-drag';
+      selectAll.setAttribute('aria-label', t('k8s.select.selectAllAria'));
+      th.appendChild(selectAll);
+      headRow.insertBefore(th, headRow.firstChild);
+
+      const metas = [];
+      bodyRows.forEach(row => {
+        const kind = row.dataset.resourceKind || '';
+        const name = row.dataset.resourceName || '';
+        const namespace = row.dataset.resourceNamespace || '';
+        const apiVersion = row.dataset.resourceApiversion || '';
+        if (!kind || !name) return;
+        const key = this.selectionRowKey(kind, namespace, name);
+        const meta = { kind, name, namespace, apiVersion };
+        const td = document.createElement('td');
+        td.className = 'kubernetes-select-td';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.className = 'kubernetes-select-row no-drag';
+        cb.checked = this.selectedRows.has(key);
+        cb.setAttribute('aria-label', t('k8s.select.selectRowAria', { name }));
+        td.appendChild(cb);
+        row.insertBefore(td, row.firstChild);
+        row.classList.toggle('kubernetes-row-selected', cb.checked);
+        metas.push({ key, meta, cb, row });
+
+        // 整格皆可點以放大判定範圍：點格內非勾選框處代為切換；一律阻止冒泡到列（列點擊會開 detail drawer）。
+        td.addEventListener('click', event => {
+          event.stopPropagation();
+          if (event.target !== cb) cb.click();
+        });
+        cb.addEventListener('click', event => event.stopPropagation());
+        // 增量更新（不整頁重繪）：更新選取集合、該列高亮、全選態、底部選取列（滑出/滑入動畫）。
+        cb.addEventListener('change', event => {
+          event.stopPropagation();
+          if (cb.checked) this.selectedRows.set(key, meta);
+          else this.selectedRows.delete(key);
+          row.classList.toggle('kubernetes-row-selected', cb.checked);
+          this.updateSelectAllState(table);
+          this.updateSelectionBar();
+        });
+      });
+
+      const selectedCount = metas.filter(m => this.selectedRows.has(m.key)).length;
+      selectAll.checked = metas.length > 0 && selectedCount === metas.length;
+      selectAll.indeterminate = selectedCount > 0 && selectedCount < metas.length;
+      selectAll.addEventListener('change', () => {
+        metas.forEach(m => {
+          m.cb.checked = selectAll.checked;
+          m.row.classList.toggle('kubernetes-row-selected', selectAll.checked);
+          if (selectAll.checked) this.selectedRows.set(m.key, m.meta);
+          else this.selectedRows.delete(m.key);
+        });
+        selectAll.indeterminate = false;
+        this.updateSelectionBar();
+      });
+    });
+  }
+
+  // 批量刪除流程：確認（含高風險資源時要求打字 delete）後呼叫 store，彙總 toast，失敗項保留勾選。
+  async handleBulkDelete() {
+    const targets = [...this.selectedRows.values()];
+    if (!targets.length) return;
+    const hasHighRisk = targets.some(r => isHighRiskKubernetesKind(r.kind));
+    const confirmed = await confirmDialog(
+      t('k8s.bulkDelete.message', { count: targets.length }),
+      {
+        title: t('k8s.bulkDelete.title'),
+        confirmText: t('k8s.select.deleteSelected'),
+        danger: true,
+        requireText: hasHighRisk ? 'delete' : '',
+        requireTextHint: hasHighRisk ? t('k8s.bulkDelete.highRiskHint', { text: 'delete' }) : ''
+      }
+    );
+    if (!confirmed) return;
+
+    let result;
+    try {
+      result = await kubernetesSessionStore.getState().batchDeleteResources(targets);
+    } catch (error) {
+      console.error('[Kubernetes][UI][BulkDelete] 批量刪除流程失敗', error);
+      return;
+    }
+    const okCount = result?.ok?.length || 0;
+    const failCount = result?.fail?.length || 0;
+    // 保留失敗項的勾選、移除成功項。
+    this.selectedRows.clear();
+    (result?.fail || []).forEach(r => {
+      const key = this.selectionRowKey(r.kind, r.namespace, r.name);
+      this.selectedRows.set(key, { kind: r.kind, name: r.name, namespace: r.namespace, apiVersion: r.apiVersion || '' });
+    });
+    if (failCount === 0) {
+      showToast(t('k8s.bulkDelete.doneAllOk', { count: okCount }), { type: 'success', title: t('k8s.toast.deleteTitle') });
+    } else {
+      showToast(t('k8s.bulkDelete.donePartial', { ok: okCount, fail: failCount }), { type: 'error', title: t('k8s.toast.deleteTitle') });
+    }
+    this.rerenderPreservingScroll();
+  }
+
+  // Deployment / StatefulSet 列尾「調整副本數」膠囊鈕；payload 帶目前 desiredReplicas 供步進器帶入。
+  scaleButton(kind, apiVersion, item) {
+    const payload = encodeURIComponent(JSON.stringify({
+      kind, name: item.name, namespace: item.namespace || '', apiVersion: apiVersion || '', desired: Number(item.desiredReplicas || 0)
+    }));
+    return `<button type="button" class="no-drag kubernetes-scale-btn" data-scale="${payload}" title="${t('k8s.scale.title')}" aria-label="${t('k8s.scale.title')}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18M7 8l5-5 5 5M7 16l5 5 5-5"/></svg><span>${t('k8s.scale.btn')}</span></button>`;
+  }
+
+  // 開啟副本數步進器對話框（append 到 body，不受元件重繪影響）。列尾鈕與 drawer 共用。
+  // resource: { kind, name, namespace, apiVersion, desired }
+  openScaleDialog(resource) {
+    if (!resource || !resource.name) return;
+    const kind = String(resource.kind || '').toLowerCase();
+    const current = Math.max(0, Math.floor(Number(resource.desired) || 0));
+    const fullId = `${kind}/${resource.namespace ? resource.namespace + '/' : ''}${resource.name}`;
+    const overlay = document.createElement('div');
+    overlay.className = 'kubernetes-scale-overlay';
+    overlay.setAttribute('role', 'presentation');
+    overlay.innerHTML = `
+      <div class="kubernetes-scale-dialog no-drag" role="dialog" aria-modal="true" aria-label="${t('k8s.scale.title')}">
+        <h2 class="kubernetes-scale-title">${t('k8s.scale.title')}</h2>
+        <p class="kubernetes-scale-res">${escapeHtml(fullId)}</p>
+        <div class="kubernetes-scale-stepper">
+          <button type="button" data-step="dec" aria-label="${t('k8s.scale.decAria')}">−</button>
+          <input type="text" inputmode="numeric" class="kubernetes-scale-input" value="${current}" aria-label="${t('k8s.scale.inputAria')}">
+          <button type="button" data-step="inc" aria-label="${t('k8s.scale.incAria')}">+</button>
+        </div>
+        <p class="kubernetes-scale-cur">${t('k8s.scale.current', { current })} <b class="kubernetes-scale-target">${current}</b></p>
+        <p class="kubernetes-scale-warn" hidden>${t('k8s.scale.zeroWarn')}</p>
+        <div class="kubernetes-scale-actions">
+          <button type="button" class="no-drag kubernetes-secondary-btn" data-scale-cancel>${t('common.cancel')}</button>
+          <button type="button" class="no-drag kubernetes-primary-btn" data-scale-apply>${t('k8s.scale.apply')}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    const input = overlay.querySelector('.kubernetes-scale-input');
+    const targetEl = overlay.querySelector('.kubernetes-scale-target');
+    const warn = overlay.querySelector('.kubernetes-scale-warn');
+    const applyBtn = overlay.querySelector('[data-scale-apply]');
+    const clamp = v => { v = parseInt(v, 10); if (!Number.isFinite(v) || v < 0) v = 0; if (v > 999) v = 999; return v; };
+    const refresh = () => {
+      const v = clamp(input.value); input.value = v; targetEl.textContent = v;
+      warn.hidden = v !== 0;
+      applyBtn.disabled = v === current;
+      applyBtn.classList.toggle('kubernetes-danger-btn', v === 0);
+      applyBtn.classList.toggle('kubernetes-primary-btn', v !== 0);
+    };
+    let keyHandler = null;
+    const close = () => { if (keyHandler) document.removeEventListener('keydown', keyHandler); overlay.remove(); };
+    keyHandler = e => { if (e.key === 'Escape') { e.preventDefault(); close(); } };
+    document.addEventListener('keydown', keyHandler);
+    overlay.addEventListener('mousedown', e => { if (e.target === overlay) close(); });
+    overlay.querySelector('[data-step="dec"]').addEventListener('click', () => { input.value = clamp(input.value) - 1; refresh(); });
+    overlay.querySelector('[data-step="inc"]').addEventListener('click', () => { input.value = clamp(input.value) + 1; refresh(); });
+    input.addEventListener('input', refresh);
+    overlay.querySelector('[data-scale-cancel]').addEventListener('click', close);
+    applyBtn.addEventListener('click', async () => {
+      const v = clamp(input.value);
+      if (v === current) return;
+      // 縮到 0 前再確認一次，避免誤停全部 Pod。
+      if (v === 0 && !(await confirmDialog(t('k8s.scale.zeroConfirmMsg', { id: fullId }), { title: t('k8s.scale.zeroConfirmTitle'), danger: true }))) return;
+      close();
+      kubernetesSessionStore.getState().scaleResource({
+        kind, name: resource.name, namespace: resource.namespace || '', apiVersion: resource.apiVersion || '', replicas: v
+      }).catch(error => console.error('[Kubernetes][UI][Scale] 調整副本數失敗', error));
+    });
+    refresh();
+    requestAnimationFrame(() => { try { input.focus(); input.select(); } catch (_) { /* noop */ } });
   }
 
   // 產生一列 namespace 儲存格內容：色點 + namespace 文字標籤。
@@ -1938,6 +2202,16 @@ export class KubernetesSessionPage extends HTMLElement {
     const kind = String(selected.kind || detail?.kind || '').toLowerCase();
     const isPod = kind === 'pod';
     const isService = kind === 'service';
+    // Deployment / StatefulSet：drawer 內提供 Scale 鈕（目前副本數取自 dashboard 快照）。
+    const isScalable = kind === 'deployment' || kind === 'statefulset';
+    let scaleBtnHtml = '';
+    if (isScalable) {
+      const dash = state.dashboard;
+      const arr = dash ? (kind === 'deployment' ? dash.deployments : dash.statefulSets) : null;
+      const found = Array.isArray(arr) ? arr.find(it => it.name === (selected.name || '') && (it.namespace || '') === (namespace || '')) : null;
+      const desired = Number((found && found.desiredReplicas) ?? detail?.desiredReplicas ?? 0);
+      scaleBtnHtml = this.scaleButton(kind, selected.apiVersion || detail?.apiVersion || 'apps/v1', { name: selected.name, namespace, desiredReplicas: desired });
+    }
     let body = '';
     if (state.detailLoading && !detail) {
       body = `<div class="kubernetes-drawer-state"><span class="kubernetes-spinner"></span><span>${t('k8s.detail.loading')}</span></div>`;
@@ -1951,20 +2225,22 @@ export class KubernetesSessionPage extends HTMLElement {
     return `
       <div class="kubernetes-detail-backdrop no-drag" data-close-detail="true"></div>
       <aside class="kubernetes-detail-drawer no-drag" role="dialog" aria-modal="true" aria-labelledby="kubernetesDetailTitle">
-        <header><div><h2 id="kubernetesDetailTitle">${escapeHtml(title)}</h2><p><span class="kubernetes-detail-kind">${escapeHtml(selected.kind || detail?.kind || t('k8s.resource.genericName'))}</span>${namespace ? ` ${t('k8s.detail.inNamespace', { namespace: escapeHtml(namespace) })}` : ''}</p></div><button type="button" class="kubernetes-drawer-close no-drag" aria-label="${t('k8s.detail.closeAria')}">${renderKubernetesIcon('close', 22)}</button></header>
+        <header><div><h2 id="kubernetesDetailTitle">${escapeHtml(title)}</h2><p><span class="kubernetes-detail-kind">${escapeHtml(selected.kind || detail?.kind || t('k8s.resource.genericName'))}</span>${namespace ? ` ${t('k8s.detail.inNamespace', { namespace: escapeHtml(namespace) })}` : ''}</p></div><div class="kubernetes-detail-header-actions">${scaleBtnHtml}<button type="button" class="kubernetes-drawer-close no-drag" aria-label="${t('k8s.detail.closeAria')}">${renderKubernetesIcon('close', 22)}</button></div></header>
         ${state.detailError && detail ? `<div class="kubernetes-session-error compact"><strong>${t('k8s.detail.refreshFailedSnapshot')}</strong><span>${escapeHtml(state.detailError)}</span></div>` : ''}
-        ${detail ? this.renderResourceDetailTabs(state.detailTab, isPod, isService) : ''}
+        ${detail ? this.renderResourceDetailTabs(state.detailTab, isPod, isService, Array.isArray(detail.containers) && detail.containers.some(c => (Array.isArray(c.env) && c.env.length) || (Array.isArray(c.envFrom) && c.envFrom.length))) : ''}
         <div class="kubernetes-detail-body"${detail ? ` id="k8s-detail-panel" role="tabpanel" aria-labelledby="k8s-detail-tab-${escapeHtml(state.detailTab || 'overview')}"` : ''}>${body}</div>
       </aside>`;
   }
 
-  renderResourceDetailTabs(activeTab = 'overview', isPod = false, isService = false) {
-    // 所有 kind 皆有 Overview / YAML / Delete；Pod 另保留 Logs / Forward；Service 另保留 Forward。
-    const tabs = isPod
-      ? [['overview', 'Overview'], ['yaml', 'YAML'], ['logs', 'Logs'], ['forward', 'Forward'], ['delete', 'Delete']]
-      : isService
-        ? [['overview', 'Overview'], ['yaml', 'YAML'], ['forward', 'Forward'], ['delete', 'Delete']]
-        : [['overview', 'Overview'], ['yaml', 'YAML'], ['delete', 'Delete']];
+  renderResourceDetailTabs(activeTab = 'overview', isPod = false, isService = false, hasEnv = false) {
+    // 所有 kind 皆有 Overview / YAML / Delete；有容器環境變數（Pod 或 workload 範本）時加 ENV；
+    // Pod 另有 Logs / Forward；Service 另有 Forward。
+    const tabs = [['overview', 'Overview']];
+    if (hasEnv) tabs.push(['env', 'ENV']);
+    tabs.push(['yaml', 'YAML']);
+    if (isPod) tabs.push(['logs', 'Logs']);
+    if (isPod || isService) tabs.push(['forward', 'Forward']);
+    tabs.push(['delete', 'Delete']);
     // 內容面板 id 固定為 k8s-detail-panel；各 tab id 為 k8s-detail-tab-${id}。
     // aria-controls 指向面板、aria-selected 標示 active；面板側於 renderDetailDrawer 補 aria-labelledby。
     return `<nav class="kubernetes-pod-detail-tabs" aria-label="${t('k8s.detail.tabsAria')}" role="tablist">${tabs.map(([id, label]) => `<button type="button" id="k8s-detail-tab-${id}" class="no-drag ${activeTab === id ? 'active' : ''} ${id === 'delete' ? 'danger' : ''}" data-detail-tab="${id}" role="tab" aria-selected="${activeTab === id}" aria-controls="k8s-detail-panel">${label}</button>`).join('')}</nav>`;
@@ -1975,6 +2251,8 @@ export class KubernetesSessionPage extends HTMLElement {
     const isPod = kind === 'pod';
     const isService = kind === 'service';
     switch (state.detailTab) {
+    case 'env':
+      return this.renderEnvTab(detail);
     case 'yaml':
       return this.renderDetailYAML(detail, selected, state);
     case 'logs':
@@ -1985,6 +2263,131 @@ export class KubernetesSessionPage extends HTMLElement {
       return this.renderResourceDelete(detail, selected, state);
     default:
       return this.renderDetailContent(detail, selected, state);
+    }
+  }
+
+  // 判斷單一 env 的類型徽章與（valueFrom 時的）來源參照。後端 Source 格式為「<Kind> <ref>」。
+  // 依 valueFrom 來源的第一個詞挑選圖示；Secret 不顯示明文值，僅顯示來源參照。
+  envRefIcon(kind) {
+    if (kind === 'Secret') return '<i class="ti ti-lock kubernetes-env-ref-icon k-secret" aria-hidden="true"></i>';
+    if (kind === 'ConfigMap') return '<i class="ti ti-file-text kubernetes-env-ref-icon k-cm" aria-hidden="true"></i>';
+    return '<i class="ti ti-tag kubernetes-env-ref-icon k-field" aria-hidden="true"></i>';
+  }
+
+  // ENV 頁籤：按容器分組，並依來源分區——「直接值」與「參照來源」各為一張條紋雙欄表。
+  renderEnvTab(detail) {
+    const containers = (Array.isArray(detail.containers) ? detail.containers : [])
+      .filter(c => (Array.isArray(c.env) && c.env.length) || (Array.isArray(c.envFrom) && c.envFrom.length));
+    if (!containers.length) return `<div class="kubernetes-resource-empty">${t('k8s.detail.noEnv')}</div>`;
+    const hasValue = entry => entry.value !== undefined && entry.value !== '';
+    const firstWord = src => {
+      const sp = src.indexOf(' ');
+      return sp > 0 ? src.slice(0, sp) : src;
+    };
+    return containers.map(container => {
+      const env = Array.isArray(container.env) ? container.env : [];
+      const envFrom = Array.isArray(container.envFrom) ? container.envFrom : [];
+      const direct = env.filter(hasValue);
+      const refs = env.filter(entry => !hasValue(entry));
+
+      const directRows = direct
+        .map(entry => `<div><dt>${escapeHtml(entry.name || '')}</dt><dd>${escapeHtml(entry.value)}</dd></div>`)
+        .join('');
+      const refRows = refs.map(entry => {
+        const source = String(entry.source || 'valueFrom');
+        return `<div><dt>${escapeHtml(entry.name || '')}</dt><dd class="kubernetes-env-ref">${this.envRefIcon(firstWord(source))}<span>${escapeHtml(source)}</span></dd></div>`;
+      }).join('');
+      const fromRows = envFrom.map(src => {
+        const source = String(src);
+        return `<div><dt>envFrom</dt><dd class="kubernetes-env-ref">${this.envRefIcon(firstWord(source))}<span>${escapeHtml(source)}</span></dd></div>`;
+      }).join('');
+
+      const directBlock = direct.length
+        ? `<div class="kubernetes-env-subhead"><i class="ti ti-equal" aria-hidden="true"></i>${t('k8s.detail.envDirect')}</div>`
+          + `<dl class="kubernetes-detail-fields kubernetes-detail-fields--striped">${directRows}</dl>`
+        : '';
+      const refBlock = (refs.length || envFrom.length)
+        ? `<div class="kubernetes-env-subhead"><i class="ti ti-link" aria-hidden="true"></i>${t('k8s.detail.envRefs')}</div>`
+          + `<dl class="kubernetes-detail-fields kubernetes-detail-fields--striped">${refRows}${fromRows}</dl>`
+        : '';
+
+      return `<section class="kubernetes-detail-section"><h3>${escapeHtml(container.name || '-')}</h3><div class="kubernetes-env-groups">${directBlock}${refBlock}</div></section>`;
+    }).join('');
+  }
+
+  // Secret 專屬：overview 顯示 Type 與 Data。data 值預設遮蔽，可即時取值複製 / 查看明文。
+  renderSecretSection(detail) {
+    if (String(detail.kind || '').toLowerCase() !== 'secret') return '';
+    const type = detail.secretType || '';
+    const keys = Array.isArray(detail.secretDataKeys) ? detail.secretDataKeys : [];
+    // 切換到不同 Secret 時清掉已揭露快取，避免跨資源殘留明文。
+    const resourceKey = `${detail.namespace || ''}/${detail.name || ''}`;
+    if (this.revealedSecretsFor !== resourceKey) {
+      this.revealedSecrets = {};
+      this.revealedSecretsFor = resourceKey;
+    }
+    const typeBlock = type
+      ? `<section class="kubernetes-detail-section"><h3 class="kubernetes-detail-heading"><i class="ti ti-shield-lock" aria-hidden="true"></i>Type</h3><div class="kubernetes-secret-type">${escapeHtml(type)}</div></section>`
+      : '';
+    if (!keys.length) return typeBlock;
+    const rows = keys.map(key => {
+      const revealed = Object.prototype.hasOwnProperty.call(this.revealedSecrets || {}, key);
+      const valueHtml = revealed
+        ? `<span class="kubernetes-secret-plaintext">${escapeHtml(this.revealedSecrets[key])}</span>`
+        : '••••••••';
+      const eyeIcon = revealed ? 'ti-eye-off' : 'ti-eye';
+      const eyeLabel = revealed ? t('k8s.detail.secretHide') : t('k8s.detail.secretReveal');
+      return `<div class="kubernetes-secret-row">
+        <div class="kubernetes-secret-row-head">
+          <code class="kubernetes-secret-key">${escapeHtml(key)}</code>
+          <div class="kubernetes-secret-actions">
+            <button type="button" class="kubernetes-secret-btn" data-secret-copy data-secret-key="${escapeHtml(key)}" aria-label="${t('k8s.detail.secretCopy')}" title="${t('k8s.detail.secretCopy')}"><i class="ti ti-copy" aria-hidden="true"></i></button>
+            <button type="button" class="kubernetes-secret-btn" data-secret-reveal data-secret-key="${escapeHtml(key)}" aria-label="${eyeLabel}" title="${eyeLabel}"><i class="ti ${eyeIcon}" aria-hidden="true"></i></button>
+          </div>
+        </div>
+        <div class="kubernetes-secret-value">${valueHtml}</div>
+      </div>`;
+    }).join('');
+    return `${typeBlock}<section class="kubernetes-detail-section"><h3 class="kubernetes-detail-heading"><i class="ti ti-key" aria-hidden="true"></i>Data</h3><div class="kubernetes-secret-data">${rows}</div></section>`;
+  }
+
+  // 取單一 Secret data key 明文（即時向後端要，不隨 detail 一併下傳）。
+  async fetchSecretValue(key) {
+    const detail = kubernetesSessionStore.getState().resourceDetail || {};
+    const result = await KubernetesAPI.getSecretValue({
+      namespace: detail.namespace || '',
+      name: detail.name || '',
+      key
+    });
+    return result?.value ?? '';
+  }
+
+  async toggleSecretReveal(key) {
+    if (!this.revealedSecrets) this.revealedSecrets = {};
+    if (Object.prototype.hasOwnProperty.call(this.revealedSecrets, key)) {
+      delete this.revealedSecrets[key];
+      this.render();
+      this.setupListeners();
+      return;
+    }
+    try {
+      this.revealedSecrets[key] = await this.fetchSecretValue(key);
+      this.render();
+      this.setupListeners();
+    } catch (error) {
+      showToast(t('k8s.detail.secretRevealFailed', { error: error.message || error }), { type: 'error' });
+    }
+  }
+
+  async copySecretValue(key) {
+    try {
+      const value = (this.revealedSecrets && Object.prototype.hasOwnProperty.call(this.revealedSecrets, key))
+        ? this.revealedSecrets[key]
+        : await this.fetchSecretValue(key);
+      await navigator.clipboard?.writeText(value);
+      showToast(t('k8s.detail.secretCopied'), { type: 'success' });
+    } catch (error) {
+      showToast(t('k8s.detail.secretRevealFailed', { error: error.message || error }), { type: 'error' });
     }
   }
 
@@ -2011,14 +2414,17 @@ export class KubernetesSessionPage extends HTMLElement {
     return `
       ${isPod ? this.renderPodMetricCards(detail, selected) : ''}
       ${this.renderMetadataSection(overviewEntries)}
+      ${this.renderSecretSection(detail)}
       ${this.renderDashboardSummarySection(kind, selected, state)}
       ${this.renderRelatedPodsAction(kind, selected, state)}
       ${Array.isArray(detail.owners) && detail.owners.length ? `<section class="kubernetes-detail-section"><h3>Owned By</h3><div class="kubernetes-detail-owners">${detail.owners.map(owner => `<div><span>${escapeHtml(owner.kind || '-')}</span><strong>${escapeHtml(owner.name || '-')}</strong>${owner.controller ? '<small>controller</small>' : ''}</div>`).join('')}</div></section>` : ''}
       ${this.renderLabelChipsSection(labels)}
       ${conditions.length ? `<section class="kubernetes-detail-section"><h3>Conditions</h3><div class="kubernetes-detail-conditions">${conditions.map(condition => `<div class="kubernetes-condition-card" style="border-left-color:${statusToneColor(condition.status)}"><div class="kubernetes-condition-head"><strong>${escapeHtml(condition.type || '-')}</strong>${statusBadge(condition.status)}</div>${condition.reason ? `<span>${escapeHtml(condition.reason)}</span>` : ''}${condition.message ? `<p>${escapeHtml(condition.message)}</p>` : ''}</div>`).join('')}</div></section>` : ''}
-      ${containers.length ? `<section class="kubernetes-detail-section"><h3>Containers</h3><div class="kubernetes-detail-containers">${containers.map(container => `<div><strong>${escapeHtml(container.name || '-')}</strong><span>${escapeHtml(container.image || '')}</span>${container.ready !== undefined ? statusBadge(container.ready ? 'Ready' : 'Not Ready') : ''}<small>${escapeHtml(container.state || container.status || '')}</small></div>`).join('')}</div></section>` : ''}
+      ${containers.length ? `<section class="kubernetes-detail-section"><h3>Containers</h3><div class="kubernetes-detail-containers">${containers.map(container => `<div><strong>${escapeHtml(container.name || '-')}</strong><span>${escapeHtml(container.image || '')}</span>${container.state ? `${statusBadge(container.ready ? 'Ready' : 'Not Ready')}<small>${escapeHtml(container.state)}</small>` : ''}</div>`).join('')}</div></section>` : ''}
       ${detail.eventsError ? `<div class="kubernetes-session-error compact" role="status"><strong>${t('k8s.detail.relatedEventsError')}</strong><span>${escapeHtml(detail.eventsError)}</span></div>` : ''}
-      ${events.length ? `<section class="kubernetes-detail-section"><h3>Related Events</h3>${this.renderEventsTable(events, { interactive: false })}</section>` : ''}`;
+      ${events.length
+        ? `<section class="kubernetes-detail-section"><h3>Related Events</h3>${this.renderEventsTable(events, { interactive: false })}</section>`
+        : (state?.eventsLoading ? `<section class="kubernetes-detail-section"><h3>Related Events</h3><div class="kubernetes-detail-events-loading"><span class="kubernetes-spinner-mini" aria-hidden="true"></span><span>${t('k8s.detail.eventsLoading')}</span></div></section>` : '')}`;
   }
 
   // Pod 專屬：頂部三張狀態卡（狀態 + 語意色點 / Age / 重啟數）。
@@ -2583,10 +2989,11 @@ export class KubernetesSessionPage extends HTMLElement {
         </aside>
         <main class="kubernetes-session-content">
           ${state.podActionView ? '' : `<header class="kubernetes-session-header"><div><span>${t('k8s.session.label')}</span><h1>${escapeHtml(sectionTitle)}</h1><p>${escapeHtml(cluster.server || cluster.clusterName || cluster.contextName)}${dashboard?.serverVersion ? ` · ${escapeHtml(dashboard.serverVersion)}` : ''}</p></div><div class="kubernetes-session-actions"><button type="button" id="openKubernetesCreateResource" class="no-drag kubernetes-primary-btn">${t('k8s.session.createResource')}</button></div></header>`}
-          <div class="kubernetes-session-scrollbody">
+          <div class="kubernetes-session-scrollbody${!state.podActionView && this.selectedRows.size ? ' has-selection-bar' : ''}">
           ${state.dashboardError && dashboard ? `<div class="kubernetes-session-error compact" role="status"><strong>${dashboardErrorTitle(state.dashboardError, true)}</strong><span>${escapeHtml(state.dashboardError)}</span></div>` : ''}
           ${content}
           </div>
+          ${state.podActionView ? '' : this.renderSelectionBar()}
         </main>
         ${this.renderDetailDrawer(state)}
         ${this.renderCreateDrawer(state)}
@@ -2770,6 +3177,8 @@ export class KubernetesSessionPage extends HTMLElement {
       button.addEventListener('click', () => {
         // 手動切換區段一律清除「檢視關聯 Pods」的 label 過濾（含點回 Pods 本身），避免殘留。
         this.podLabelFilter = null;
+        // 切換 section 清空多選（避免跨資源類型誤刪）。
+        this.clearSelection();
         kubernetesSessionStore.getState().selectSection(button.dataset.section);
       });
     });
@@ -2806,6 +3215,19 @@ export class KubernetesSessionPage extends HTMLElement {
         open();
       });
     });
+    // 多選：注入勾選欄並綁定；工具列選取區的清除 / 批量刪除鍵。
+    this.enhanceSelectionColumns();
+    this.querySelector('#kubernetesClearSelection')?.addEventListener('click', () => {
+      this.clearSelectionUI();
+    });
+    this.querySelector('#kubernetesBulkDelete')?.addEventListener('click', () => {
+      this.handleBulkDelete().catch(error => console.error('[Kubernetes][UI][BulkDelete] 失敗', error));
+    });
+    // 調整副本數：列尾 / drawer 的 Scale 鈕 → 開步進器對話框（stopPropagation 避免開 detail drawer）。
+    this.querySelectorAll('[data-scale]').forEach(btn => btn.addEventListener('click', event => {
+      event.stopPropagation();
+      try { this.openScaleDialog(JSON.parse(decodeURIComponent(btn.dataset.scale))); } catch (_) { /* noop */ }
+    }));
     // Detail drawer 關閉鈕 / backdrop：走未存變更守衛（YAML 編輯中有變更時先確認）。
     this.querySelector('.kubernetes-detail-drawer .kubernetes-drawer-close')?.addEventListener('click', () => this.guardedCloseDetail());
     this.querySelector('[data-close-detail="true"]')?.addEventListener('click', () => this.guardedCloseDetail());
@@ -3071,6 +3493,13 @@ export class KubernetesSessionPage extends HTMLElement {
     const pod = state.selectedResource || {};
     this.shellTerminal = new Terminal({ cursorBlink: true, fontSize: 12, fontFamily: 'SFMono-Regular, Consolas, Liberation Mono, monospace' });
     this.shellTerminal.open(container);
+    // 以 WebGL/Canvas 取代預設 DOM 渲染器，避免 Retina + UI 縮放分數 zoom 下長行逐字漂移跑版
+    // （與主終端機同一修正）。WebGL 不可用時退回 Canvas。
+    try {
+      this.shellTerminal.loadAddon(new WebglAddon());
+    } catch (_) {
+      try { this.shellTerminal.loadAddon(new CanvasAddon()); } catch (__) { /* 退回預設 DOM 渲染器 */ }
+    }
     this.shellTerminal.writeln(t('k8s.shell.connecting'));
     try {
       this.shellSession = await KubernetesAPI.startPodShell({ namespace: pod.namespace, podName: pod.name, container: state.podActionView.container, cols: this.shellTerminal.cols, rows: this.shellTerminal.rows });

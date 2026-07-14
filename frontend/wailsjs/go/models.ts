@@ -778,6 +778,22 @@ export namespace dto {
 	        this.namespace = source["namespace"];
 	    }
 	}
+	export class KubernetesEnvVarSummary {
+	    name: string;
+	    value: string;
+	    source: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new KubernetesEnvVarSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.value = source["value"];
+	        this.source = source["source"];
+	    }
+	}
 	export class KubernetesContainerPort {
 	    name: string;
 	    port: number;
@@ -801,6 +817,8 @@ export namespace dto {
 	    restartCount: number;
 	    state: string;
 	    ports: KubernetesContainerPort[];
+	    env: KubernetesEnvVarSummary[];
+	    envFrom: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new KubernetesContainerDetail(source);
@@ -814,6 +832,8 @@ export namespace dto {
 	        this.restartCount = source["restartCount"];
 	        this.state = source["state"];
 	        this.ports = this.convertValues(source["ports"], KubernetesContainerPort);
+	        this.env = this.convertValues(source["env"], KubernetesEnvVarSummary);
+	        this.envFrom = source["envFrom"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -1584,6 +1604,7 @@ export namespace dto {
 	
 	
 	
+	
 	export class KubernetesKeyValue {
 	    key: string;
 	    value: string;
@@ -1896,6 +1917,8 @@ export namespace dto {
 	    containers: KubernetesContainerDetail[];
 	    events: KubernetesEventSummary[];
 	    eventsError: string;
+	    secretType?: string;
+	    secretDataKeys?: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new KubernetesResourceDetail(source);
@@ -1918,6 +1941,8 @@ export namespace dto {
 	        this.containers = this.convertValues(source["containers"], KubernetesContainerDetail);
 	        this.events = this.convertValues(source["events"], KubernetesEventSummary);
 	        this.eventsError = source["eventsError"];
+	        this.secretType = source["secretType"];
+	        this.secretDataKeys = source["secretDataKeys"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -1956,7 +1981,77 @@ export namespace dto {
 	        this.apiVersion = source["apiVersion"];
 	    }
 	}
+	export class KubernetesResourceEvents {
+	    events: KubernetesEventSummary[];
+	    eventsError: string;
 	
+	    static createFrom(source: any = {}) {
+	        return new KubernetesResourceEvents(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.events = this.convertValues(source["events"], KubernetesEventSummary);
+	        this.eventsError = source["eventsError"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class KubernetesResourceEventsRequest {
+	    kind: string;
+	    name: string;
+	    namespace: string;
+	    uid: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new KubernetesResourceEventsRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.name = source["name"];
+	        this.namespace = source["namespace"];
+	        this.uid = source["uid"];
+	    }
+	}
+	
+	export class KubernetesResourceScaleRequest {
+	    kind: string;
+	    name: string;
+	    namespace: string;
+	    apiVersion: string;
+	    replicas: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new KubernetesResourceScaleRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.name = source["name"];
+	        this.namespace = source["namespace"];
+	        this.apiVersion = source["apiVersion"];
+	        this.replicas = source["replicas"];
+	    }
+	}
 	export class KubernetesResourceUpdateRequest {
 	    namespace: string;
 	    yaml: string;
@@ -1974,6 +2069,36 @@ export namespace dto {
 	
 	
 	
+	export class KubernetesSecretValue {
+	    key: string;
+	    value: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new KubernetesSecretValue(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.value = source["value"];
+	    }
+	}
+	export class KubernetesSecretValueRequest {
+	    namespace: string;
+	    name: string;
+	    key: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new KubernetesSecretValueRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.namespace = source["namespace"];
+	        this.name = source["name"];
+	        this.key = source["key"];
+	    }
+	}
 	
 	export class KubernetesServicePortForwardListRequest {
 	    namespace: string;

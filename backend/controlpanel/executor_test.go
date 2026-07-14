@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"github.com/jie0214/TermiX/shared/dto"
+	"runtime"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -36,9 +37,16 @@ func TestExecuteLocalCommandRejectsUnexpandedOpenVariable(t *testing.T) {
 }
 
 func TestExecuteLocalCommandPassesRustdeskURLToOpen(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows 透過 cmd /c start 開啟，引數結構不同，不套用此偽指令驗證")
+	}
+	opener := "open"
+	if runtime.GOOS == "linux" {
+		opener = "xdg-open"
+	}
 	binDir := t.TempDir()
 	outputPath := filepath.Join(t.TempDir(), "open-args.txt")
-	openPath := filepath.Join(binDir, "open")
+	openPath := filepath.Join(binDir, opener)
 	script := "#!/bin/sh\nprintf '%s' \"$1\" > " + shellQuote(outputPath) + "\n"
 	if err := os.WriteFile(openPath, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
@@ -93,6 +101,9 @@ func TestExecuteLocalCommandRejectsEmptyCommand(t *testing.T) {
 }
 
 func TestExecuteLocalCommandPassesEnvironment(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("此案例使用 bash 語法（printf/$VAR），不適用 Windows 的 cmd /c")
+	}
 	t.Setenv(unsafeLocalCommandEnv, "1")
 
 	result := NewExecutor().ExecuteLocalCommand("printf %s \"$TERMIX_TEST_ID\"", map[string]string{

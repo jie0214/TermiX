@@ -13,6 +13,8 @@ import {
 import { confirmDialog } from '../../components/feedback/confirmDialog';
 import { themeStore } from '../../stores/ThemeStore';
 import { Terminal } from '@xterm/xterm';
+import { WebglAddon } from '@xterm/addon-webgl';
+import { CanvasAddon } from '@xterm/addon-canvas';
 import { t } from '../../i18n/index.ts';
 import { matchShortcut, resolveShortcuts, detectPlatform } from '../../domain/shortcuts.ts';
 
@@ -220,6 +222,32 @@ export class TerminalPage extends HTMLElement {
 
   getTerminalTextSize() {
     return themeStore.getState().terminalTextSize || 12.5;
+  }
+
+  /**
+   * 為 xterm 實例掛上 WebGL 渲染器，失敗（環境不支援）或執行中 context 遺失時退回 Canvas 渲染器。
+   * 兩者皆以點陣圖精確繪製每個 cell，解決 DOM 渲染器在分數 zoom + 高 DPR 下的逐字漂移。
+   */
+  attachRenderer(term) {
+    try {
+      const webgl = new WebglAddon();
+      // GPU 重置等情況會遺失 WebGL context，此時卸載並退回 Canvas，避免終端變空白。
+      webgl.onContextLoss(() => {
+        try { webgl.dispose(); } catch (_) { /* 已卸載則忽略 */ }
+        this.attachCanvasRenderer(term);
+      });
+      term.loadAddon(webgl);
+    } catch (_) {
+      this.attachCanvasRenderer(term);
+    }
+  }
+
+  attachCanvasRenderer(term) {
+    try {
+      term.loadAddon(new CanvasAddon());
+    } catch (_) {
+      // 連 Canvas 都無法載入時，維持預設 DOM 渲染器（至少可用）。
+    }
   }
 
   /**
@@ -745,6 +773,11 @@ export class TerminalPage extends HTMLElement {
       // 首次掛載：清空容器後掛載 xterm
       container.replaceChildren();
       term.open(container);
+      // 以 WebGL/Canvas 渲染器取代預設 DOM 渲染器：DOM 渲染器在 Retina（DPR>1）搭配
+      // UI 縮放的分數 zoom（.xterm-pane-container 的 1/scale）下，逐字的 sub-pixel 定位
+      // 會累積偏移，長行會跑版／字元溢出。Canvas/WebGL 以整張點陣圖精確繪製，zoom 只等比
+      // 縮放整體，不再逐字漂移。
+      this.attachRenderer(term);
       this.applyTextareaDefense(container);
       this.setManagedTimeout(() => {
         this.resizeXtermToContainer(sessionKey);

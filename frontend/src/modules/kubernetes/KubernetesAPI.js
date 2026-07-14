@@ -103,6 +103,16 @@ export const KubernetesAPI = {
   },
 
   /** @param {unknown} request */
+  getResourceEvents(request) {
+    return callApp('GetKubernetesResourceEvents', request);
+  },
+
+  /** @param {unknown} request */
+  getSecretValue(request) {
+    return callApp('GetKubernetesSecretValue', request);
+  },
+
+  /** @param {unknown} request */
   getPodLogs(request) {
     return callApp('GetKubernetesPodLogs', request);
   },
@@ -140,6 +150,11 @@ export const KubernetesAPI = {
   /** @param {unknown} request */
   updateResource(request) {
     return callApp('UpdateKubernetesResource', request);
+  },
+
+  /** @param {unknown} request */
+  scaleResource(request) {
+    return callApp('ScaleKubernetesResource', request);
   },
 
   /** @param {unknown} request */

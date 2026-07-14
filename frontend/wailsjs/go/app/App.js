@@ -182,6 +182,14 @@ export function GetKubernetesResourceDetail(arg1) {
   return window['go']['app']['App']['GetKubernetesResourceDetail'](arg1);
 }
 
+export function GetKubernetesResourceEvents(arg1) {
+  return window['go']['app']['App']['GetKubernetesResourceEvents'](arg1);
+}
+
+export function GetKubernetesSecretValue(arg1) {
+  return window['go']['app']['App']['GetKubernetesSecretValue'](arg1);
+}
+
 export function ImportHostsBackup(arg1, arg2) {
   return window['go']['app']['App']['ImportHostsBackup'](arg1, arg2);
 }
@@ -292,6 +300,10 @@ export function SaveKubernetesPodLogs(arg1, arg2) {
 
 export function SaveKubernetesResourceYAML(arg1, arg2) {
   return window['go']['app']['App']['SaveKubernetesResourceYAML'](arg1, arg2);
+}
+
+export function ScaleKubernetesResource(arg1) {
+  return window['go']['app']['App']['ScaleKubernetesResource'](arg1);
 }
 
 export function SelectFile(arg1) {

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"github.com/jie0214/TermiX/shared/dto"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -40,7 +41,7 @@ func (e *Executor) ExecuteLocalCommand(command string, env map[string]string) dt
 		if err := validateOpenTarget(arg); err != nil {
 			return dto.OperationResult{Success: false, Error: err.Error()}
 		}
-		cmd = exec.Command("open", arg)
+		cmd = openCommand(arg)
 		timeout = openLocalCommandTimeout
 	} else {
 		if os.Getenv(unsafeLocalCommandEnv) != "1" {
@@ -49,7 +50,7 @@ func (e *Executor) ExecuteLocalCommand(command string, env map[string]string) dt
 				Error:   "基於安全限制，TermiX 預設只允許 FunctionBox 執行本機 open 指令。若確定需要執行任意本機 shell 指令，請以 TERMIX_ALLOW_UNSAFE_LOCAL_COMMANDS=1 啟動應用程式。",
 			}
 		}
-		cmd = exec.Command("/bin/bash", "-lc", command)
+		cmd = shellCommand(command)
 	}
 	cmd.Env = os.Environ()
 	for key, value := range env {
@@ -86,6 +87,28 @@ func (e *Executor) ExecuteLocalCommand(command string, env map[string]string) dt
 		}
 		return dto.OperationResult{Success: false, Error: "本機指令執行逾時，程序已中止。"}
 	}
+}
+
+// openCommand 依作業系統回傳開啟 URL 的指令。FunctionBox 的「open」是邏輯動詞，
+// 各平台轉譯為對應開啟器：macOS 用 open、Windows 用 cmd /c start、其餘用 xdg-open。
+func openCommand(target string) *exec.Cmd {
+	switch runtime.GOOS {
+	case "windows":
+		// start 會把第一個引號字串當成視窗標題，故補一個空標題再帶 URL。
+		return exec.Command("cmd", "/c", "start", "", target)
+	case "darwin":
+		return exec.Command("open", target)
+	default:
+		return exec.Command("xdg-open", target)
+	}
+}
+
+// shellCommand 依作業系統回傳執行任意指令的 shell。Windows 沒有 /bin/bash，改用 cmd /c。
+func shellCommand(command string) *exec.Cmd {
+	if runtime.GOOS == "windows" {
+		return exec.Command("cmd", "/c", command)
+	}
+	return exec.Command("/bin/bash", "-lc", command)
 }
 
 func validateOpenTarget(target string) error {

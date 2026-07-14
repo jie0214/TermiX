@@ -1,4 +1,5 @@
 import { hostStore } from './HostStore';
+import { themeStore } from '../../stores/ThemeStore';
 import { HostAPI } from './HostAPI';
 import { KeychainAPI } from './KeychainAPI';
 import { terminalStore } from '../terminal/TerminalStore';
@@ -2201,7 +2202,16 @@ export class HostListPage extends HTMLElement {
     this.innerHTML = `
       <div id="hostVaultPanel" class="host-vault-panel" style="display: flex; flex: 1; height: 100%; min-height: 0;">
         <!-- 第一欄：左側選單 -->
-        <div class="vault-sub-sidebar">${sidebarHtml}</div>
+        <div class="vault-sub-sidebar">
+          ${sidebarHtml}
+          <div class="vault-menu-item vault-settings-item no-drag" data-action="open-settings" role="button" tabindex="0" title="${t('app.settings.title')}" style="margin-top: auto;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+            <span>${t('app.settings.title')}</span>
+          </div>
+        </div>
 
         <!-- 第二欄：中央 Vault 主面板 -->
         <div class="vault-main-board ${selectedTab === 'kubernetes' ? 'kubernetes-host-board' : ''}" style="flex: 1; display: flex; flex-direction: column; min-width: 0; padding: ${selectedTab === 'kubernetes' ? '0' : '20px'}; overflow-y: ${selectedTab === 'kubernetes' ? 'hidden' : 'auto'};">
@@ -2464,7 +2474,7 @@ export class HostListPage extends HTMLElement {
     const selectedTab = state.selectedTab;
 
     // 1. 左側子選單點擊切換
-    this.querySelectorAll('.vault-menu-item').forEach(item => {
+    this.querySelectorAll('.vault-menu-item[data-tab]').forEach(item => {
       const tabId = item.getAttribute('data-tab');
       item.addEventListener('click', () => {
         this.selectedGroup = null;
@@ -2485,6 +2495,20 @@ export class HostListPage extends HTMLElement {
         }
       });
     });
+
+    // 1b. 側欄底部設定按鈕：開啟全域設定 Modal（複用 App 訂閱的 themeStore 狀態）
+    const settingsBtn = this.querySelector('.vault-settings-item');
+    if (settingsBtn) {
+      settingsBtn.addEventListener('click', () => {
+        themeStore.getState().setSettingsModalOpen(true);
+      });
+      settingsBtn.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+          e.preventDefault();
+          settingsBtn.click();
+        }
+      });
+    }
 
     // 2. 點選群組資料夾進入（統一處理進入與編輯，以提升相容性與阻斷冒泡）
     this.querySelectorAll('.group-folder').forEach(item => {

@@ -58,8 +58,16 @@ func Test假KubernetesAPIServer資源詳情與PodLogs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResourceDetail() error = %v", err)
 	}
-	if detail.Name != "api" || len(detail.Events) != 1 || detail.Events[0].Reason != "Scheduled" {
+	if detail.Name != "api" {
 		t.Fatalf("ResourceDetail() = %+v", detail)
+	}
+	// events 已從 detail 拆出，改由 ResourceEvents 獨立查詢。
+	events, err := service.ResourceEvents(context.Background(), dto.KubernetesResourceEventsRequest{Kind: "pod", Name: "api", Namespace: "default", UID: podUID})
+	if err != nil {
+		t.Fatalf("ResourceEvents() error = %v", err)
+	}
+	if len(events.Events) != 1 || events.Events[0].Reason != "Scheduled" {
+		t.Fatalf("ResourceEvents() = %+v", events)
 	}
 	if receivedEventSelector != "involvedObject.uid="+podUID {
 		t.Fatalf("Events fieldSelector = %q", receivedEventSelector)

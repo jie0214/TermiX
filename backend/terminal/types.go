@@ -3,9 +3,9 @@ package terminal
 import (
 	"context"
 	"io"
-	"os/exec"
 	"sync"
 
+	pty "github.com/aymanbagabas/go-pty"
 	termixssh "github.com/jie0214/TermiX/backend/ssh"
 
 	cryptossh "golang.org/x/crypto/ssh"
@@ -39,7 +39,7 @@ type session struct {
 	key          string
 	client       *cryptossh.Client
 	session      *cryptossh.Session
-	cmd          *exec.Cmd
+	cmd          *pty.Cmd
 	stdin        io.WriteCloser
 	output       chan string
 	closed       chan struct{}

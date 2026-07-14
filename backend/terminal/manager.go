@@ -2,7 +2,7 @@ package terminal
 
 import (
 	"fmt"
-	"github.com/creack/pty"
+	pty "github.com/aymanbagabas/go-pty"
 	"io"
 	"os"
 	"os/exec"
@@ -11,6 +11,7 @@ import (
 	termixssh "github.com/jie0214/TermiX/backend/ssh"
 	"github.com/jie0214/TermiX/shared/dto"
 	"github.com/jie0214/TermiX/shared/events"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -36,12 +37,25 @@ func (m *Manager) Connect(config dto.SSHConfig) dto.OperationResult {
 	}
 }
 
-const defaultLocalTerminalPath = "/bin/zsh"
+// defaultLocalTerminalPath 依作業系統回傳預設本機終端機路徑。Windows 沒有 /bin/zsh，
+// 需改用 cmd.exe（COMSPEC 通常指向它，找不到時退回標準路徑）。
+func defaultLocalTerminalPath() string {
+	if runtime.GOOS == "windows" {
+		if comspec := os.Getenv("COMSPEC"); comspec != "" {
+			return comspec
+		}
+		return `C:\Windows\System32\cmd.exe`
+	}
+	return "/bin/zsh"
+}
 
 func resolveLocalTerminalPath(value string) (string, error) {
 	path := strings.TrimSpace(value)
 	if path == "" {
-		path = defaultLocalTerminalPath
+		path = defaultLocalTerminalPath()
+	}
+	if runtime.GOOS == "windows" {
+		return resolveWindowsTerminalPath(path)
 	}
 	if !filepath.IsAbs(path) {
 		return "", fmt.Errorf("Local Terminal Path 必須是絕對路徑")
@@ -59,27 +73,60 @@ func resolveLocalTerminalPath(value string) (string, error) {
 	return path, nil
 }
 
-func localTerminalCommand(value string) (*exec.Cmd, error) {
+// resolveWindowsTerminalPath 解析 Windows 的終端機路徑。Windows 沒有 Unix 執行權限位
+// （0o111 檢查在此必然失敗），且使用者常以「powershell.exe」這類 PATH 上的名稱設定，
+// 故允許非絕對路徑並透過 PATH 解析，且不檢查執行權限位。
+func resolveWindowsTerminalPath(path string) (string, error) {
+	if !filepath.IsAbs(path) {
+		resolved, err := exec.LookPath(path)
+		if err != nil {
+			return "", fmt.Errorf("Local Terminal Path 無法在 PATH 中找到：%s", path)
+		}
+		path = resolved
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", fmt.Errorf("Local Terminal Path 不存在或無法存取")
+	}
+	if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("Local Terminal Path 必須指向一般檔案")
+	}
+	return path, nil
+}
+
+// localTerminalCommand 解析終端機路徑並回傳啟動所需的路徑與參數。
+// Unix 以登入 shell（-l）啟動；Windows 的 cmd.exe / powershell.exe 不使用該參數。
+func localTerminalCommand(value string) (string, []string, error) {
 	path, err := resolveLocalTerminalPath(value)
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
-	return exec.Command(path, "-l"), nil
+	if runtime.GOOS == "windows" {
+		return path, nil, nil
+	}
+	return path, []string{"-l"}, nil
 }
 
 func (m *Manager) StartLocal(shellPath string) dto.OperationResult {
 	key := "local|" + strconv.FormatInt(time.Now().UnixNano(), 10)
 
-	cmd, err := localTerminalCommand(shellPath)
+	path, args, err := localTerminalCommand(shellPath)
 	if err != nil {
 		return failure(err)
 	}
 
+	// go-pty 為跨平台 PTY：Unix 走傳統 pty，Windows 走 ConPTY，取代不支援 Windows 的 creack/pty。
+	ptmx, err := pty.New()
+	if err != nil {
+		return failure(err)
+	}
+
+	cmd := ptmx.Command(path, args...)
 	// 設定 TTY 環境，讓使用者選擇的 Shell 維持一致的終端機行為。
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
 
-	f, err := pty.Start(cmd)
-	if err != nil {
+	if err := cmd.Start(); err != nil {
+		_ = ptmx.Close()
 		return failure(err)
 	}
 
@@ -87,7 +134,7 @@ func (m *Manager) StartLocal(shellPath string) dto.OperationResult {
 	terminal := &session{
 		key:           key,
 		cmd:           cmd,
-		stdin:         f,
+		stdin:         ptmx,
 		output:        make(chan string, 512),
 		closed:        make(chan struct{}),
 		isLocal:       true,
@@ -101,7 +148,7 @@ func (m *Manager) StartLocal(shellPath string) dto.OperationResult {
 	m.mu.Unlock()
 
 	// 啟動 Goroutine 實時讀取 PTY 虛擬終端輸出
-	go terminal.readPipe(f)
+	go terminal.readPipe(ptmx)
 
 	go func() {
 		_ = cmd.Wait()
@@ -296,12 +343,8 @@ func (m *Manager) Resize(sessionKey string, cols int, rows int) dto.OperationRes
 	}
 
 	if t.isLocal {
-		if f, ok := t.stdin.(*os.File); ok {
-			err := pty.Setsize(f, &pty.Winsize{
-				Rows: uint16(rows),
-				Cols: uint16(cols),
-			})
-			if err != nil {
+		if p, ok := t.stdin.(pty.Pty); ok {
+			if err := p.Resize(cols, rows); err != nil {
 				return dto.OperationResult{Success: false, Error: "無法調整本地 PTY 大小: " + err.Error()}
 			}
 		}

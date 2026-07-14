@@ -1,13 +1,15 @@
 import { createStore } from 'zustand/vanilla';
 import { HostAPI } from '../modules/hostvault/HostAPI';
 import { LOCALES, DEFAULT_LOCALE, setActiveLocale } from '../i18n/index.ts';
-import { normalizeShortcutMap } from '../domain/shortcuts.ts';
+import { normalizeShortcutMap, isWindows } from '../domain/shortcuts.ts';
 
 const GLOBAL_SETTINGS_KEY = 'termix-global-settings';
+// Windows 無 /bin/zsh，預設改用 powershell.exe（後端會透過 PATH 解析為絕對路徑）。
+const DEFAULT_LOCAL_TERMINAL_PATH = isWindows() ? 'powershell.exe' : '/bin/zsh';
 const DEFAULT_SETTINGS = {
   theme: 'dark',
   terminalTextSize: 12.5,
-  localTerminalPath: '/bin/zsh',
+  localTerminalPath: DEFAULT_LOCAL_TERMINAL_PATH,
   locale: DEFAULT_LOCALE,
   uiScale: 1,
   kubeconfigPath: '',

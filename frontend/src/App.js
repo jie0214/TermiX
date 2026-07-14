@@ -43,7 +43,7 @@ import { confirmDialog } from './components/feedback/confirmDialog';
 import { getControlPanelDropPosition, getControlPanelThemeStyle, reorderControlPanelComponents } from './modules/controlpanel/ControlPanelLayout';
 import { themeStore, UI_SCALE_OPTIONS } from './stores/ThemeStore';
 import { t } from './i18n/index.ts';
-import { matchShortcut, resolveShortcuts, detectPlatform, eventToBinding, bindingToTokens, SHORTCUT_ACTIONS, TAB_INDEX_ACTION_ID } from './domain/shortcuts.ts';
+import { matchShortcut, resolveShortcuts, detectPlatform, isWindows, eventToBinding, bindingToTokens, SHORTCUT_ACTIONS, TAB_INDEX_ACTION_ID } from './domain/shortcuts.ts';
 import { hostStore } from './modules/hostvault/HostStore';
 import { HostAPI } from './modules/hostvault/HostAPI';
 import { snippetStore } from './modules/snippets/SnippetStore';
@@ -506,7 +506,7 @@ export class TermixApp extends HTMLElement {
                     ${t('app.settings.localShell')}
                     <input type="text" id="localTerminalPathInput" class="no-drag" list="localTerminalPathOptions" value="${escapeHtml(themeStore.getState().localTerminalPath)}" autocomplete="off" spellcheck="false" style="height: 34px; box-sizing: border-box; background: var(--input-bg); border: 1px solid var(--input-border, var(--color-border)); padding: 8px 12px; border-radius: 6px; color: var(--color-text); font-family: monospace;">
                     <datalist id="localTerminalPathOptions">
-                      ${['/bin/bash', '/bin/csh', '/bin/dash', '/bin/ksh', '/bin/sh', '/bin/tcsh', '/bin/zsh'].map(path => `<option value="${path}"></option>`).join('')}
+                      ${(isWindows() ? ['powershell.exe', 'pwsh.exe', 'cmd.exe'] : ['/bin/bash', '/bin/csh', '/bin/dash', '/bin/ksh', '/bin/sh', '/bin/tcsh', '/bin/zsh']).map(path => `<option value="${path}"></option>`).join('')}
                     </datalist>
                     <small style="color: var(--color-text-muted);">${t('app.settings.localShellHint')}</small>
                   </label>

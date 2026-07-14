@@ -3132,9 +3132,12 @@ kubernetes-session-page {
 .kubernetes-session-nav .kubernetes-nav-star.pinned { color: var(--color-warning); }
 .kubernetes-nav-quick-heading { display: flex; align-items: center; gap: 6px; margin: 6px 0; padding: 2px 7px; color: var(--color-text-muted); font-size: 11px; font-weight: 800; letter-spacing: 0.8px; }
 .kubernetes-nav-quick-heading i { color: var(--color-warning); font-size: 13px; }
-.kubernetes-session-content { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; padding: 24px; text-align: left; }
+.kubernetes-session-content { position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; padding: 24px; text-align: left; }
 /* header 固定於頂部，內容（含寬表格）在 scrollbody 內雙向捲動，橫向捲軸固定在視窗底部可見可拖曳。 */
-.kubernetes-session-scrollbody { flex: 1 1 auto; min-height: 0; min-width: 0; overflow: auto; }
+.kubernetes-session-scrollbody { flex: 1 1 auto; min-height: 0; min-width: 0; overflow: auto; transition: margin-bottom 0.24s ease; }
+/* 底部選取列滑出時，捲動容器底部縮進，讓橫向捲軸落在懸浮列（含底部留白與上方陰影）上方、不被遮擋。
+   數值需 ≥ 懸浮列離底(16) + 列高(~46) + 陰影餘量 − scrollbody 既有底距(24)。 */
+.kubernetes-session-scrollbody.has-selection-bar { margin-bottom: 64px; }
 .kubernetes-session-content > header > span { color: var(--color-primary); font-size: 11px; font-weight: 800; letter-spacing: 0.8px; text-transform: uppercase; }
 .kubernetes-session-content > header h1 { margin: 5px 0; color: var(--color-text); font-size: 22px; }
 .kubernetes-session-content > header p { margin: 0; color: var(--color-subtext); font: 11px monospace; }
@@ -3276,8 +3279,16 @@ kubernetes-session-page {
 .kubernetes-section-toolbar + .kubernetes-resource-table-wrap,
 .kubernetes-section-toolbar + .kubernetes-resource-empty { margin-top: 12px; }
 .kubernetes-resource-table { width: 100%; border-collapse: collapse; font-size: 11px; white-space: nowrap; }
-.kubernetes-resource-table th { padding: 11px 13px; border-bottom: 1px solid var(--color-border); background: color-mix(in srgb, var(--color-titlebar-bg) 82%, transparent); color: var(--color-text-muted); text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
-.kubernetes-resource-table td { padding: 11px 13px; border-bottom: 1px solid color-mix(in srgb, var(--color-border) 65%, transparent); color: var(--color-text); }
+/* 表頭凍結：捲動時停留在捲動容器（.kubernetes-session-scrollbody）頂端。背景需不透明
+   （改以 --color-bg 為底混色，取代原半透明），border-collapse 下 sticky 會丟失 border-bottom，
+   故以 inset box-shadow 畫分隔線。 */
+/* 凍結表頭背景必須遮住後方捲動的列文字。一般主題：panel 色疊在不透明的 --color-bg 之上即為實色。
+   全透明玻璃主題（--color-bg: transparent、panel 僅 ~0.16）：改以 backdrop-filter 將後方列霧化，
+   與 app 其他玻璃表面一致；此時實色層不生效但無妨。 */
+.kubernetes-resource-table th { position: sticky; top: 0; z-index: 5; padding: 11px 13px; background: linear-gradient(var(--color-panel-bg), var(--color-panel-bg)), var(--color-bg); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); color: var(--color-text-muted); text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; box-shadow: inset 0 -1px 0 var(--color-border); }
+/* 固定列高並垂直置中：讓所有資源表格（Pods / Deployment / 其他）行高一致，
+   不受各自 actions 欄按鈕、狀態徽章等內容高度影響。 */
+.kubernetes-resource-table td { height: 34px; padding: 0 13px; vertical-align: middle; border-bottom: 1px solid color-mix(in srgb, var(--color-border) 65%, transparent); color: var(--color-text); }
 .kubernetes-resource-table tr:last-child td { border-bottom: 0; }
 .kubernetes-pods-view { margin-top: 18px; }
 .kubernetes-pods-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
@@ -3287,9 +3298,81 @@ kubernetes-session-page {
 .kubernetes-pod-filters button.active { border-color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 15%, transparent); color: var(--color-primary); }
 .kubernetes-pod-tools input { width: 220px; padding: 8px 10px; border: 1px solid var(--color-border); border-radius: 7px; background: var(--color-input-bg); color: var(--color-text); }
 .kubernetes-watching { padding: 7px 10px; border-radius: 7px; background: var(--color-success-bg); color: var(--color-success); font-size: 11px; font-weight: 700; }
+/* ── 底部選取列：常駐於內容區底部，勾選時滑出 ── */
+.kubernetes-selection-bar {
+  position: absolute; left: 16px; right: 16px; bottom: 16px; z-index: 20;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 8px 16px;
+  background: linear-gradient(var(--color-panel-bg), var(--color-panel-bg)), var(--color-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+  /* 隱藏時整條（含底部留白與陰影）滑出視窗外。 */
+  transform: translateY(calc(100% + 24px));
+  transition: transform 0.24s ease;
+}
+.kubernetes-selection-bar.visible { transform: translateY(0); }
+.kubernetes-selection-bar-left { display: flex; align-items: center; gap: 14px; }
+.kubernetes-selection-count { font-size: 12.5px; font-weight: 700; color: var(--color-text); white-space: nowrap; }
+.kubernetes-selection-clear { display: inline-flex; align-items: center; gap: 5px; padding: 4px 6px; border: 0; background: transparent; color: var(--color-subtext); cursor: pointer; font: inherit; font-size: 12px; }
+.kubernetes-selection-clear:hover { color: var(--color-text); }
+.kubernetes-selection-risk { display: inline-flex; align-items: center; font-size: 11px; font-weight: 700; color: var(--color-danger); white-space: nowrap; }
+/* 刪除選取鈕：較一般 danger-btn 小一號。 */
+/* 刪除選取鈕：沿用 danger 底色，但字重、圓角、hover 對齊 app 其他動作按鈕（primary/secondary），
+   尺寸較標準鈕小一號以貼合底部列。 */
+.kubernetes-selection-delete { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 16px; border-radius: 999px; font-size: 11.5px; font-weight: 750; transition: filter 0.2s ease, background 0.2s ease; }
+.kubernetes-selection-delete:hover:not(:disabled) { filter: brightness(1.08); }
+.kubernetes-selection-delete svg { width: 13px; height: 13px; }
+/* ── 多選勾選欄 ── */
+/* 勾選欄：加寬並讓整格可點（見 enhanceSelectionColumns 的 td 點擊委派），放大點擊判定範圍避免誤開 Drawer。 */
+.kubernetes-select-th, .kubernetes-select-td { width: 44px; text-align: center; padding: 0; cursor: pointer; }
+.kubernetes-select-td { line-height: 0; }
+/* 勾選框：背景同內容底色、僅保留外框；勾選時顯示主色勾勾 / 半選顯示橫槓。 */
+.kubernetes-select-th input, .kubernetes-select-td input {
+  appearance: none; -webkit-appearance: none;
+  width: 15px; height: 15px; margin: 0; vertical-align: middle;
+  border: 1px solid var(--color-border); border-radius: 3px;
+  background: var(--color-bg); cursor: pointer; position: relative;
+}
+.kubernetes-select-th input:hover, .kubernetes-select-td input:hover { border-color: var(--color-primary); }
+.kubernetes-select-th input:checked, .kubernetes-select-td input:checked,
+.kubernetes-select-th input:indeterminate { border-color: var(--color-primary); }
+.kubernetes-select-th input:checked::after, .kubernetes-select-td input:checked::after {
+  content: ''; position: absolute; left: 4px; top: 1px; width: 3px; height: 7px;
+  border: solid var(--color-primary); border-width: 0 2px 2px 0; transform: rotate(45deg);
+}
+.kubernetes-select-th input:indeterminate::after {
+  content: ''; position: absolute; left: 3px; top: 6px; width: 7px; height: 0; border-top: 2px solid var(--color-primary);
+}
+.kubernetes-resource-row.kubernetes-row-selected { background: color-mix(in srgb, var(--color-primary) 12%, transparent); }
+/* ── 調整副本數（Scale） ── */
+/* 列尾 / drawer 的 Scale 膠囊鈕 */
+.kubernetes-scale-btn { display: inline-flex; align-items: center; gap: 5px; min-height: 24px; padding: 0 10px; border: 1px solid var(--color-border); border-radius: 999px; background: transparent; color: var(--color-text-muted); font: inherit; font-size: 11px; font-weight: 500; cursor: pointer; }
+.kubernetes-scale-btn:hover { border-color: var(--color-primary); color: var(--color-text); }
+.kubernetes-scale-btn svg { display: block; flex: 0 0 auto; }
+/* drawer 標頭右側動作群組；覆蓋 header span 的全域大寫樣式，避免 Scale 文字被套成大寫主色 */
+.kubernetes-detail-header-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.kubernetes-detail-drawer > header .kubernetes-scale-btn span { color: inherit; font-size: 11px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+/* 步進器對話框 */
+.kubernetes-scale-overlay { position: fixed; inset: 0; z-index: 4100; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.6); }
+.kubernetes-scale-dialog { width: 300px; max-width: calc(100vw - 32px); padding: 20px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--dialog-bg); color: var(--color-text); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5); }
+.kubernetes-scale-title { margin: 0 0 2px; font-size: 15px; font-weight: 700; }
+.kubernetes-scale-res { margin: 0 0 16px; font: 12px var(--font-mono, monospace); color: var(--color-subtext); overflow-wrap: anywhere; }
+.kubernetes-scale-stepper { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 12px; }
+.kubernetes-scale-stepper button { width: 38px; height: 38px; border: 1px solid var(--color-border); border-radius: 10px; background: transparent; color: var(--color-text); font-size: 20px; line-height: 1; cursor: pointer; }
+.kubernetes-scale-stepper button:hover { border-color: var(--color-primary); }
+.kubernetes-scale-input { width: 66px; height: 42px; text-align: center; font-size: 18px; font-weight: 600; border: 1px solid var(--color-border); border-radius: 10px; background: var(--input-bg); color: var(--color-text); }
+.kubernetes-scale-cur { margin: 6px 0; font-size: 12px; color: var(--color-subtext); }
+.kubernetes-scale-cur b { color: var(--color-text); }
+.kubernetes-scale-warn { margin: 0 0 10px; font-size: 12px; color: var(--color-danger); }
+.kubernetes-scale-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
 .kubernetes-pods-table-wrap { margin-top: 12px; }
 .kubernetes-pods-table tbody tr { border-left: 3px solid transparent; }
 .kubernetes-nscolored-table tbody tr { border-left: 3px solid transparent; }
+/* 表頭列補上同寬的透明左邊框，與有 namespace 色條的資料列對齊（否則勾選欄等會左右錯位）。 */
+.kubernetes-nscolored-table thead tr { border-left: 3px solid transparent; }
 .kubernetes-pod-actions button { padding: 3px 4px; color: var(--color-primary); }
 .kubernetes-pod-actions button:nth-child(2) { color: var(--color-success); }
 .kubernetes-pod-actions button:nth-child(3) { color: var(--color-info); }
@@ -3428,6 +3511,32 @@ kubernetes-session-page {
 .kubernetes-detail-containers strong { font-size: 11px; }
 .kubernetes-detail-containers span,
 .kubernetes-detail-containers small { overflow-wrap: anywhere; color: var(--color-subtext); font-size: 11px; }
+/* ENV 頁籤：依來源分區（直接值／參照來源），各為一張條紋雙欄表（沿用 detail-fields 樣式）。 */
+.kubernetes-env-groups { display: grid; gap: 6px; }
+.kubernetes-env-subhead { display: flex; align-items: center; gap: 6px; margin-top: 6px; color: var(--color-subtext); font-size: 11px; }
+.kubernetes-env-subhead:first-child { margin-top: 0; }
+.kubernetes-env-subhead i { font-size: 14px; }
+/* 長變數名 / 來源避免溢出重疊：左右欄皆可斷行，grid/flex 子項 min-width:0 才能收縮換行。 */
+.kubernetes-env-groups .kubernetes-detail-fields dt { min-width: 0; overflow-wrap: anywhere; }
+.kubernetes-env-groups .kubernetes-detail-fields dd { min-width: 0; }
+.kubernetes-detail-fields dd.kubernetes-env-ref { display: flex; align-items: flex-start; gap: 7px; }
+.kubernetes-detail-fields dd.kubernetes-env-ref span { min-width: 0; overflow-wrap: anywhere; }
+.kubernetes-env-ref-icon { font-size: 14px; flex: none; line-height: 1.4; }
+.kubernetes-env-ref-icon.k-cm { color: var(--color-primary); }
+.kubernetes-env-ref-icon.k-secret { color: var(--color-danger); }
+.kubernetes-env-ref-icon.k-field { color: var(--color-subtext); }
+/* Secret 詳情：Type 與 Data（可複製 / 查看明文）。 */
+.kubernetes-secret-type { font-size: 13px; color: var(--color-text); overflow-wrap: anywhere; }
+.kubernetes-secret-data { display: grid; gap: 8px; }
+.kubernetes-secret-row { border: 1px solid var(--color-border); border-radius: 7px; padding: 9px 11px; }
+.kubernetes-secret-row-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.kubernetes-secret-key { font-family: var(--font-mono, monospace); font-size: 12px; color: var(--color-text); overflow-wrap: anywhere; }
+.kubernetes-secret-actions { display: flex; gap: 2px; flex: none; }
+.kubernetes-secret-btn { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--color-subtext); cursor: pointer; font-size: 15px; }
+.kubernetes-secret-btn:hover { background: color-mix(in srgb, var(--color-text) 8%, transparent); color: var(--color-text); }
+.kubernetes-secret-value { margin-top: 7px; padding: 6px 8px; border-radius: 5px; background: color-mix(in srgb, var(--color-text) 5%, transparent); font-family: var(--font-mono, monospace); font-size: 11.5px; color: var(--color-subtext); overflow-wrap: anywhere; max-height: 160px; overflow-y: auto; }
+.kubernetes-secret-value .kubernetes-secret-plaintext { color: var(--color-text); white-space: pre-wrap; }
+.kubernetes-detail-events-loading { display: flex; align-items: center; gap: 8px; color: var(--color-subtext); font-size: 12px; }
 /* Conditions：2 欄卡片，左側以狀態語意色條標示（color 由 render 依 status 內聯）。 */
 .kubernetes-detail-conditions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .kubernetes-condition-card { display: flex; flex-direction: column; gap: 4px; padding: 9px 11px; border: 1px solid var(--color-border); border-left: 3px solid var(--color-border); border-radius: 7px; }

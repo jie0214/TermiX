@@ -16,8 +16,16 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/yaml"
 )
+
+// scalableKinds：允許調整副本數的工作負載（小寫 kind）。
+// DaemonSet 不含在內——其 Pod 數由 nodeSelector/affinity 與節點數決定，無 replicas 可調。
+var scalableKinds = map[string]struct{}{
+	"deployment":  {},
+	"statefulset": {},
+}
 
 const maxKubernetesResourceYAMLBytes = 1024 * 1024
 
@@ -211,6 +219,51 @@ func (s *Service) UpdateResource(ctx context.Context, request dto.KubernetesReso
 		return dto.KubernetesResourceCreateResult{}, resourceUpdateError(gvk.Kind, err)
 	}
 	return result, nil
+}
+
+// ScaleResource 調整 Deployment / StatefulSet 的副本數：以 merge patch 只改 spec.replicas，
+// 不覆寫整份 YAML。kind 白名單防呆；GVK→RESTMapping→dynamic Patch，與 delete/update 同一泛用路徑。
+func (s *Service) ScaleResource(ctx context.Context, request dto.KubernetesResourceScaleRequest) error {
+	clients, session, err := s.activeConnection()
+	if err != nil {
+		return err
+	}
+	kind := strings.ToLower(strings.TrimSpace(request.Kind))
+	name := strings.TrimSpace(request.Name)
+	if name == "" {
+		return errors.New("調整副本數時必須指定名稱")
+	}
+	if _, ok := scalableKinds[kind]; !ok {
+		return errors.New("此資源類型不支援調整副本數")
+	}
+	if request.Replicas < 0 {
+		return errors.New("副本數不可為負數")
+	}
+	gvk, err := requestGVK(request.APIVersion, request.Kind)
+	if err != nil {
+		return err
+	}
+	if clients.dynamic == nil || clients.restMapper == nil {
+		return errors.New("目前連線不支援調整副本數")
+	}
+	mapping, err := resolveRESTMapping(clients.restMapper, gvk)
+	if err != nil {
+		return resourceUpdateError(gvk.Kind, err)
+	}
+	if mapping.Scope.Name() != meta.RESTScopeNameNamespace {
+		return errors.New("此資源不是 namespaced，無法調整副本數")
+	}
+	namespace := effectiveNamespace(request.Namespace, session.Namespace)
+	if namespace == metav1.NamespaceAll || namespace == "" {
+		return errors.New("調整副本數時必須指定 Namespace")
+	}
+	patch := []byte(fmt.Sprintf(`{"spec":{"replicas":%d}}`, request.Replicas))
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	if _, err := clients.dynamic.Resource(mapping.Resource).Namespace(namespace).Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{}); err != nil {
+		return resourceUpdateError(gvk.Kind, err)
+	}
+	return nil
 }
 
 // updateDynamicResource 以 dynamic client 更新資源：把 YAML 轉為 unstructured，

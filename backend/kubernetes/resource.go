@@ -18,8 +18,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/yaml"
 )
+
+// workloadPodTemplateKinds：具 pod template 的工作負載（env 來自 spec.template.spec.containers）。
+var workloadPodTemplateKinds = map[string]struct{}{
+	"deployment": {}, "statefulset": {}, "daemonset": {}, "replicaset": {},
+}
 
 const (
 	maxKubernetesMessageBytes = 1000
@@ -61,7 +67,8 @@ func (s *Service) ResourceDetail(ctx context.Context, request dto.KubernetesReso
 			return dto.KubernetesResourceDetail{}, resourceReadError("Pod", getErr)
 		}
 		detail := podDetail(*item)
-		return s.attachResourceEvents(ctx, clients, detail, namespace, string(item.UID)), nil
+		// events 改由前端於抽屜開啟後獨立呼叫 GetKubernetesResourceEvents 非同步載入，不阻塞 detail。
+		return detail, nil
 	}
 
 	// 其他所有 kind 走泛用路徑：GVK → RESTMapping → dynamic Get → unstructured 組 detail。
@@ -95,32 +102,88 @@ func (s *Service) ResourceDetail(ctx context.Context, request dto.KubernetesReso
 		return dto.KubernetesResourceDetail{}, resourceReadError(gvk.Kind, err)
 	}
 	detail := unstructuredDetail(obj)
-	return s.attachResourceEvents(ctx, clients, detail, namespace, detail.UID), nil
+	// events 同上，改為前端非同步載入（前端以 detail.namespace 查詢；cluster-scoped 為空 → 跨 namespace）。
+	return detail, nil
 }
 
-// attachResourceEvents 以 best-effort 方式補上資源相關 Events；失敗時填 EventsError 而不使整個 detail 失敗。
-func (s *Service) attachResourceEvents(ctx context.Context, clients *clusterClients, detail dto.KubernetesResourceDetail, namespace, uid string) dto.KubernetesResourceDetail {
-	// namespace 為空（cluster-scoped）時等同 NamespaceAll，跨 namespace 查 Events。
+// listResourceEvents 以 best-effort 查詢資源相關 Events（供獨立的 ResourceEvents 使用）。
+// namespace 為空（cluster-scoped）時等同 NamespaceAll，跨 namespace 查 Events。
+func (s *Service) listResourceEvents(ctx context.Context, clients *clusterClients, namespace, kind, name, uid string) ([]dto.KubernetesEventSummary, error) {
 	selector := fields.OneTermEqualSelector("involvedObject.uid", uid)
 	if uid == "" {
 		selector = fields.AndSelectors(
-			fields.OneTermEqualSelector("involvedObject.kind", detail.Kind),
-			fields.OneTermEqualSelector("involvedObject.name", detail.Name),
+			fields.OneTermEqualSelector("involvedObject.kind", kind),
+			fields.OneTermEqualSelector("involvedObject.name", name),
 		)
 	}
-	events, eventErr := clients.core.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{FieldSelector: selector.String()})
-	if eventErr != nil {
-		detail.EventsError = resourceReadError("Events", eventErr).Error()
-		return detail
+	events, err := clients.core.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{FieldSelector: selector.String()})
+	if err != nil {
+		return nil, err
 	}
+	result := make([]dto.KubernetesEventSummary, 0, len(events.Items))
 	for _, event := range events.Items {
 		if (uid != "" && string(event.InvolvedObject.UID) == uid) ||
-			(uid == "" && strings.EqualFold(event.InvolvedObject.Kind, detail.Kind) && event.InvolvedObject.Name == detail.Name) {
-			detail.Events = append(detail.Events, eventSummary(event))
+			(uid == "" && strings.EqualFold(event.InvolvedObject.Kind, kind) && event.InvolvedObject.Name == name) {
+			result = append(result, eventSummary(event))
 		}
 	}
-	sortEvents(detail.Events)
-	return detail
+	sortEvents(result)
+	return result, nil
+}
+
+// ResourceEvents 獨立查詢某資源的相關事件（與 detail 分離，供抽屜開啟後非同步延後載入）。
+// best-effort：查詢失敗只填 EventsError，不使整體失敗。
+func (s *Service) ResourceEvents(ctx context.Context, request dto.KubernetesResourceEventsRequest) (dto.KubernetesResourceEvents, error) {
+	clients, _, err := s.activeConnection()
+	if err != nil {
+		return dto.KubernetesResourceEvents{}, err
+	}
+	kind := strings.TrimSpace(request.Kind)
+	name := strings.TrimSpace(request.Name)
+	uid := strings.TrimSpace(request.UID)
+	if name == "" && uid == "" {
+		return dto.KubernetesResourceEvents{}, errors.New("讀取資源事件時必須指定名稱或 UID")
+	}
+	// namespace：前端傳入該資源所在 namespace；cluster-scoped 為空 → 跨 namespace。
+	namespace := strings.TrimSpace(request.Namespace)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	result := dto.KubernetesResourceEvents{Events: []dto.KubernetesEventSummary{}}
+	events, err := s.listResourceEvents(ctx, clients, namespace, kind, name, uid)
+	if err != nil {
+		result.EventsError = resourceReadError("Events", err).Error()
+		return result, nil
+	}
+	result.Events = events
+	return result, nil
+}
+
+// SecretValue 於使用者明確要求時，取回單一 Secret data key 的明文值（client-go 已 base64 解碼）。
+func (s *Service) SecretValue(ctx context.Context, request dto.KubernetesSecretValueRequest) (dto.KubernetesSecretValue, error) {
+	clients, session, err := s.activeConnection()
+	if err != nil {
+		return dto.KubernetesSecretValue{}, err
+	}
+	name := strings.TrimSpace(request.Name)
+	key := strings.TrimSpace(request.Key)
+	if name == "" || key == "" {
+		return dto.KubernetesSecretValue{}, errors.New("讀取 Secret 值時必須指定名稱與 key")
+	}
+	namespace := effectiveNamespace(request.Namespace, session.Namespace)
+	if namespace == metav1.NamespaceAll {
+		return dto.KubernetesSecretValue{}, errors.New("讀取 Secret 值時必須指定 Namespace")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	secret, err := clients.core.CoreV1().Secrets(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return dto.KubernetesSecretValue{}, resourceReadError("Secret", err)
+	}
+	value, ok := secret.Data[key]
+	if !ok {
+		return dto.KubernetesSecretValue{}, fmt.Errorf("Secret %s 不含 data key：%s", name, key)
+	}
+	return dto.KubernetesSecretValue{Key: key, Value: string(value)}, nil
 }
 
 func (s *Service) PodLogs(ctx context.Context, request dto.KubernetesPodLogsRequest) (dto.KubernetesPodLogs, error) {
@@ -235,6 +298,7 @@ func podDetail(item corev1.Pod) dto.KubernetesResourceDetail {
 		detail.Containers = append(detail.Containers, dto.KubernetesContainerDetail{
 			Name: container.Name, Image: container.Image, Ready: status.Ready,
 			RestartCount: status.RestartCount, State: containerState(status.State), Ports: containerPorts(container.Ports),
+			Env: containerEnvSummary(container), EnvFrom: containerEnvFrom(container),
 		})
 	}
 	for _, condition := range item.Status.Conditions {
@@ -272,23 +336,82 @@ func sanitizedPodYAML(item corev1.Pod) string {
 	pod.TypeMeta = metav1.TypeMeta{APIVersion: "v1", Kind: "Pod"}
 	pod.ManagedFields = nil
 	pod.Annotations = nil
-	for index := range pod.Spec.InitContainers {
-		pod.Spec.InitContainers[index].Env = nil
-		pod.Spec.InitContainers[index].EnvFrom = nil
-	}
-	for index := range pod.Spec.Containers {
-		pod.Spec.Containers[index].Env = nil
-		pod.Spec.Containers[index].EnvFrom = nil
-	}
-	for index := range pod.Spec.EphemeralContainers {
-		pod.Spec.EphemeralContainers[index].Env = nil
-		pod.Spec.EphemeralContainers[index].EnvFrom = nil
-	}
+	// 註：env 值不遮罩，照實輸出（使用者需檢視自身 workload 的環境變數）。
 	content, err := yaml.Marshal(pod)
 	if err != nil {
 		return ""
 	}
 	return string(content)
+}
+
+// unstructuredContainers 從工作負載（Deployment/StatefulSet/DaemonSet/ReplicaSet）的
+// spec.template.spec.containers 取出容器並轉為 detail（供 ENV 頁籤顯示）。非工作負載回傳空。
+// 這些是 pod 範本，無執行期狀態，故 Ready/State 留空（前端據此不顯示狀態徽章）。
+func unstructuredContainers(obj *unstructured.Unstructured) []dto.KubernetesContainerDetail {
+	if _, ok := workloadPodTemplateKinds[strings.ToLower(obj.GetKind())]; !ok {
+		return []dto.KubernetesContainerDetail{}
+	}
+	raw, found, _ := unstructured.NestedSlice(obj.Object, "spec", "template", "spec", "containers")
+	if !found {
+		return []dto.KubernetesContainerDetail{}
+	}
+	result := make([]dto.KubernetesContainerDetail, 0, len(raw))
+	for _, item := range raw {
+		m, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		var container corev1.Container
+		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(m, &container); err != nil {
+			continue
+		}
+		result = append(result, dto.KubernetesContainerDetail{
+			Name: container.Name, Image: container.Image,
+			Env: containerEnvSummary(container), EnvFrom: containerEnvFrom(container),
+		})
+	}
+	return result
+}
+
+// containerEnvSummary 產生消毒後的 env 摘要（名稱 + 來源，不含實際值）。
+func containerEnvSummary(container corev1.Container) []dto.KubernetesEnvVarSummary {
+	result := make([]dto.KubernetesEnvVarSummary, 0, len(container.Env))
+	for _, env := range container.Env {
+		result = append(result, dto.KubernetesEnvVarSummary{Name: env.Name, Value: env.Value, Source: envVarSource(env)})
+	}
+	return result
+}
+
+// envVarSource 僅描述 valueFrom 的來源；字面值以 Value 直接呈現，故回傳空字串。
+func envVarSource(env corev1.EnvVar) string {
+	if env.ValueFrom != nil {
+		switch {
+		case env.ValueFrom.SecretKeyRef != nil:
+			return fmt.Sprintf("Secret %s / %s", env.ValueFrom.SecretKeyRef.Name, env.ValueFrom.SecretKeyRef.Key)
+		case env.ValueFrom.ConfigMapKeyRef != nil:
+			return fmt.Sprintf("ConfigMap %s / %s", env.ValueFrom.ConfigMapKeyRef.Name, env.ValueFrom.ConfigMapKeyRef.Key)
+		case env.ValueFrom.FieldRef != nil:
+			return fmt.Sprintf("fieldRef %s", env.ValueFrom.FieldRef.FieldPath)
+		case env.ValueFrom.ResourceFieldRef != nil:
+			return fmt.Sprintf("resourceFieldRef %s", env.ValueFrom.ResourceFieldRef.Resource)
+		}
+		return "valueFrom"
+	}
+	return ""
+}
+
+// containerEnvFrom 產生 envFrom 的來源清單（ConfigMap / Secret 名稱；皆為參照非值）。
+func containerEnvFrom(container corev1.Container) []string {
+	result := make([]string, 0, len(container.EnvFrom))
+	for _, source := range container.EnvFrom {
+		switch {
+		case source.SecretRef != nil:
+			result = append(result, fmt.Sprintf("Secret %s", source.SecretRef.Name))
+		case source.ConfigMapRef != nil:
+			result = append(result, fmt.Sprintf("ConfigMap %s", source.ConfigMapRef.Name))
+		}
+	}
+	return result
 }
 
 // unstructuredDetail 由泛用 unstructured 物件組出 KubernetesResourceDetail。
@@ -310,10 +433,21 @@ func unstructuredDetail(obj *unstructured.Unstructured) dto.KubernetesResourceDe
 		Owners:     ownerReferences(obj.GetOwnerReferences()),
 		Fields:     []dto.KubernetesKeyValue{},
 		Conditions: []dto.KubernetesResourceCondition{},
-		Containers: []dto.KubernetesContainerDetail{},
+		Containers: unstructuredContainers(obj),
 		Events:     []dto.KubernetesEventSummary{},
 	}
 	detail.CreatedAt = obj.GetCreationTimestamp().UTC().Format(time.RFC3339)
+	if obj.GetKind() == "Secret" {
+		detail.SecretType, _, _ = unstructured.NestedString(obj.Object, "type")
+		if data, found, _ := unstructured.NestedMap(obj.Object, "data"); found {
+			keys := make([]string, 0, len(data))
+			for key := range data {
+				keys = append(keys, key)
+			}
+			sort.Strings(keys)
+			detail.SecretDataKeys = keys
+		}
+	}
 	if conditions, found, _ := unstructured.NestedSlice(obj.Object, "status", "conditions"); found {
 		for _, raw := range conditions {
 			condition, ok := raw.(map[string]interface{})

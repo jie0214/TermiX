@@ -2,7 +2,6 @@ package kubernetes
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"strings"
@@ -47,12 +46,21 @@ func TestResourceDetailPodTypedPath(t *testing.T) {
 	if pod.Kind != "Pod" || pod.Name != "api-0" {
 		t.Fatalf("ResourceDetail() = %+v", pod)
 	}
-	encoded, _ := json.Marshal(pod)
-	if strings.Contains(string(encoded), "secret-token") || strings.Contains(string(encoded), "TOKEN") {
-		t.Fatalf("ResourceDetail() 洩漏 Pod env：%s", encoded)
+	// env 字面值照實呈現（不遮罩）：名稱 TOKEN、值 secret-token、來源為空（非 valueFrom）。
+	if len(pod.Containers) != 1 || len(pod.Containers[0].Env) != 1 ||
+		pod.Containers[0].Env[0].Name != "TOKEN" || pod.Containers[0].Env[0].Value != "secret-token" || pod.Containers[0].Env[0].Source != "" {
+		t.Fatalf("Pod env 摘要不正確：%+v", pod.Containers)
 	}
-	if len(pod.Events) != 2 || pod.Events[0].Reason != "Failed" || len(pod.Events[0].Message) != maxKubernetesMessageBytes {
-		t.Fatalf("Events 未正確排序或限制長度：%+v", pod.Events)
+	// events 改由 ResourceEvents 獨立查詢，detail 本身不含 events。
+	if len(pod.Events) != 0 {
+		t.Fatalf("ResourceDetail 不應內含 events：%+v", pod.Events)
+	}
+	events, err := svc.ResourceEvents(context.Background(), dto.KubernetesResourceEventsRequest{Kind: "Pod", Name: "api-0", Namespace: "default", UID: "pod-a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events.Events) != 2 || events.Events[0].Reason != "Failed" || len(events.Events[0].Message) != maxKubernetesMessageBytes {
+		t.Fatalf("Events 未正確排序或限制長度：%+v", events.Events)
 	}
 	if pod.UID != "pod-a" || pod.APIVersion != "v1" || len(pod.Owners) != 1 || !pod.Owners[0].Controller {
 		t.Fatalf("Pod Metadata 未完整轉換：%+v", pod)
@@ -60,8 +68,9 @@ func TestResourceDetailPodTypedPath(t *testing.T) {
 	if len(pod.Containers) != 1 || len(pod.Containers[0].Ports) != 1 || pod.Containers[0].Ports[0].Port != 8080 {
 		t.Fatalf("Pod Container Port 未完整轉換：%+v", pod.Containers)
 	}
-	if !strings.Contains(pod.YAML, "kind: Pod") || !strings.Contains(pod.YAML, "name: api-0") || strings.Contains(pod.YAML, "secret-token") || strings.Contains(pod.YAML, "TOKEN") || strings.Contains(pod.YAML, "annotations:") {
-		t.Fatalf("Pod YAML 未正確安全化：%s", pod.YAML)
+	// YAML：env 值照實輸出（含 secret-token），但仍移除 annotations / managedFields。
+	if !strings.Contains(pod.YAML, "kind: Pod") || !strings.Contains(pod.YAML, "name: api-0") || !strings.Contains(pod.YAML, "secret-token") || strings.Contains(pod.YAML, "annotations:") {
+		t.Fatalf("Pod YAML 不正確：%s", pod.YAML)
 	}
 }
 
@@ -186,7 +195,7 @@ func TestResourceDetailMasksRBACErrors(t *testing.T) {
 	}
 }
 
-func TestResourceDetailDegradesWhenEventsAreForbidden(t *testing.T) {
+func TestResourceEventsDegradesWhenEventsAreForbidden(t *testing.T) {
 	client := kubernetesfake.NewSimpleClientset(&corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Name: "api", Namespace: "default", UID: typesUID("pod-a")},
 		Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: "api", Image: "api:v1"}}},
@@ -199,12 +208,13 @@ func TestResourceDetailDegradesWhenEventsAreForbidden(t *testing.T) {
 		return true, nil, apierrors.NewForbidden(schema.GroupResource{Resource: "events"}, "", errors.New("token=secret-token"))
 	})
 
-	detail, err := resourceTestService(client).ResourceDetail(context.Background(), dto.KubernetesResourceDetailRequest{Kind: "pod", Name: "api", Namespace: "default"})
+	// events 已從 detail 拆出：改由 ResourceEvents 查詢，失敗時安全降級（EventsError，不外洩底層訊息）。
+	events, err := resourceTestService(client).ResourceEvents(context.Background(), dto.KubernetesResourceEventsRequest{Kind: "pod", Name: "api", Namespace: "default", UID: "pod-a"})
 	if err != nil {
-		t.Fatalf("ResourceDetail() error = %v", err)
+		t.Fatalf("ResourceEvents() error = %v", err)
 	}
-	if detail.Name != "api" || !strings.Contains(detail.EventsError, "沒有存取權限") || strings.Contains(detail.EventsError, "secret-token") {
-		t.Fatalf("ResourceDetail() 未安全降級：%+v", detail)
+	if !strings.Contains(events.EventsError, "沒有存取權限") || strings.Contains(events.EventsError, "secret-token") {
+		t.Fatalf("ResourceEvents() 未安全降級：%+v", events)
 	}
 }
 

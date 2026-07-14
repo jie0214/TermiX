@@ -114,6 +114,16 @@ export function detectPlatform(): Platform {
   return /mac|iphone|ipad|ipod/i.test(String(raw)) ? 'mac' : 'other';
 }
 
+/** 是否為 Windows 平台；用於本機終端機預設路徑與候選（Windows 需用 cmd/powershell 而非 /bin/*）。 */
+export function isWindows(): boolean {
+  const nav = typeof navigator !== 'undefined' ? navigator : undefined;
+  const raw =
+    (nav && (nav as any).userAgentData?.platform) ||
+    (nav && nav.platform) ||
+    '';
+  return /win/i.test(String(raw));
+}
+
 // event.code → 正規主鍵 token。用 code 而非 key 以避免 Shift 改變字元（如 Shift+] → "}"）造成的佈局相依問題。
 function normalizeCode(code: string, key: string): string {
   const letter = /^Key([A-Z])$/.exec(code);

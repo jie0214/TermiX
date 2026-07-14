@@ -112,6 +112,13 @@ export interface KubernetesResourceUpdateResult
   apiVersion: string;
 }
 
+// 調整副本數（僅 Deployment / StatefulSet）：以 kind/name/namespace + apiVersion 定位，patch spec.replicas。
+export interface KubernetesResourceScaleRequest
+  extends KubernetesResourceIdentity {
+  apiVersion?: string;
+  replicas: number;
+}
+
 export interface KubernetesPodPortForwardRequest {
   namespace: string;
   podName: string;
@@ -178,6 +185,29 @@ export interface KubernetesResourceDetail
   fields: KubernetesKeyValue[];
   eventsError: string;
   [key: string]: unknown;
+}
+
+// 獨立查詢資源相關事件（抽屜開啟後非同步延後載入）。
+export interface KubernetesResourceEventsRequest
+  extends KubernetesResourceIdentity {
+  uid: string;
+}
+
+export interface KubernetesResourceEvents {
+  events: unknown[];
+  eventsError: string;
+}
+
+// 即時取回單一 Secret data key 的明文值（點擊複製 / 查看明文時才呼叫）。
+export interface KubernetesSecretValueRequest {
+  namespace: string;
+  name: string;
+  key: string;
+}
+
+export interface KubernetesSecretValue {
+  key: string;
+  value: string;
 }
 
 export interface KubernetesDashboardSnapshot {

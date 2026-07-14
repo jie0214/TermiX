@@ -11,7 +11,7 @@ function escapeHtml(value) {
 /**
  * 顯示一個非阻塞式確認對話框。
  * @param {string} message 主要訊息（純文字，會被自動跳脫；支援 \n 換行）。
- * @param {{ title?: string, confirmText?: string, cancelText?: string, danger?: boolean }} [options]
+ * @param {{ title?: string, confirmText?: string, cancelText?: string, danger?: boolean, requireText?: string, requireTextHint?: string }} [options]
  * @returns {Promise<boolean>} 確認 = true，取消/關閉/Esc = false。
  */
 export function confirmDialog(message, options = {}) {
@@ -25,8 +25,13 @@ export function confirmDialog(message, options = {}) {
       title = t('misc.confirmDialog.title'),
       confirmText = t('common.confirm'),
       cancelText = t('common.cancel'),
-      danger = false
+      danger = false,
+      // requireText：非空時要求使用者輸入相符文字才能確認（防誤觸）；
+      // requireTextHint 為輸入框上方的說明文字（呼叫端已完成 i18n）。
+      requireText = '',
+      requireTextHint = ''
     } = options;
+    const needsText = String(requireText).length > 0;
 
     let settled = false;
     let keydownHandler = null;
@@ -62,12 +67,18 @@ export function confirmDialog(message, options = {}) {
     const confirmBg = danger ? 'var(--color-danger)' : 'var(--color-primary)';
     const confirmBorder = danger ? 'var(--color-danger)' : 'var(--color-primary)';
 
+    // requireText 模式：訊息與按鈕之間插入說明 + 輸入框，確認鈕預設 disabled。
+    const requireBlock = needsText ? `
+      ${requireTextHint ? `<p style="font-size: 12.5px; color: var(--color-danger); line-height: 1.6; margin: 0 0 8px; text-align: left;">${escapeHtml(requireTextHint)}</p>` : ''}
+      <input type="text" data-role="require-input" class="no-drag" placeholder="${escapeHtml(requireText)}" style="width: 100%; box-sizing: border-box; min-height: 34px; padding: 0 12px; margin: 0 0 20px; border: 1px solid var(--color-border); border-radius: 4px; background: var(--input-bg); color: var(--color-text); font: inherit;">
+    ` : '';
     dialog.innerHTML = `
       <h2 style="font-size: 14px; font-weight: 700; margin: 0 0 12px; text-align: left;">${escapeHtml(title)}</h2>
-      <p style="font-size: 12.5px; color: var(--color-subtext); line-height: 1.6; margin: 0 0 20px; text-align: left;">${messageHtml}</p>
+      <p style="font-size: 12.5px; color: var(--color-subtext); line-height: 1.6; margin: 0 0 ${needsText ? '12px' : '20px'}; text-align: left;">${messageHtml}</p>
+      ${requireBlock}
       <div style="display: flex; justify-content: flex-end; gap: 8px;">
         <button type="button" data-action="cancel" class="no-drag" style="min-height: 32px; padding: 6px 14px; border: 1px solid var(--color-border); background: transparent; color: var(--color-text); border-radius: 4px; cursor: pointer;">${escapeHtml(cancelText)}</button>
-        <button type="button" data-action="confirm" class="no-drag" style="min-height: 32px; padding: 6px 14px; background: ${confirmBg}; border: 1px solid ${confirmBorder}; color: #fff; border-radius: 4px; cursor: pointer;">${escapeHtml(confirmText)}</button>
+        <button type="button" data-action="confirm" class="no-drag"${needsText ? ' disabled' : ''} style="min-height: 32px; padding: 6px 14px; background: ${confirmBg}; border: 1px solid ${confirmBorder}; color: #fff; border-radius: 4px; cursor: pointer;${needsText ? ' opacity: 0.5;' : ''}">${escapeHtml(confirmText)}</button>
       </div>
     `;
 
@@ -85,13 +96,18 @@ export function confirmDialog(message, options = {}) {
       resolve(result);
     }
 
+    const confirmBtn = dialog.querySelector('[data-action="confirm"]');
+    const requireInput = dialog.querySelector('[data-role="require-input"]');
+    // requireText 模式下，輸入相符才允許確認（含 Enter）。
+    const matched = () => !needsText || requireInput.value.trim() === String(requireText);
+
     keydownHandler = (e) => {
       if (e.key === 'Escape') {
         e.preventDefault();
         settle(false);
       } else if (e.key === 'Enter') {
         e.preventDefault();
-        settle(true);
+        if (matched()) settle(true);
       }
     };
     document.addEventListener('keydown', keydownHandler);
@@ -102,12 +118,20 @@ export function confirmDialog(message, options = {}) {
     });
 
     dialog.querySelector('[data-action="cancel"]').addEventListener('click', () => settle(false));
-    dialog.querySelector('[data-action="confirm"]').addEventListener('click', () => settle(true));
+    confirmBtn.addEventListener('click', () => { if (matched()) settle(true); });
+
+    if (requireInput) {
+      requireInput.addEventListener('input', () => {
+        const ok = matched();
+        confirmBtn.disabled = !ok;
+        confirmBtn.style.opacity = ok ? '1' : '0.5';
+      });
+    }
 
     document.body.appendChild(overlay);
 
-    // focus 落在預設（確認）按鈕
-    const confirmBtn = dialog.querySelector('[data-action="confirm"]');
-    requestAnimationFrame(() => { try { confirmBtn.focus(); } catch (_) { /* noop */ } });
+    // focus：requireText 模式落在輸入框，否則落在預設（確認）按鈕。
+    const focusTarget = requireInput || confirmBtn;
+    requestAnimationFrame(() => { try { focusTarget.focus(); } catch (_) { /* noop */ } });
   });
 }

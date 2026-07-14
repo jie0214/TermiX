@@ -73,6 +73,14 @@ func (a *App) GetKubernetesResourceDetail(request KubernetesResourceDetailReques
 	return a.kubernetes.ResourceDetail(a.contextOrBackground(), request)
 }
 
+func (a *App) GetKubernetesSecretValue(request KubernetesSecretValueRequest) (KubernetesSecretValue, error) {
+	return a.kubernetes.SecretValue(a.contextOrBackground(), request)
+}
+
+func (a *App) GetKubernetesResourceEvents(request KubernetesResourceEventsRequest) (KubernetesResourceEvents, error) {
+	return a.kubernetes.ResourceEvents(a.contextOrBackground(), request)
+}
+
 func (a *App) GetKubernetesPodLogs(request KubernetesPodLogsRequest) (KubernetesPodLogs, error) {
 	return a.kubernetes.PodLogs(a.contextOrBackground(), request)
 }
@@ -134,4 +142,8 @@ func (a *App) CreateKubernetesResource(request KubernetesResourceCreateRequest) 
 
 func (a *App) UpdateKubernetesResource(request KubernetesResourceUpdateRequest) (KubernetesResourceCreateResult, error) {
 	return a.kubernetes.UpdateResource(a.contextOrBackground(), request)
+}
+
+func (a *App) ScaleKubernetesResource(request KubernetesResourceScaleRequest) error {
+	return a.kubernetes.ScaleResource(a.contextOrBackground(), request)
 }

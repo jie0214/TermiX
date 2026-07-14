@@ -93,6 +93,10 @@ export function GetKubernetesPodLogs(arg1:dto.KubernetesPodLogsRequest):Promise<
 
 export function GetKubernetesResourceDetail(arg1:dto.KubernetesResourceDetailRequest):Promise<dto.KubernetesResourceDetail>;
 
+export function GetKubernetesResourceEvents(arg1:dto.KubernetesResourceEventsRequest):Promise<dto.KubernetesResourceEvents>;
+
+export function GetKubernetesSecretValue(arg1:dto.KubernetesSecretValueRequest):Promise<dto.KubernetesSecretValue>;
+
 export function ImportHostsBackup(arg1:string,arg2:dto.HostImportOptions):Promise<dto.OperationResult>;
 
 export function ImportKeychainKey(arg1:dto.ImportKeychainKeyRequest):Promise<dto.OperationResult>;
@@ -148,6 +152,8 @@ export function SaveKubernetesCluster(arg1:dto.KubernetesClusterProfile):Promise
 export function SaveKubernetesPodLogs(arg1:string,arg2:string):Promise<string>;
 
 export function SaveKubernetesResourceYAML(arg1:string,arg2:string):Promise<string>;
+
+export function ScaleKubernetesResource(arg1:dto.KubernetesResourceScaleRequest):Promise<void>;
 
 export function SelectFile(arg1:string):Promise<string>;
 

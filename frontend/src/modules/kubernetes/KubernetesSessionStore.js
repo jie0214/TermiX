@@ -47,6 +47,8 @@ const INITIAL_STATE = Object.freeze({
   lastUpdatedAt: '',
   detailOpen: false,
   detailLoading: false,
+  // 相關事件改為抽屜開啟後非同步延後載入，獨立於 detail 載入。
+  eventsLoading: false,
   detailError: '',
   detailTab: 'overview',
   selectedResource: null,
@@ -61,6 +63,9 @@ const INITIAL_STATE = Object.freeze({
   forwardsError: '',
   deleteLoading: false,
   deleteError: '',
+  // 調整副本數（ScaleKubernetesResource）狀態。
+  scaleLoading: false,
+  scaleError: '',
   // 資源 YAML 編輯套用（UpdateKubernetesResource）狀態。
   updateLoading: false,
   updateError: '',
@@ -529,6 +534,7 @@ export function createKubernetesSessionStore(api = KubernetesAPI) {
       set({
         detailOpen: true,
         detailLoading: true,
+        eventsLoading: true,
         detailError: '',
         detailTab: 'overview',
         selectedResource,
@@ -559,12 +565,36 @@ export function createKubernetesSessionStore(api = KubernetesAPI) {
         }
         if (requestVersion !== detailRequestVersion) return detail;
         set({ resourceDetail: detail, detailLoading: false, detailError: '' });
+        // detail 到手即開抽屜；相關事件背景載入，好了再併入（不阻塞抽屜顯示）。
+        get().loadResourceEvents(detail, requestVersion).catch(() => {});
         return detail;
       } catch (error) {
         if (requestVersion === detailRequestVersion) {
-          set({ detailLoading: false, detailError: errorMessage(error) });
+          set({ detailLoading: false, eventsLoading: false, detailError: errorMessage(error) });
         }
         throw error;
+      }
+    },
+
+    // 非同步載入資源相關事件並併入目前 resourceDetail；以 detailRequestVersion 防過期覆蓋。
+    loadResourceEvents: async (detail, version) => {
+      if (!detail) return;
+      set({ eventsLoading: true });
+      try {
+        const res = await api.getResourceEvents({
+          kind: detail.kind || '', name: detail.name || '', namespace: detail.namespace || '', uid: detail.uid || ''
+        });
+        if (version !== detailRequestVersion) return;
+        const current = get().resourceDetail;
+        if (!current) return;
+        set({
+          resourceDetail: { ...current, events: Array.isArray(res?.events) ? res.events : [], eventsError: res?.eventsError || '' },
+          eventsLoading: false
+        });
+      } catch (error) {
+        if (version !== detailRequestVersion) return;
+        set({ eventsLoading: false });
+        console.error('[Kubernetes][Store][Events] 載入資源事件失敗', error);
       }
     },
 
@@ -593,7 +623,7 @@ export function createKubernetesSessionStore(api = KubernetesAPI) {
     },
 
     selectDetailTab: (tab) => {
-      const allowed = new Set(['overview', 'yaml', 'logs', 'forward', 'delete']);
+      const allowed = new Set(['overview', 'env', 'yaml', 'logs', 'forward', 'delete']);
       const value = String(tab || '').toLowerCase();
       set({ detailTab: allowed.has(value) ? value : 'overview' });
     },
@@ -949,6 +979,104 @@ export function createKubernetesSessionStore(api = KubernetesAPI) {
           namespace: request?.namespace || '',
           error
         });
+        throw error;
+      }
+    },
+
+    // 批量刪除：逐筆呼叫既有刪除 API，收集成功/失敗；成功項即時從本地快照移除，
+    // 最後統一 refreshDashboard。回傳 { ok, fail } 供 UI 顯示彙總並保留失敗項的勾選。
+    // list 每項：{ kind, name, namespace, apiVersion }（kind 不分大小寫）。彙總 toast 由 UI 端負責。
+    batchDeleteResources: async (list) => {
+      const targets = (Array.isArray(list) ? list : [])
+        .map(item => ({
+          kind: String(item?.kind || '').trim().toLowerCase(),
+          name: String(item?.name || '').trim(),
+          namespace: String(item?.namespace || '').trim(),
+          apiVersion: String(item?.apiVersion || '').trim(),
+          uid: ''
+        }))
+        .filter(item => item.kind && item.name);
+      if (!targets.length) return { ok: [], fail: [] };
+
+      set({ deleteLoading: true, deleteError: '' });
+      const ok = [];
+      const fail = [];
+      for (const request of targets) {
+        try {
+          if (typeof api.deleteResource === 'function') {
+            await api.deleteResource(request);
+          } else if (request.kind === 'pod') {
+            await api.deletePod({ namespace: request.namespace, podName: request.name, uid: request.uid });
+          } else {
+            throw new Error(t('k8s.err.missingDeleteApi'));
+          }
+          ok.push(request);
+        } catch (error) {
+          console.error('[Kubernetes][Store][BatchDelete] 刪除失敗', { kind: request.kind, name: request.name, namespace: request.namespace, error });
+          fail.push(request);
+        }
+      }
+
+      // 成功項即時從本地 dashboard 快照移除（僅限有對應 key 的 kind；其餘靠 refresh 補上）。
+      if (ok.length) {
+        const dashboard = get().dashboard;
+        if (dashboard) {
+          const updated = { ...dashboard };
+          for (const request of ok) {
+            const matchKey = dashboardKeyForKind(request.kind);
+            if (matchKey && Array.isArray(updated[matchKey])) {
+              updated[matchKey] = updated[matchKey].filter(item =>
+                !(item.name === request.name && (item.namespace || '') === (request.namespace || ''))
+              );
+            }
+          }
+          set({ dashboard: updated });
+        }
+        // 若目前於 Drawer 開啟的資源已被刪除，關閉抽屜。
+        const current = get().selectedResource || {};
+        const currentDeleted = ok.some(r =>
+          r.name === current.name
+          && r.kind === String(current.kind || '').toLowerCase()
+          && (r.namespace || '') === (current.namespace || '')
+        );
+        if (currentDeleted) get().closeResourceDetail();
+      }
+
+      set({ deleteLoading: false, deleteError: '' });
+      get().refreshDashboard().catch(() => {});
+      return { ok, fail };
+    },
+
+    // 調整 Deployment / StatefulSet 副本數：呼叫 ScaleKubernetesResource，
+    // 成功後本地快照即時更新 desiredReplicas（readyReplicas 交給 refresh 追上）、toast、refreshDashboard。
+    scaleResource: async ({ kind, name, namespace, apiVersion, replicas }) => {
+      const k = String(kind || '').trim().toLowerCase();
+      const nm = String(name || '').trim();
+      const ns = String(namespace || '').trim();
+      const target = Math.max(0, Math.floor(Number(replicas)));
+      if (!k || !nm) throw new Error(t('k8s.err.noResourceSelected'));
+      if (!Number.isFinite(target)) throw new Error(t('k8s.err.noResourceSelected'));
+      set({ scaleLoading: true, scaleError: '' });
+      try {
+        if (typeof api.scaleResource !== 'function') throw new Error(t('k8s.err.missingScaleApi'));
+        await api.scaleResource({ kind: k, name: nm, namespace: ns, apiVersion: String(apiVersion || '').trim(), replicas: target });
+        const dashboard = get().dashboard;
+        if (dashboard) {
+          const matchKey = dashboardKeyForKind(k);
+          if (matchKey && Array.isArray(dashboard[matchKey])) {
+            const updated = { ...dashboard };
+            updated[matchKey] = updated[matchKey].map(item =>
+              (item.name === nm && (item.namespace || '') === ns) ? { ...item, desiredReplicas: target } : item
+            );
+            set({ dashboard: updated });
+          }
+        }
+        showToast(t('k8s.toast.scaled', { id: `${k}/${ns ? ns + '/' : ''}${nm}`, replicas: target }), { type: 'success', title: t('k8s.toast.scaleTitle') });
+        set({ scaleLoading: false, scaleError: '' });
+        get().refreshDashboard().catch(() => {});
+      } catch (error) {
+        set({ scaleLoading: false, scaleError: errorMessage(error) });
+        console.error('[Kubernetes][Store][Scale] 後端 API 呼叫失敗', { kind: k, name: nm, namespace: ns, error });
         throw error;
       }
     },

@@ -33,8 +33,13 @@ import type {
   KubernetesResourceDeleteRequest,
   KubernetesResourceDetail,
   KubernetesResourceDetailRequest,
+  KubernetesResourceEvents,
+  KubernetesResourceEventsRequest,
+  KubernetesResourceScaleRequest,
   KubernetesResourceUpdateRequest,
   KubernetesResourceUpdateResult,
+  KubernetesSecretValue,
+  KubernetesSecretValueRequest,
   KubernetesSession,
   OperationResult,
   SSHConfig,
@@ -149,6 +154,12 @@ export interface WailsAppContract {
   GetKubernetesResourceDetail(
     request: KubernetesResourceDetailRequest,
   ): Promise<KubernetesResourceDetail>;
+  GetKubernetesResourceEvents(
+    request: KubernetesResourceEventsRequest,
+  ): Promise<KubernetesResourceEvents>;
+  GetKubernetesSecretValue(
+    request: KubernetesSecretValueRequest,
+  ): Promise<KubernetesSecretValue>;
   GetKubernetesPodLogs(
     request: KubernetesPodLogsRequest,
   ): Promise<KubernetesPodLogs>;
@@ -169,6 +180,9 @@ export interface WailsAppContract {
   UpdateKubernetesResource(
     request: KubernetesResourceUpdateRequest,
   ): Promise<KubernetesResourceUpdateResult>;
+  ScaleKubernetesResource(
+    request: KubernetesResourceScaleRequest,
+  ): Promise<void>;
   StartKubernetesPodPortForward(
     request: KubernetesPodPortForwardRequest,
   ): Promise<KubernetesPodPortForward>;

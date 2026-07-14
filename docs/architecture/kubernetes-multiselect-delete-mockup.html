@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kubernetes 多選批量刪除方案圖</title>
+<style>
+  :root {
+    --bg: #0f1115; --surface: #171a21; --surface-2: #1d2129; --titlebar: #12151b;
+    --border: #2a2f3a; --border-strong: #3a4150;
+    --text: #e6e9ef; --text-muted: #8b93a3; --subtext: #6b7280;
+    --primary: #4f8cff; --danger: #e5484d; --danger-bg: #2a1618;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Microsoft JhengHei", sans-serif;
+    --radius: 8px; --radius-lg: 12px;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 28px 20px 60px; background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; line-height: 1.6; }
+  .page { max-width: 900px; margin: 0 auto; }
+  .doc-note { margin: 0 0 24px; padding: 12px 16px; border-left: 3px solid var(--primary); background: var(--surface); border-radius: 0 var(--radius) var(--radius) 0; color: var(--text-muted); font-size: 13px; }
+  .doc-note strong { color: var(--text); }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px; }
+  .sub { color: var(--subtext); font-size: 13px; margin: 0 0 24px; }
+  .app { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; position: relative; overflow: hidden; min-height: 360px; }
+  .hint { margin: 0 0 12px; font-size: 12px; color: var(--subtext); }
+  .table-wrap { max-height: 230px; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; white-space: nowrap; }
+  thead th { position: sticky; top: 0; z-index: 2; text-align: left; padding: 10px 12px; background: var(--titlebar); color: var(--text-muted); text-transform: uppercase; font-size: 11px; font-weight: 600; letter-spacing: .5px; box-shadow: inset 0 -1px 0 var(--border); }
+  th.chk, td.chk { width: 40px; text-align: center; padding: 0 8px; }
+  tbody td { height: 34px; padding: 0 12px; border-bottom: 1px solid var(--border); color: var(--text-muted); vertical-align: middle; }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: color-mix(in srgb, var(--primary) 8%, transparent); }
+  tbody tr.selected { background: color-mix(in srgb, var(--primary) 12%, transparent); }
+  .name { font-family: var(--mono); color: var(--text); }
+  .shield { color: var(--danger); vertical-align: middle; margin-left: 4px; }
+  input[type=checkbox] { appearance: none; -webkit-appearance: none; width: 15px; height: 15px; margin: 0; vertical-align: middle; border: 1px solid var(--border-strong); border-radius: 3px; background: var(--bg); cursor: pointer; position: relative; }
+  input[type=checkbox]:checked, input[type=checkbox]:indeterminate { border-color: var(--primary); }
+  input[type=checkbox]:checked::after { content: ''; position: absolute; left: 4px; top: 1px; width: 3px; height: 7px; border: solid var(--primary); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+  input[type=checkbox]:indeterminate::after { content: ''; position: absolute; left: 3px; top: 6px; width: 7px; border-top: 2px solid var(--primary); }
+  .scrollbody-note { margin: 10px 4px 0; font-size: 12px; color: var(--subtext); }
+
+  .bar { position: absolute; left: 16px; right: 16px; bottom: 16px; z-index: 20; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 16px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: 0 8px 28px rgba(0,0,0,.4); transform: translateY(calc(100% + 24px)); transition: transform .24s ease; }
+  .bar.visible { transform: translateY(0); }
+  .bar-left { display: flex; align-items: center; gap: 14px; }
+  .count { font-size: 12.5px; font-weight: 700; color: var(--text); }
+  .clear { display: inline-flex; align-items: center; gap: 5px; padding: 4px 6px; border: 0; background: transparent; color: var(--text-muted); font: inherit; font-size: 12px; cursor: pointer; }
+  .clear:hover { color: var(--text); }
+  .risk { display: none; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; color: var(--danger); }
+  .risk.on { display: inline-flex; }
+  .del { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--danger); color: #fff; font: inherit; font-size: 11.5px; font-weight: 700; cursor: pointer; }
+  .del:hover { filter: brightness(1.08); }
+
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; align-items: center; justify-content: center; z-index: 50; }
+  .overlay.on { display: flex; }
+  .dialog { width: 380px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 22px; }
+  .dialog-title { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 600; margin-bottom: 10px; }
+  .dialog-title .ic { color: var(--danger); }
+  .dialog-msg { margin: 0 0 12px; font-size: 14px; color: var(--text-muted); }
+  .dialog-msg b { color: var(--text); }
+  .risk-box { display: none; margin-bottom: 14px; padding: 12px; border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent); border-radius: 8px; background: var(--danger-bg); }
+  .risk-box.on { display: block; }
+  .risk-box p { margin: 0 0 8px; font-size: 13px; color: var(--danger); }
+  .risk-box code { background: rgba(0,0,0,.35); padding: 1px 6px; border-radius: 4px; font-family: var(--mono); }
+  .risk-box input.txt { width: 100%; appearance: auto; -webkit-appearance: auto; height: 34px; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--titlebar); color: var(--text); font: inherit; }
+  .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+  .dialog-actions button { height: 32px; padding: 0 16px; border-radius: 8px; font: inherit; cursor: pointer; }
+  .btn-cancel { border: 1px solid var(--border-strong); background: transparent; color: var(--text); }
+  .btn-ok { border: 0; background: var(--danger); color: #fff; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="doc-note"><strong>方案圖（as-built）</strong> · 凍結表頭 + 多選 + 底部滑出批量刪除。詳見同層 <code>kubernetes-multiselect-delete.md</code>。捲動看凍結表頭、勾選看底部滑出列、按刪除看確認（含 🛡 高風險資源需打字 <code>delete</code>）。</div>
+
+  <h1>Kubernetes — 多選批量刪除</h1>
+  <p class="sub">凍結表頭 · 列勾選（全選/半選）· 底部滑出選取列 · 高風險打字確認</p>
+
+  <div class="app">
+    <p class="hint">ⓘ 捲動 → 表頭凍結；勾選 → 底部滑出；含 🛡 高風險 → 確認框需打字 delete</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th class="chk"><input type="checkbox" id="selectAll" aria-label="全選"></th>
+            <th>Name</th><th>Kind</th><th>Namespace</th><th>Age</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+
+    <div class="bar" id="bar">
+      <div class="bar-left">
+        <span class="count">已選取 <span id="cnt">0</span> 項</span>
+        <button class="clear" id="clear"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg> 清除</button>
+        <span class="risk" id="risk"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/></svg> 含高風險</span>
+      </div>
+      <button class="del" id="del"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg> 刪除選取</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="dialog">
+    <div class="dialog-title"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3L2 20h20zM12 9v5M12 17v.5"/></svg> 確認刪除</div>
+    <p class="dialog-msg">即將刪除 <b id="dcnt">0</b> 項資源，此操作無法復原。</p>
+    <div class="risk-box" id="rbox"><p>其中含高風險資源，請輸入 <code>delete</code> 以確認</p><input class="txt" id="dinput" type="text" placeholder="delete"></div>
+    <div class="dialog-actions"><button class="btn-cancel" id="dcancel">取消</button><button class="btn-ok" id="dok">刪除</button></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var data=[
+    {n:"nginx-deploy-7c9",k:"Deployment",ns:"default",age:"5h",risk:true},
+    {n:"redis-master-0",k:"Pod",ns:"cache",age:"2d",risk:false},
+    {n:"api-secret",k:"Secret",ns:"prod",age:"12h",risk:true},
+    {n:"worker-3a1",k:"Pod",ns:"jobs",age:"3m",risk:false},
+    {n:"prod",k:"Namespace",ns:"-",age:"8d",risk:true},
+    {n:"frontend-9d2",k:"Pod",ns:"prod",age:"1d",risk:false},
+    {n:"log-collector",k:"Pod",ns:"monitoring",age:"20m",risk:false}
+  ];
+  var sel=new Set();
+  var rows=document.getElementById("rows"),bar=document.getElementById("bar"),cnt=document.getElementById("cnt"),
+      all=document.getElementById("selectAll"),risk=document.getElementById("risk"),overlay=document.getElementById("overlay"),
+      rbox=document.getElementById("rbox"),dinput=document.getElementById("dinput"),dok=document.getElementById("dok");
+  var shield='<svg class="shield" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/></svg>';
+  data.forEach(function(d,i){
+    var tr=document.createElement("tr");
+    tr.innerHTML='<td class="chk"><input type="checkbox" data-i="'+i+'"></td>'+
+      '<td><span class="name">'+d.n+'</span>'+(d.risk?shield:'')+'</td><td>'+d.k+'</td><td>'+d.ns+'</td><td>'+d.age+'</td>';
+    rows.appendChild(tr);
+  });
+  function hasRisk(){return Array.from(sel).some(function(i){return data[i].risk;});}
+  function sync(){
+    cnt.textContent=sel.size;
+    bar.classList.toggle("visible",sel.size>0);
+    risk.classList.toggle("on",hasRisk());
+    all.checked=sel.size===data.length&&sel.size>0;
+    all.indeterminate=sel.size>0&&sel.size<data.length;
+    rows.querySelectorAll("tr").forEach(function(tr){var i=+tr.querySelector("input").dataset.i;tr.classList.toggle("selected",sel.has(i));});
+  }
+  rows.addEventListener("change",function(e){var cb=e.target.closest("input");if(!cb)return;e.stopPropagation();var i=+cb.dataset.i;cb.checked?sel.add(i):sel.delete(i);sync();});
+  rows.addEventListener("click",function(e){var td=e.target.closest("td.chk");if(!td)return;e.stopPropagation();if(e.target.tagName!=="INPUT"){var cb=td.querySelector("input");cb.checked=!cb.checked;cb.dispatchEvent(new Event("change",{bubbles:true}));}});
+  all.addEventListener("change",function(){sel.clear();if(all.checked)data.forEach(function(_,i){sel.add(i);});rows.querySelectorAll("input").forEach(function(cb){cb.checked=all.checked;});sync();});
+  document.getElementById("clear").addEventListener("click",function(){sel.clear();rows.querySelectorAll("input").forEach(function(cb){cb.checked=false;});sync();});
+  function refreshOk(){var need=hasRisk();dok.disabled=need&&dinput.value.trim()!=="delete";dok.style.opacity=dok.disabled?".5":"1";}
+  document.getElementById("del").addEventListener("click",function(){document.getElementById("dcnt").textContent=sel.size;rbox.classList.toggle("on",hasRisk());dinput.value="";refreshOk();overlay.classList.add("on");if(hasRisk())dinput.focus();});
+  dinput.addEventListener("input",refreshOk);
+  document.getElementById("dcancel").addEventListener("click",function(){overlay.classList.remove("on");});
+  dok.addEventListener("click",function(){if(dok.disabled)return;var ks=Array.from(sel).map(function(i){return data[i].k+"/"+data[i].n;});overlay.classList.remove("on");alert("（方案示意）將刪除：\n"+ks.join("\n"));sel.clear();rows.querySelectorAll("input").forEach(function(cb){cb.checked=false;});sync();});
+  sync();
+})();
+</script>
+</body>
+</html>

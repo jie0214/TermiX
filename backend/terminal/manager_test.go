@@ -21,12 +21,12 @@ func TestLocalTerminalCommandUsesExecutableAbsolutePath(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cmd, err := localTerminalCommand("  " + path + "  ")
+	resolved, args, err := localTerminalCommand("  " + path + "  ")
 	if err != nil {
 		t.Fatalf("localTerminalCommand() error = %v", err)
 	}
-	if cmd.Path != path || len(cmd.Args) != 2 || cmd.Args[1] != "-l" {
-		t.Fatalf("localTerminalCommand() = Path %q Args %v", cmd.Path, cmd.Args)
+	if resolved != path || len(args) != 1 || args[0] != "-l" {
+		t.Fatalf("localTerminalCommand() = Path %q Args %v", resolved, args)
 	}
 }
 
@@ -47,7 +47,7 @@ func TestLocalTerminalCommandRejectsInvalidPaths(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if _, err := localTerminalCommand(test.path); err == nil || !strings.Contains(err.Error(), test.want) {
+			if _, _, err := localTerminalCommand(test.path); err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("localTerminalCommand(%q) error = %v", test.path, err)
 			}
 		})

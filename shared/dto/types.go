@@ -276,6 +276,20 @@ type KubernetesResourceDetailRequest struct {
 	APIVersion string `json:"apiVersion" yaml:"apiVersion"`
 }
 
+// KubernetesResourceEventsRequest 獨立查詢某資源的相關事件（與 detail 分離，供抽屜非同步延後載入）。
+type KubernetesResourceEventsRequest struct {
+	Kind      string `json:"kind" yaml:"kind"`
+	Name      string `json:"name" yaml:"name"`
+	Namespace string `json:"namespace" yaml:"namespace"`
+	UID       string `json:"uid" yaml:"uid"`
+}
+
+// KubernetesResourceEvents 事件查詢結果；EventsError 為 best-effort 失敗訊息（不使查詢整體失敗）。
+type KubernetesResourceEvents struct {
+	Events      []KubernetesEventSummary `json:"events"`
+	EventsError string                   `json:"eventsError"`
+}
+
 type KubernetesPodLogsRequest struct {
 	Namespace string `json:"namespace" yaml:"namespace"`
 	PodName   string `json:"podName" yaml:"podName"`
@@ -368,6 +382,15 @@ type KubernetesResourceUpdateRequest struct {
 	YAML      string `json:"yaml" yaml:"yaml"`
 }
 
+// KubernetesResourceScaleRequest 調整工作負載副本數（僅 Deployment / StatefulSet）。
+type KubernetesResourceScaleRequest struct {
+	Kind       string `json:"kind" yaml:"kind"`
+	Name       string `json:"name" yaml:"name"`
+	Namespace  string `json:"namespace" yaml:"namespace"`
+	APIVersion string `json:"apiVersion" yaml:"apiVersion"`
+	Replicas   int32  `json:"replicas" yaml:"replicas"`
+}
+
 type KubernetesKeyValue struct {
 	Key   string `json:"key"`
 	Value string `json:"value"`
@@ -388,6 +411,18 @@ type KubernetesContainerDetail struct {
 	RestartCount int32                     `json:"restartCount"`
 	State        string                    `json:"state"`
 	Ports        []KubernetesContainerPort `json:"ports"`
+	// Env / EnvFrom 皆為「消毒後」摘要：僅名稱與來源參照，絕不含環境變數實際值（可能為機密）。
+	Env     []KubernetesEnvVarSummary `json:"env"`
+	EnvFrom []string                  `json:"envFrom"`
+}
+
+// KubernetesEnvVarSummary 單一環境變數摘要：Name 為變數名；字面值以 Value 直接呈現；
+// 若來自 valueFrom（secretKeyRef / configMapKeyRef / fieldRef 等）則 Value 為空、以 Source 描述來源
+// （後端不解析 Secret/ConfigMap 實際值）。
+type KubernetesEnvVarSummary struct {
+	Name   string `json:"name"`
+	Value  string `json:"value"`
+	Source string `json:"source"`
 }
 
 type KubernetesContainerPort struct {
@@ -415,21 +450,35 @@ type KubernetesEventSummary struct {
 }
 
 type KubernetesResourceDetail struct {
-	Kind        string                        `json:"kind"`
-	Name        string                        `json:"name"`
-	Namespace   string                        `json:"namespace"`
-	Status      string                        `json:"status"`
-	CreatedAt   string                        `json:"createdAt"`
-	UID         string                        `json:"uid"`
-	APIVersion  string                        `json:"apiVersion"`
-	YAML        string                        `json:"yaml"`
-	Labels      []KubernetesKeyValue          `json:"labels"`
-	Owners      []KubernetesOwnerReference    `json:"owners"`
-	Fields      []KubernetesKeyValue          `json:"fields"`
-	Conditions  []KubernetesResourceCondition `json:"conditions"`
-	Containers  []KubernetesContainerDetail   `json:"containers"`
-	Events      []KubernetesEventSummary      `json:"events"`
-	EventsError string                        `json:"eventsError"`
+	Kind           string                        `json:"kind"`
+	Name           string                        `json:"name"`
+	Namespace      string                        `json:"namespace"`
+	Status         string                        `json:"status"`
+	CreatedAt      string                        `json:"createdAt"`
+	UID            string                        `json:"uid"`
+	APIVersion     string                        `json:"apiVersion"`
+	YAML           string                        `json:"yaml"`
+	Labels         []KubernetesKeyValue          `json:"labels"`
+	Owners         []KubernetesOwnerReference    `json:"owners"`
+	Fields         []KubernetesKeyValue          `json:"fields"`
+	Conditions     []KubernetesResourceCondition `json:"conditions"`
+	Containers     []KubernetesContainerDetail   `json:"containers"`
+	Events         []KubernetesEventSummary      `json:"events"`
+	EventsError    string                        `json:"eventsError"`
+	SecretType     string                        `json:"secretType,omitempty"`     // 僅 Secret：spec.type
+	SecretDataKeys []string                      `json:"secretDataKeys,omitempty"` // 僅 Secret：data 的 key 清單（值不隨 detail 回傳）
+}
+
+// KubernetesSecretValueRequest 於使用者明確要求時，取回單一 Secret data key 的明文值。
+type KubernetesSecretValueRequest struct {
+	Namespace string `json:"namespace"`
+	Name      string `json:"name"`
+	Key       string `json:"key"`
+}
+
+type KubernetesSecretValue struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
 }
 
 type KubernetesPodPortForward struct {
@@ -483,10 +532,10 @@ type KubernetesPodContainerSummary struct {
 }
 
 type KubernetesWorkloadSummary struct {
-	Name              string `json:"name"`
-	Namespace         string `json:"namespace"`
-	DesiredReplicas   int32  `json:"desiredReplicas"`
-	ReadyReplicas     int32  `json:"readyReplicas"`
+	Name              string            `json:"name"`
+	Namespace         string            `json:"namespace"`
+	DesiredReplicas   int32             `json:"desiredReplicas"`
+	ReadyReplicas     int32             `json:"readyReplicas"`
 	AvailableReplicas int32             `json:"availableReplicas"`
 	Status            string            `json:"status"`
 	CreationTimestamp string            `json:"creationTimestamp"`
@@ -513,11 +562,11 @@ type KubernetesCronJobSummary struct {
 }
 
 type KubernetesServiceSummary struct {
-	Name              string `json:"name"`
-	Namespace         string `json:"namespace"`
-	Type              string `json:"type"`
-	ClusterIP         string `json:"clusterIp"`
-	ExternalAddresses string `json:"externalAddresses"`
+	Name              string            `json:"name"`
+	Namespace         string            `json:"namespace"`
+	Type              string            `json:"type"`
+	ClusterIP         string            `json:"clusterIp"`
+	ExternalAddresses string            `json:"externalAddresses"`
 	Ports             string            `json:"ports"`
 	PortNumbers       []int             `json:"portNumbers"`
 	CreationTimestamp string            `json:"creationTimestamp"`
@@ -713,12 +762,12 @@ type KubernetesMetricsSummary struct {
 }
 
 type KubernetesDashboardSnapshot struct {
-	SessionID                 string                                      `json:"sessionId"`
-	ClusterName               string                                      `json:"clusterName"`
-	ContextName               string                                      `json:"contextName"`
-	Namespace                 string                                      `json:"namespace"`
-	ServerVersion             string                                      `json:"serverVersion"`
-	GeneratedAt               string                                      `json:"generatedAt"`
+	SessionID     string `json:"sessionId"`
+	ClusterName   string `json:"clusterName"`
+	ContextName   string `json:"contextName"`
+	Namespace     string `json:"namespace"`
+	ServerVersion string `json:"serverVersion"`
+	GeneratedAt   string `json:"generatedAt"`
 	// Partial＝此快照僅含核心資源（scope=core 的首屏結果），前端不應據此判定其餘 section 為空。
 	Partial                   bool                                        `json:"partial"`
 	Namespaces                []string                                    `json:"namespaces"`

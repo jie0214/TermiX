@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kubernetes 調整副本數方案圖</title>
+<style>
+  :root {
+    --bg: #0f1115; --surface: #171a21; --surface-2: #1d2129; --titlebar: #12151b;
+    --border: #2a2f3a; --border-strong: #3a4150;
+    --text: #e6e9ef; --text-muted: #8b93a3; --subtext: #6b7280;
+    --primary: #4f8cff; --danger: #e5484d;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Microsoft JhengHei", sans-serif;
+    --radius: 8px;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 28px 20px 60px; background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; line-height: 1.6; }
+  .page { max-width: 860px; margin: 0 auto; }
+  .doc-note { margin: 0 0 24px; padding: 12px 16px; border-left: 3px solid var(--primary); background: var(--surface); border-radius: 0 var(--radius) var(--radius) 0; color: var(--text-muted); font-size: 13px; }
+  .doc-note strong { color: var(--text); }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px; }
+  .sub { color: var(--subtext); font-size: 13px; margin: 0 0 24px; }
+  .app { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; position: relative; }
+  .hint { margin: 0 0 12px; font-size: 12px; color: var(--subtext); }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  thead th { text-align: left; padding: 10px 13px; background: var(--titlebar); color: var(--text-muted); text-transform: uppercase; font-size: 11px; font-weight: 600; letter-spacing: .5px; border-bottom: 1px solid var(--border); }
+  thead th.right { text-align: right; }
+  tbody td { padding: 0 13px; height: 40px; border-bottom: 1px solid var(--border); color: var(--text-muted); vertical-align: middle; }
+  tbody tr:last-child td { border-bottom: 0; }
+  .name { font-family: var(--mono); color: var(--text); }
+  .table-wrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .scale-btn { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: 999px; background: transparent; color: var(--text); font-family: inherit; font-size: 11.5px; font-weight: 500; cursor: pointer; }
+  .scale-btn:hover { border-color: var(--primary); }
+  .actions { text-align: right; }
+  svg { display: block; }
+  .pop { display: none; position: absolute; width: 288px; z-index: 10; background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 14px 36px rgba(0,0,0,.5); padding: 16px; }
+  .pop h3 { margin: 0 0 2px; font-size: 14px; font-weight: 600; }
+  .pop .res { font-family: var(--mono); font-size: 12px; color: var(--text-muted); margin: 0 0 14px; }
+  .stepper { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 12px; }
+  .stepper button { width: 38px; height: 38px; border: 1px solid var(--border-strong); border-radius: 10px; background: transparent; color: var(--text); font-size: 20px; cursor: pointer; }
+  .stepper button:hover { border-color: var(--primary); }
+  .stepper input { width: 66px; height: 42px; text-align: center; font-size: 18px; font-weight: 600; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--surface); color: var(--text); font-family: var(--mono); }
+  .curline { margin: 0 0 6px; font-size: 12px; color: var(--text-muted); }
+  .curline b { color: var(--text); }
+  .warn { display: none; margin: 0 0 10px; font-size: 12px; color: var(--danger); }
+  .pop-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+  .pop-actions button { height: 30px; padding: 0 16px; border-radius: 8px; font-family: inherit; font-size: 12.5px; cursor: pointer; }
+  .btn-cancel { border: 1px solid var(--border-strong); background: transparent; color: var(--text); }
+  .btn-apply { border: 0; background: var(--primary); color: #fff; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="doc-note"><strong>方案圖</strong> · Deployment / StatefulSet 調整副本數。詳見同層 <code>kubernetes-scale-replicas.md</code>。點列尾 <code>⇕ Scale</code> 開啟步進器；可加減、直接輸入、按預設；縮到 0 會警告。DaemonSet 不顯示（無副本數）。</div>
+
+  <h1>Kubernetes — 調整副本數（Scale）</h1>
+  <p class="sub">列尾 Scale 鈕 → 彈出步進器 · 縮到 0 警告 · drawer 內同一套 UI</p>
+
+  <div class="app">
+    <p class="hint"><i>ⓘ</i> 只在 Deployment / StatefulSet 出現；DaemonSet 無此鈕。</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Name</th><th>Kind</th><th>Ready</th><th>Desired</th><th class="right">Actions</th></tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+
+    <div class="pop" id="pop">
+      <h3>調整副本數</h3>
+      <p class="res" id="popRes">deployment/nginx-deploy</p>
+      <div class="stepper">
+        <button id="dec" aria-label="減少">−</button>
+        <input id="num" type="text" inputmode="numeric" value="3">
+        <button id="inc" aria-label="增加">+</button>
+      </div>
+      <p class="curline">目前 <span id="cur">3/3</span>，將變更為 <b id="target">3</b></p>
+      <p class="warn" id="warn">⚠ 縮到 0 會停掉全部 Pod。</p>
+      <div class="pop-actions">
+        <button class="btn-cancel" id="cancel">取消</button>
+        <button class="btn-apply" id="apply">套用</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var data=[
+    {n:"nginx-deploy",k:"Deployment",ready:"3/3",desired:3,scalable:true},
+    {n:"api-gateway",k:"Deployment",ready:"2/2",desired:2,scalable:true},
+    {n:"pgsql-primary",k:"StatefulSet",ready:"1/1",desired:1,scalable:true},
+    {n:"log-agent",k:"DaemonSet",ready:"4/4",desired:4,scalable:false}
+  ];
+  var rows=document.getElementById("rows"), pop=document.getElementById("pop"),
+      num=document.getElementById("num"), target=document.getElementById("target"),
+      warn=document.getElementById("warn"), apply=document.getElementById("apply"),
+      popRes=document.getElementById("popRes"), cur=document.getElementById("cur");
+  var active=null;
+  data.forEach(function(d,i){
+    var tr=document.createElement("tr");
+    var btn = d.scalable
+      ? '<button class="scale-btn" data-i="'+i+'"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v18M7 8l5-5 5 5M7 16l5 5 5-5"/></svg> Scale</button>'
+      : '<span style="font-size:11px;color:var(--subtext)">—</span>';
+    tr.innerHTML='<td><span class="name">'+d.n+'</span></td><td>'+d.k+'</td><td>'+d.ready+'</td><td>'+d.desired+'</td><td class="actions">'+btn+'</td>';
+    rows.appendChild(tr);
+  });
+  function clamp(v){ v=parseInt(v,10); if(isNaN(v)||v<0)v=0; if(v>999)v=999; return v; }
+  function refresh(){
+    var v=clamp(num.value); num.value=v; target.textContent=v;
+    warn.style.display = v===0 ? "block":"none";
+    var same = active && v===active.desired;
+    apply.textContent = same ? "套用" : (active ? "套用（"+active.desired+" → "+v+"）":"套用");
+    apply.disabled = same; apply.style.opacity = same?".5":"1"; apply.style.cursor = same?"not-allowed":"pointer";
+    apply.style.background = v===0 ? "var(--danger)":"var(--primary)";
+  }
+  rows.addEventListener("click",function(e){
+    var b=e.target.closest(".scale-btn"); if(!b)return;
+    e.stopPropagation();
+    active=data[+b.dataset.i];
+    popRes.textContent=active.k.toLowerCase()+"/"+active.n;
+    cur.textContent=active.ready; num.value=active.desired; refresh();
+    var r=b.getBoundingClientRect(), ar=document.querySelector(".app").getBoundingClientRect();
+    pop.style.top=(r.bottom-ar.top+6)+"px";
+    pop.style.left=Math.max(12,(r.right-ar.left-288))+"px";
+    pop.style.display="block"; num.focus(); num.select();
+  });
+  document.getElementById("cancel").addEventListener("click",function(){pop.style.display="none";});
+  document.getElementById("dec").addEventListener("click",function(){num.value=clamp(num.value)-1;refresh();});
+  document.getElementById("inc").addEventListener("click",function(){num.value=clamp(num.value)+1;refresh();});
+  num.addEventListener("input",refresh);
+  apply.addEventListener("click",function(){
+    if(apply.disabled||!active)return;
+    var v=clamp(num.value);
+    pop.style.display="none";
+    alert("（方案示意）將 "+active.k.toLowerCase()+"/"+active.n+" 副本數 "+active.desired+" → "+v + (v===0?"\n（縮到 0 前會再跳一次確認）":""));
+  });
+})();
+</script>
+</body>
+</html>

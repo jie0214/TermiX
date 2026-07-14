@@ -140,8 +140,8 @@ test('Workload/Service 可經 selector 比對跳轉到關聯 Pods 並過濾', ()
   // Pods 清單套用 label 過濾並顯示可清除的來源 chip。
   assert.match(sessionSource, /kubernetes-pod-filter-chip/);
   assert.match(sessionSource, /data-clear-pod-filter="true"/);
-  // 手動切換區段會清除 label 過濾，避免殘留。
-  assert.match(sessionSource, /this\.podLabelFilter = null;\s*kubernetesSessionStore\.getState\(\)\.selectSection/);
+  // 手動切換區段會清除 label 過濾與多選，避免殘留。
+  assert.match(sessionSource, /this\.podLabelFilter = null;[\s\S]*?this\.clearSelection\(\);[\s\S]*?kubernetesSessionStore\.getState\(\)\.selectSection/);
 });
 
 test('Detail Drawer 支援鍵盤焦點管理與關閉後焦點回復', () => {
