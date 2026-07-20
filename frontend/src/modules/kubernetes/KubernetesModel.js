@@ -1,4 +1,5 @@
 import { t } from '../../i18n/index.ts';
+import { defaultKubeconfigPath } from './KubernetesPath.js';
 
 export const DEFAULT_KUBERNETES_CLUSTER = Object.freeze({
   id: '',
@@ -12,7 +13,7 @@ export const DEFAULT_KUBERNETES_CLUSTER = Object.freeze({
   insecureSkipTLSVerify: false,
   source: 'managed',
   isCurrent: false,
-  kubeconfigPath: '~/.kube/config',
+  kubeconfigPath: defaultKubeconfigPath(),
   createdAt: '',
   updatedAt: ''
 });
@@ -46,7 +47,7 @@ export function normalizeKubernetesCluster(cluster = {}) {
     insecureSkipTLSVerify: Boolean(cluster.insecureSkipTLSVerify),
     source: text(cluster.source) || 'discovered',
     isCurrent: Boolean(cluster.isCurrent),
-    kubeconfigPath: text(cluster.kubeconfigPath) || '~/.kube/config',
+    kubeconfigPath: text(cluster.kubeconfigPath) || defaultKubeconfigPath(),
     createdAt: text(cluster.createdAt),
     updatedAt: text(cluster.updatedAt)
   };

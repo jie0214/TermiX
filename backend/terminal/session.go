@@ -4,17 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"github.com/jie0214/TermiX/backend/common"
 	termixssh "github.com/jie0214/TermiX/backend/ssh"
 	"github.com/jie0214/TermiX/shared/events"
+	"io"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/jie0214/TermiX/shared/dto"
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 	"golang.org/x/crypto/ssh"
-	"github.com/jie0214/TermiX/shared/dto"
 )
 
 const (
@@ -103,8 +103,14 @@ func (m *Manager) getSession(config dto.SSHConfig) (*session, bool, string, erro
 		return nil, false, intro.String(), err
 	}
 
+	echoMode := uint32(1)
+	if strings.TrimSpace(config.SudoPassword) != "" {
+		// sudo 密碼會由後端透過 PTY stdin 傳送；在 root shell 就緒前關閉回顯，
+		// 避免密碼出現在終端畫面。
+		echoMode = 0
+	}
 	if err := sshSession.RequestPty("xterm", 40, 120, ssh.TerminalModes{
-		ssh.ECHO:          1,
+		ssh.ECHO:          echoMode,
 		ssh.TTY_OP_ISPEED: 14400,
 		ssh.TTY_OP_OSPEED: 14400,
 		3:                 127, // 3 是 TTY_OP_VERASE，設定退格鍵為 ASCII 127 (\x7f)
@@ -136,16 +142,17 @@ func (m *Manager) getSession(config dto.SSHConfig) (*session, bool, string, erro
 
 	appCtx, frontendReady := m.contextSnapshot()
 	terminal := &session{
-		key:           key,
-		client:        client,
-		session:       sshSession,
-		stdin:         stdin,
-		output:        make(chan string, 512),
-		closed:        make(chan struct{}),
-		appCtx:        appCtx,
-		frontendReady: frontendReady,
-		sudoPassword:  config.SudoPassword,
-		onExit:        m.onSessionExit,
+		key:            key,
+		client:         client,
+		session:        sshSession,
+		stdin:          stdin,
+		output:         make(chan string, 512),
+		closed:         make(chan struct{}),
+		appCtx:         appCtx,
+		frontendReady:  frontendReady,
+		sudoPassword:   config.SudoPassword,
+		suppressOutput: strings.TrimSpace(config.SudoPassword) != "",
+		onExit:         m.onSessionExit,
 	}
 	go terminal.readPipe(stdout)
 	go terminal.readPipe(stderr)
@@ -163,7 +170,14 @@ func (m *Manager) getSession(config dto.SSHConfig) (*session, bool, string, erro
 		}
 	}()
 
-	if err := sshSession.Shell(); err != nil {
+	if strings.TrimSpace(config.SudoPassword) != "" {
+		// 直接以 SSH exec 啟動 sudo shell，不先經過使用者的互動 shell。這可避免
+		// sudo bootstrap、標記與驗證指令被寫入遠端 shell history 或顯示於畫面。
+		if err := sshSession.Start(sudoShellCommand(sudoPromptMarker(1), sudoReadyMarker(1))); err != nil {
+			terminal.close()
+			return nil, false, intro.String(), cancelOrErr(ctx, err)
+		}
+	} else if err := sshSession.Shell(); err != nil {
 		terminal.close()
 		return nil, false, intro.String(), cancelOrErr(ctx, err)
 	}
@@ -180,18 +194,6 @@ func (m *Manager) getSession(config dto.SSHConfig) (*session, bool, string, erro
 			return nil, false, intro.String(), cancelOrErr(ctx, fmt.Errorf("sudo shell 啟動失敗：%w", err))
 		}
 		terminal.isSudo = true
-		output, err = terminal.execute("whoami", 15*time.Second)
-		if output != "" {
-			intro.WriteString(output)
-		}
-		if err != nil {
-			terminal.close()
-			return nil, false, intro.String(), cancelOrErr(ctx, fmt.Errorf("sudo shell 啟動失敗：%w", err))
-		}
-		if !commandOutputHasLine(output, "root") {
-			terminal.close()
-			return nil, false, intro.String(), cancelOrErr(ctx, fmt.Errorf("sudo shell 啟動失敗：whoami = %s", strings.TrimSpace(output)))
-		}
 	}
 
 	m.emitProgress(config, "shell-ready", "終端機 Session 建立成功！")
@@ -256,14 +258,19 @@ func (t *session) readPipe(reader io.Reader) {
 		if n > 0 {
 			chunk := string(buffer[:n])
 
-			// 總是實時發送輸出給前端終端彩現，保障極速回顯與串流體驗
-			t.emitOutput(chunk)
-
 			t.mu.Lock()
 			executing := t.isExecuting
+			suppressOutput := t.suppressOutput
 			t.mu.Unlock()
 
-			if executing {
+			// sudo bootstrap 的控制標記與密碼提示僅供後端協定使用，不可顯示於終端。
+			if !suppressOutput {
+				t.emitOutput(chunk)
+			}
+
+			// SSH exec 已啟動但 startSudoShell 尚未取得執行鎖時，sudo prompt 仍可能
+			// 提早抵達；bootstrap 期間同樣必須保留給後端協定處理。
+			if executing || suppressOutput {
 				select {
 				case t.output <- chunk:
 				case <-t.closed:
@@ -547,26 +554,8 @@ func (t *session) startSudoShell(timeout time.Duration) (string, error) {
 		t.mu.Unlock()
 	}()
 
-	t.drain()
 	promptMarker := sudoPromptMarker(currentSeq)
 	readyMarker := sudoReadyMarker(currentSeq)
-	if _, err := io.WriteString(t.stdin, "stty -echo 2>/dev/null\n"); err != nil {
-		return "", err
-	}
-	time.Sleep(20 * time.Millisecond)
-	t.drain()
-
-	reachedReady := false
-	defer func() {
-		if !reachedReady {
-			_, _ = io.WriteString(t.stdin, "stty echo 2>/dev/null\n")
-		}
-	}()
-
-	if _, err := io.WriteString(t.stdin, sudoShellCommand(promptMarker, readyMarker)); err != nil {
-		return "", err
-	}
-
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 
@@ -586,7 +575,11 @@ func (t *session) startSudoShell(timeout time.Duration) (string, error) {
 			}
 
 			if index := strings.Index(text, readyMarker); index >= 0 {
-				reachedReady = true
+				t.mu.Lock()
+				t.suppressOutput = false
+				t.mu.Unlock()
+				// marker 之後若已同批收到 root prompt，補送其內容，避免首個 prompt 遺失。
+				t.emitOutput(text[index+len(readyMarker):])
 				before := strings.TrimSpace(text[:index])
 				before = strings.ReplaceAll(before, promptMarker, "")
 				before = common.StripANSI(strings.TrimSpace(before))

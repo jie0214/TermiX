@@ -36,21 +36,23 @@ type Manager struct {
 }
 
 type session struct {
-	key          string
-	client       *cryptossh.Client
-	session      *cryptossh.Session
-	cmd          *pty.Cmd
-	stdin        io.WriteCloser
-	output       chan string
-	closed       chan struct{}
-	mu           sync.Mutex
-	execMu       sync.Mutex
-	exitOnce     sync.Once
-	seq          uint64
-	isSudo       bool
-	isExecuting  bool
-	isLocal      bool
-	appCtx       context.Context
+	key         string
+	client      *cryptossh.Client
+	session     *cryptossh.Session
+	cmd         *pty.Cmd
+	stdin       io.WriteCloser
+	output      chan string
+	closed      chan struct{}
+	mu          sync.Mutex
+	execMu      sync.Mutex
+	exitOnce    sync.Once
+	seq         uint64
+	isSudo      bool
+	isExecuting bool
+	isLocal     bool
+	// suppressOutput 僅用於 sudo bootstrap；其間的協定標記與提示不可送至前端。
+	suppressOutput bool
+	appCtx         context.Context
 	// frontendReady 於 session 建立時由 Manager 快照而來，表示 appCtx 是否為已就緒的前端
 	// Wails context。取代先前對 context 型別名稱的字串判斷。appCtx 在建立後即固定不變，
 	// 由 readPipe goroutine 唯讀，故此欄位不需額外鎖保護。

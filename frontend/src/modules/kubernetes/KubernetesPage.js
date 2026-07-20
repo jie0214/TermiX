@@ -3,6 +3,7 @@ import { createKubernetesClusterDraft, validateKubernetesCluster } from './Kuber
 import { kubernetesSessionStore, KUBERNETES_SESSION_ID } from './KubernetesSessionStore.js';
 import { terminalStore } from '../terminal/TerminalStore.js';
 import { t } from '../../i18n/index.ts';
+import { defaultKubeconfigPath } from './KubernetesPath.js';
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -41,14 +42,29 @@ function detectClusterProvider(cluster) {
   return { bg: '#326CE5', glyph: K8S_WHEEL_GLYPH, label: '' };
 }
 
-// 依偏好排序 clusters（不修改傳入陣列）。name/context 用 localeCompare；
-// provider 依偵測到的供應商標籤（EKS/GKE/AKS，通用則排在最後）。
-function sortClusters(clusters, sortBy = 'name', sortDir = 'asc') {
+// 判斷卡片是否對應目前實際連線的 Kubernetes Session。正常情況以 clusterId 比對；
+// 舊版還原的 Session 若沒有 clusterId，則退回 kubeconfig 與 Context 的組合比對。
+function isConnectedCluster(cluster, connectedCluster) {
+  if (!cluster || !connectedCluster) return false;
+  const connectedID = String(connectedCluster.clusterId || '').trim();
+  if (connectedID) return String(cluster.id || '').trim() === connectedID;
+  return String(cluster.contextName || '').trim() === String(connectedCluster.contextName || '').trim()
+    && String(cluster.kubeconfigPath || '').trim() === String(connectedCluster.kubeconfigPath || '').trim();
+}
+
+// 依偏好排序 clusters（不修改傳入陣列）。TermiX Session 的連線叢集固定置頂；
+// 即使沒有開啟 Session，也會將 kubeconfig current-context（isCurrent）置頂，其他項目
+// 才套用 name/context/provider 排序；provider 依偵測到的供應商標籤（EKS/GKE/AKS，通用則排在最後）。
+function sortClusters(clusters, sortBy = 'name', sortDir = 'asc', connectedCluster = null) {
   const dir = sortDir === 'desc' ? -1 : 1;
   const nameOf = (c) => (c.displayName || c.contextName || '').toLowerCase();
   const providerOf = (c) => detectClusterProvider(c).label || 'zzz';
   const sorted = [...clusters];
   sorted.sort((a, b) => {
+    const aConnected = isConnectedCluster(a, connectedCluster);
+    const bConnected = isConnectedCluster(b, connectedCluster);
+    if (aConnected !== bConnected) return aConnected ? -1 : 1;
+    if (Boolean(a.isCurrent) !== Boolean(b.isCurrent)) return a.isCurrent ? -1 : 1;
     let cmp;
     if (sortBy === 'provider') {
       cmp = providerOf(a).localeCompare(providerOf(b));
@@ -197,7 +213,7 @@ export class KubernetesPage extends HTMLElement {
         cluster.namespace
       ].some(value => String(value || '').toLocaleLowerCase('zh-Hant').includes(query)));
     }
-    return sortClusters(list, state.sortBy, state.sortDir);
+    return sortClusters(list, state.sortBy, state.sortDir, kubernetesSessionStore.getState().connectedCluster);
   }
 
   renderCard(cluster, state) {
@@ -289,7 +305,7 @@ export class KubernetesPage extends HTMLElement {
               </section>
               <section>
                 <h3>${t('k8s.page.sectionKubeconfig')}</h3>
-                ${this.renderField('kubeconfigPath', t('k8s.page.fieldKubeconfigPath'), draft.kubeconfigPath, { required: true, readonly: !isNew, placeholder: '~/.kube/config' })}
+                ${this.renderField('kubeconfigPath', t('k8s.page.fieldKubeconfigPath'), draft.kubeconfigPath, { required: true, readonly: !isNew, placeholder: defaultKubeconfigPath() })}
               </section>
             </div>
             <footer class="settings-footer kubernetes-form-footer">

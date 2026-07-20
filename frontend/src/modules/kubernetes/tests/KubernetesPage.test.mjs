@@ -22,6 +22,14 @@ test('Cluster 卡片包含識別資訊、目前狀態與操作控制', () => {
   assert.match(pageSource, /kubernetes-edit-btn/);
 });
 
+test('目前連線的 Cluster 無論是否開啟 Session 都固定顯示於排序結果第一位', () => {
+  assert.match(pageSource, /function isConnectedCluster\(cluster, connectedCluster\)/);
+  assert.match(pageSource, /const aConnected = isConnectedCluster\(a, connectedCluster\)/);
+  assert.match(pageSource, /if \(aConnected !== bConnected\) return aConnected \? -1 : 1/);
+  assert.match(pageSource, /if \(Boolean\(a\.isCurrent\) !== Boolean\(b\.isCurrent\)\) return a\.isCurrent \? -1 : 1/);
+  assert.match(pageSource, /sortClusters\(list, state\.sortBy, state\.sortDir, kubernetesSessionStore\.getState\(\)\.connectedCluster\)/);
+});
+
 test('Drawer 表單提供需求指定的所有欄位', () => {
   for (const field of [
     'displayName',

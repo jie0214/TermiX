@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"gopkg.in/yaml.v3"
 	"github.com/jie0214/TermiX/shared/dto"
+	"gopkg.in/yaml.v3"
 )
 
 func loadConfig(path string, allowCreate bool) (*yaml.Node, os.FileMode, error) {
@@ -166,7 +166,10 @@ func upsertContext(root *yaml.Node, item dto.KubernetesClusterProfile) {
 	})
 }
 
-func writeConfigAtomic(path string, root *yaml.Node, mode os.FileMode) error {
+// writeConfigAtomic 將 kubeconfig 與備份一律限制為僅擁有者可讀寫。kubeconfig 常含
+// Bearer Token、Client Certificate 或憑證外掛設定，不可沿用既有的寬鬆檔案權限。
+func writeConfigAtomic(path string, root *yaml.Node, _ os.FileMode) error {
+	const privateFileMode os.FileMode = 0600
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return fmt.Errorf("建立 kubeconfig 目錄失敗：%w", err)
 	}
@@ -176,8 +179,11 @@ func writeConfigAtomic(path string, root *yaml.Node, mode os.FileMode) error {
 		return fmt.Errorf("序列化 kubeconfig 失敗：%w", err)
 	}
 	if original, readErr := os.ReadFile(path); readErr == nil {
-		if err := os.WriteFile(path+".termix.bak", original, mode); err != nil {
+		if err := os.WriteFile(path+".termix.bak", original, privateFileMode); err != nil {
 			return fmt.Errorf("備份 kubeconfig 失敗：%w", err)
+		}
+		if err := os.Chmod(path+".termix.bak", privateFileMode); err != nil {
+			return fmt.Errorf("設定 kubeconfig 備份檔權限失敗：%w", err)
 		}
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".termix-kubeconfig-*")
@@ -186,7 +192,7 @@ func writeConfigAtomic(path string, root *yaml.Node, mode os.FileMode) error {
 	}
 	tmpName := tmp.Name()
 	defer os.Remove(tmpName)
-	if err := tmp.Chmod(mode); err != nil {
+	if err := tmp.Chmod(privateFileMode); err != nil {
 		tmp.Close()
 		return fmt.Errorf("設定 kubeconfig 暫存檔權限失敗：%w", err)
 	}

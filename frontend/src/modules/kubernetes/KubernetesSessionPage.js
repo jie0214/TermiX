@@ -5,9 +5,7 @@ import { onWailsEvent, openBrowserURL } from '../../platform/wails/events.ts';
 import { confirmDialog } from '../../components/feedback/confirmDialog';
 import { showToast } from '../../components/feedback/toast.js';
 import { suppressScrollbarAutohide } from '../../runtime/scrollbarAutohide';
-import { Terminal } from '@xterm/xterm';
-import { WebglAddon } from '@xterm/addon-webgl';
-import { CanvasAddon } from '@xterm/addon-canvas';
+import { terminalStore } from '../terminal/TerminalStore.js';
 import { t } from '../../i18n/index.ts';
 
 function escapeHtml(value) {
@@ -17,6 +15,12 @@ function escapeHtml(value) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+// Kubernetes Session 不是文字輸入介面時，WebView 會將 Backspace 套用成瀏覽器歷史返回。
+// 僅在真正可編輯的欄位放行，確保 Delete／Backspace 只負責刪除輸入文字。
+function isTextEditingTarget(target) {
+  return Boolean(target?.closest?.('input, textarea, [contenteditable="true"], [contenteditable=""]'));
 }
 
 // 高風險 Kubernetes 資源類型：刪除這些資源影響範圍大且難以復原，
@@ -345,9 +349,6 @@ export class KubernetesSessionPage extends HTMLElement {
     this.manualRefreshing = false;
     this.dashboardTimer = null;
     this.logsTimer = null;
-    this.shellTerminal = null;
-    this.shellSession = null;
-    this.shellResizeObserver = null;
     this.runtimeEventOffs = [];
     this.namespaceSelectInteracting = false;
     this.namespaceInteractionTimer = null;
@@ -488,7 +489,6 @@ export class KubernetesSessionPage extends HTMLElement {
       this.unsubscribe = null;
     }
     this.unsubscribe = kubernetesSessionStore.subscribe((nextState) => {
-      if (this.shellTerminal && nextState.podActionView?.type !== 'shell') this.disposePodShell();
       const previousDrawer = this.querySelector('.kubernetes-detail-drawer, .kubernetes-create-drawer, .kubernetes-event-drawer');
       const hadDrawer = Boolean(previousDrawer);
       const previousFocus = previousDrawer?.contains(document.activeElement) ? document.activeElement : null;
@@ -499,7 +499,6 @@ export class KubernetesSessionPage extends HTMLElement {
       const scrollState = this.captureScrollState();
       this.render();
       this.setupListeners();
-      this.initPodShell();
       const drawer = this.querySelector('.kubernetes-detail-drawer, .kubernetes-create-drawer, .kubernetes-event-drawer');
       if (!hadDrawer && drawer) {
         drawer.querySelector('.kubernetes-drawer-close')?.focus();
@@ -527,14 +526,6 @@ export class KubernetesSessionPage extends HTMLElement {
       }
     }
     this.startLiveUpdates();
-    this.runtimeEventOffs.push(onWailsEvent('kubernetes-shell-output', data => {
-      if (data?.sessionId === this.shellSession?.sessionId) this.shellTerminal?.write(data.data || '');
-    }));
-    this.runtimeEventOffs.push(onWailsEvent('kubernetes-shell-closed', data => {
-      if (data?.sessionId !== this.shellSession?.sessionId) return;
-      if (data.error) this.shellTerminal?.writeln(`\r\n${data.error}`);
-      this.shellSession = null;
-    }));
   }
 
   disconnectedCallback() {
@@ -550,7 +541,6 @@ export class KubernetesSessionPage extends HTMLElement {
     }
     this.runtimeEventOffs.forEach(off => typeof off === 'function' && off());
     this.runtimeEventOffs = [];
-    this.disposePodShell();
   }
 
   startLiveUpdates() {
@@ -590,6 +580,15 @@ export class KubernetesSessionPage extends HTMLElement {
   }
 
   handlePageKeydown(event) {
+    if (
+      (event.key === 'Delete' || event.key === 'Backspace')
+      && !isTextEditingTarget(event.target)
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
     // Events Drawer（純本地狀態）：Escape 關閉、Tab 於 drawer 內循環。先於 resource/create drawer 處理，
     // 避免被下方通用邏輯誤當成 resource detail（會呼叫 store.closeResourceDetail）。
     const eventDrawer = this.querySelector('.kubernetes-event-drawer');
@@ -1541,7 +1540,7 @@ export class KubernetesSessionPage extends HTMLElement {
     if (action.type === 'logs') {
       return `<section class="kubernetes-pod-action-view"><header><button id="closeKubernetesPodAction" class="no-drag kubernetes-secondary-btn">${t('k8s.podAction.backToPods')}</button><div><h1>${t('k8s.podAction.logsTitle', { name: escapeHtml(pod.name) })}</h1><p>${escapeHtml(pod.namespace)} / ${escapeHtml(action.container)}</p></div><span class="kubernetes-watching">${this.logPaused ? t('k8s.podAction.paused') : t('k8s.podAction.streaming')}</span></header>${this.renderLogsPanel(state, [action.container].filter(Boolean), action.container, 'action')}</section>`;
     }
-    return `<section class="kubernetes-pod-action-view kubernetes-shell-view"><header><button id="closeKubernetesPodAction" class="no-drag kubernetes-secondary-btn">${t('k8s.podAction.backToPods')}</button><div><h1>${t('k8s.podAction.shellTitle', { name: escapeHtml(pod.name) })}</h1><p>${escapeHtml(pod.namespace)} / ${escapeHtml(action.container)}</p></div></header><div id="kubernetesPodShellTerminal" class="kubernetes-pod-shell-terminal"></div></section>`;
+    return '';
   }
 
   // 事件嚴重度：Warning 以外一律視為 Normal（Kubernetes 目前僅有 Normal / Warning 兩種 type）。
@@ -3145,7 +3144,7 @@ export class KubernetesSessionPage extends HTMLElement {
       const pod = JSON.parse(decodeURIComponent(button.dataset.pod));
       const store = kubernetesSessionStore.getState();
       if (button.dataset.podAction === 'logs') store.openPodLogsView(pod, button.dataset.container).catch(() => {});
-      if (button.dataset.podAction === 'shell') store.openPodShellView(pod, button.dataset.container);
+      if (button.dataset.podAction === 'shell') this.openPodShellSession(pod, button.dataset.container);
       if (button.dataset.podAction === 'forward') store.openPodForwardFromSummary(pod).catch(() => {});
     }));
     // Service 列表的 Forward action：開啟 detail drawer 的 Forward 頁籤。
@@ -3155,7 +3154,6 @@ export class KubernetesSessionPage extends HTMLElement {
       kubernetesSessionStore.getState().openServiceForwardFromSummary(service).catch(() => {});
     }));
     this.querySelector('#closeKubernetesPodAction')?.addEventListener('click', () => {
-      this.disposePodShell();
       kubernetesSessionStore.getState().closePodActionView();
     });
     this.querySelector('#openKubernetesCreateResource')?.addEventListener('click', () => {
@@ -3486,53 +3484,51 @@ export class KubernetesSessionPage extends HTMLElement {
     this.bindLogOutput();
   }
 
-  async initPodShell() {
-    const state = kubernetesSessionStore.getState();
-    const container = this.querySelector('#kubernetesPodShellTerminal');
-    if (state.podActionView?.type !== 'shell' || !container || this.shellTerminal) return;
-    const pod = state.selectedResource || {};
-    this.shellTerminal = new Terminal({ cursorBlink: true, fontSize: 12, fontFamily: 'SFMono-Regular, Consolas, Liberation Mono, monospace' });
-    this.shellTerminal.open(container);
-    // 以 WebGL/Canvas 取代預設 DOM 渲染器，避免 Retina + UI 縮放分數 zoom 下長行逐字漂移跑版
-    // （與主終端機同一修正）。WebGL 不可用時退回 Canvas。
-    try {
-      this.shellTerminal.loadAddon(new WebglAddon());
-    } catch (_) {
-      try { this.shellTerminal.loadAddon(new CanvasAddon()); } catch (__) { /* 退回預設 DOM 渲染器 */ }
+  async openPodShellSession(pod, container) {
+    const podName = String(pod?.name || '').trim();
+    const namespace = String(pod?.namespace || kubernetesSessionStore.getState().selectedNamespace || 'default').trim();
+    const containerName = String(container || pod?.containers?.[0]?.name || '').trim();
+    if (!podName || !containerName) {
+      showToast(t('k8s.err.noShellContainer'), { type: 'error' });
+      return;
     }
-    this.shellTerminal.writeln(t('k8s.shell.connecting'));
+
     try {
-      this.shellSession = await KubernetesAPI.startPodShell({ namespace: pod.namespace, podName: pod.name, container: state.podActionView.container, cols: this.shellTerminal.cols, rows: this.shellTerminal.rows });
-      this.shellTerminal.clear();
-      this.shellTerminal.onData(data => KubernetesAPI.writePodShellInput({ sessionId: this.shellSession?.sessionId || '', data }).catch(() => {}));
-      this.shellResizeObserver = new ResizeObserver(() => this.resizePodShell(container));
-      this.shellResizeObserver.observe(container);
-      this.resizePodShell(container);
-      this.shellTerminal.focus();
+      const shell = await KubernetesAPI.startPodShell({ namespace, podName, container: containerName, cols: 80, rows: 24 });
+      const sessionKey = `kubernetes-shell:${shell.sessionId}`;
+      const label = `Shell: ${podName}`;
+      const workspaceId = `ws_kubernetes_shell_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      terminalStore.getState().addSession(sessionKey, {
+        label,
+        isKubernetesShell: true,
+        config: {
+          alias: label,
+          host: `${namespace}/${podName}`,
+          isKubernetesShell: true,
+          kubernetesShellSessionId: shell.sessionId,
+          namespace,
+          podName,
+          container: containerName
+        },
+        outputHtml: '',
+        isSudo: false,
+        infoBoxOutputs: {}
+      });
+      terminalStore.setState((state) => ({
+        workspaces: [...state.workspaces, {
+          id: workspaceId,
+          label,
+          isCustomLabel: false,
+          columns: [{ id: `col_${sessionKey}`, width: 100, panes: [{ sessionKey, height: 100 }] }]
+        }],
+        workspaceCounter: state.workspaceCounter + 1,
+        activeWorkspaceId: workspaceId,
+        activePaneSessionKey: sessionKey
+      }));
+      window.location.hash = '#/terminal';
     } catch (error) {
-      this.shellTerminal.writeln(`\r\n${t('k8s.shell.openFailed', { error: error?.message || error })}`);
+      showToast(t('k8s.shell.openFailed', { error: error?.message || error }), { type: 'error' });
     }
-  }
-
-  resizePodShell(container) {
-    if (!this.shellTerminal || !this.shellSession || !container?.isConnected) return;
-    const rect = container.getBoundingClientRect();
-    const dimensions = this.shellTerminal._core?._renderService?.dimensions?.css?.cell;
-    const cols = Math.max(20, Math.floor(rect.width / (dimensions?.width || 7.5)));
-    const rows = Math.max(5, Math.floor(rect.height / (dimensions?.height || 17)));
-    if (cols === this.shellTerminal.cols && rows === this.shellTerminal.rows) return;
-    this.shellTerminal.resize(cols, rows);
-    KubernetesAPI.resizePodShell({ sessionId: this.shellSession.sessionId, cols, rows }).catch(() => {});
-  }
-
-  disposePodShell() {
-    const sessionId = this.shellSession?.sessionId;
-    this.shellResizeObserver?.disconnect();
-    this.shellResizeObserver = null;
-    this.shellTerminal?.dispose();
-    this.shellTerminal = null;
-    this.shellSession = null;
-    if (sessionId) KubernetesAPI.closePodShell(sessionId).catch(() => {});
   }
 }
 

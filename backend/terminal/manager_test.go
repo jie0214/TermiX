@@ -229,7 +229,6 @@ func TestStartSudoShellSucceedsWhenReadyArrivesWithoutPrompt(t *testing.T) {
 		done <- result{output: output, err: err}
 	}()
 
-	waitForWriterContains(t, writer, "sudo -k -S -p '"+sudoPromptMarker(1)+"' bash -lc ")
 	terminal.output <- "\r\n" + sudoReadyMarker(1) + "\r\n"
 
 	res := <-done
@@ -260,7 +259,6 @@ func TestStartSudoShellRespondsToPromptAndWaitsReady(t *testing.T) {
 		done <- result{output: output, err: err}
 	}()
 
-	waitForWriterContains(t, writer, "sudo -k -S -p '"+sudoPromptMarker(1)+"' bash -lc ")
 	terminal.output <- sudoPromptMarker(1)
 	waitForWriterContains(t, writer, "p@ss word\n")
 	terminal.output <- "\r\n" + sudoReadyMarker(1) + "\r\n"
@@ -271,9 +269,6 @@ func TestStartSudoShellRespondsToPromptAndWaitsReady(t *testing.T) {
 	}
 	if res.output != "" {
 		t.Fatalf("startSudoShell() output = %q, want empty", res.output)
-	}
-	if !strings.Contains(writer.String(), "stty -echo 2>/dev/null\n") {
-		t.Fatalf("startSudoShell() should disable echo before bootstrap: %q", writer.String())
 	}
 }
 
@@ -293,8 +288,8 @@ func TestStartSudoShellRestoresEchoOnTimeout(t *testing.T) {
 	if output != "" {
 		t.Fatalf("startSudoShell() output = %q, want empty on timeout", output)
 	}
-	if !strings.Contains(writer.String(), "stty echo 2>/dev/null\n") {
-		t.Fatalf("startSudoShell() should restore echo on timeout: %q", writer.String())
+	if got := writer.String(); got != "" {
+		t.Fatalf("startSudoShell() should not inject control commands on timeout: %q", got)
 	}
 }
 

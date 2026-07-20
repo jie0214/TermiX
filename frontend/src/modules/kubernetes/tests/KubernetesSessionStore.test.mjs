@@ -1067,7 +1067,7 @@ test('Save Resource YAML API 傳遞預設檔名與內容給 Wails binding', asyn
   }
 });
 
-test('Pod Logs 與 Shell Action 在固定 Kubernetes Session 內切換內容', async () => {
+test('Pod Logs Action 在固定 Kubernetes Session 內切換內容', async () => {
   const logRequests = [];
   const store = createKubernetesSessionStore({
     connectCluster: async request => sessionFor(request),
@@ -1085,9 +1085,6 @@ test('Pod Logs 與 Shell Action 在固定 Kubernetes Session 內切換內容', a
   assert.equal(store.getState().podLogs, 'ready');
   assert.equal(logRequests[0].podName, 'api-0');
 
-  store.getState().openPodShellView(pod, 'api');
-  assert.equal(store.getState().podActionView.type, 'shell');
-  assert.equal(store.getState().podActionView.container, 'api');
   store.getState().closePodActionView();
   assert.equal(store.getState().podActionView, null);
   assert.equal(store.getState().sessionOpen, true);

@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -38,6 +39,11 @@ func NewService(repo *storage.Repository) *Service {
 }
 
 func defaultKubeconfigPath() (string, error) {
+	if runtime.GOOS == "windows" {
+		if userProfile := strings.TrimSpace(os.Getenv("USERPROFILE")); userProfile != "" {
+			return filepath.Join(userProfile, ".kube", "config"), nil
+		}
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("無法取得使用者目錄：%w", err)
@@ -49,6 +55,11 @@ func normalizePath(path string) (string, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
 		return defaultKubeconfigPath()
+	}
+	// Settings 在 Windows 顯示 %USERPROFILE%\\.kube\\config；Go 的 os.ExpandEnv
+	// 不支援 %VAR% 語法，故在此明確展開，讓 UI 預設值可直接用於叢集探索。
+	if userProfile := strings.TrimSpace(os.Getenv("USERPROFILE")); userProfile != "" {
+		path = strings.ReplaceAll(path, "%USERPROFILE%", userProfile)
 	}
 	if path == "~" || strings.HasPrefix(path, "~/") {
 		home, err := os.UserHomeDir()

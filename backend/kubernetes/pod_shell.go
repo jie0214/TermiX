@@ -3,6 +3,7 @@ package kubernetes
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -63,6 +64,16 @@ func (w callbackWriter) Write(data []byte) (int, error) {
 	return len(data), nil
 }
 
+// podShellCommand 建立互動式 Shell 指令。PS1 中保留 $PWD，讓提示字元於每次顯示時
+// 使用目前目錄；帳號則由容器內的 id 指令取得，避免假設一定是 root。
+func podShellCommand(podName string) []string {
+	return []string{
+		"/bin/sh",
+		"-c",
+		fmt.Sprintf("PS1=\"$(id -un)@%s:\\$PWD# \"; export PS1; exec /bin/sh -i", podName),
+	}
+}
+
 func (s *Service) StartPodShell(ctx context.Context, request dto.KubernetesPodShellStartRequest, output func(string, string), closed func(string, string)) (dto.KubernetesPodShellSession, error) {
 	clients, session, err := s.activeConnection()
 	if err != nil {
@@ -97,7 +108,7 @@ func (s *Service) StartPodShell(ctx context.Context, request dto.KubernetesPodSh
 		return dto.KubernetesPodShellSession{}, errors.New("Pod Shell 功能無法使用")
 	}
 	req := restClient.Post().Resource("pods").Namespace(namespace).Name(podName).SubResource("exec").VersionedParams(&corev1.PodExecOptions{
-		Container: containerName, Command: []string{"/bin/sh"}, Stdin: true, Stdout: true, Stderr: true, TTY: true,
+		Container: containerName, Command: podShellCommand(podName), Stdin: true, Stdout: true, Stderr: true, TTY: true,
 	}, scheme.ParameterCodec)
 	executor, err := remotecommand.NewSPDYExecutor(clients.restConfig, http.MethodPost, req.URL())
 	if err != nil {

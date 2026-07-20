@@ -57,6 +57,17 @@ func TestReadProfiles(t *testing.T) {
 	}
 }
 
+func TestNormalizePath展開WindowsUserProfile路徑(t *testing.T) {
+	t.Setenv("USERPROFILE", t.TempDir())
+	path, err := normalizePath("%USERPROFILE%/.kube/config")
+	if err != nil {
+		t.Fatalf("normalizePath() error = %v", err)
+	}
+	if want := filepath.Join(os.Getenv("USERPROFILE"), ".kube", "config"); path != want {
+		t.Fatalf("normalizePath() = %q, want %q", path, want)
+	}
+}
+
 func TestSavePreservesUserAndCreatesBackup(t *testing.T) {
 	path := writeTestConfig(t, testConfig)
 	if err := os.Chmod(path, 0640); err != nil {
@@ -91,8 +102,15 @@ func TestSavePreservesUserAndCreatesBackup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0640 {
-		t.Fatalf("mode = %o, want 640", info.Mode().Perm())
+	if info.Mode().Perm() != 0600 {
+		t.Fatalf("mode = %o, want 600", info.Mode().Perm())
+	}
+	backupInfo, err := os.Stat(path + ".termix.bak")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if backupInfo.Mode().Perm() != 0600 {
+		t.Fatalf("備份 mode = %o, want 600", backupInfo.Mode().Perm())
 	}
 	listed, err := svc.List(context.Background(), "")
 	if err != nil {

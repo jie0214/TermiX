@@ -497,13 +497,6 @@ export function createKubernetesSessionStore(api = KubernetesAPI) {
       return get().loadPodLogs({ container: containerName, tailLines: 500 });
     },
 
-    openPodShellView: (pod, container) => {
-      const selectedResource = resourceIdentity('pod', pod);
-      const containerName = String(container || selectedResource.containers?.[0]?.name || '').trim();
-      if (!containerName) throw new Error(t('k8s.err.noShellContainer'));
-      set({ selectedResource, podActionView: { type: 'shell', container: containerName } });
-    },
-
     closePodActionView: () => set({ podActionView: null, selectedResource: null, podLogs: '', logsError: '', logsLoading: false }),
 
     openPodForwardFromSummary: async (pod) => {

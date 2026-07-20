@@ -49,6 +49,7 @@ import { HostAPI } from './modules/hostvault/HostAPI';
 import { snippetStore } from './modules/snippets/SnippetStore';
 import { pasteSnippetToSession, runSnippetInSession } from './modules/snippets/SnippetRuntime';
 import { kubernetesSessionStore, KUBERNETES_SESSION_ID } from './modules/kubernetes/KubernetesSessionStore';
+import { defaultKubeconfigPath } from './modules/kubernetes/KubernetesPath.js';
 import { getAppBinding } from './platform/wails/bindings.ts';
 import { onWailsEvent, getClipboardText, setClipboardText } from './platform/wails/events.ts';
 import { mountLegacyRouter } from './routing/legacyRouter.js';
@@ -90,6 +91,12 @@ function isEditableNonTerminal(el) {
   if (el.classList?.contains('xterm-helper-textarea')) return false;
   const tag = el.tagName;
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable === true;
+}
+
+// WebView 在非輸入欄位按下 Backspace 時會執行瀏覽器歷史返回。此判斷包含 xterm
+// 的 helper textarea，讓終端機與所有文字編輯器仍保有原生刪字行為。
+function isTextEditingTarget(el) {
+  return Boolean(el?.closest?.('input, textarea, [contenteditable="true"], [contenteditable=""]'));
 }
 
 function extractInfoBoxValue(itemKey, output) {
@@ -170,6 +177,7 @@ export class TermixApp extends HTMLElement {
     // activePaneSessionKey 切換）導致整列 Tabs 不必要地重建與重綁事件（H4）。
     this.lastTabsFingerprint = null;
     this.handleShortcut = this.handleShortcut.bind(this);
+    this.preventHistoryNavigationByDeleteKey = this.preventHistoryNavigationByDeleteKey.bind(this);
   }
 
   // 計算頂部 Workspace Tabs 的結構指紋。
@@ -227,6 +235,8 @@ export class TermixApp extends HTMLElement {
     this.setupTabListeners();
     this.setupSidebarListeners();
     this.setupSettingsListeners();
+    // capture 階段先阻止 WebView 將 Backspace／Delete 解讀為歷史導覽。
+    document.addEventListener('keydown', this.preventHistoryNavigationByDeleteKey, true);
     document.addEventListener('keydown', this.handleShortcut);
 
     // 1. 訂閱 terminalStore 來動態重繪頂部 Workspace Tabs
@@ -395,6 +405,41 @@ export class TermixApp extends HTMLElement {
       }
     }));
 
+    // Kubernetes Pod Shell 由 Terminal Workspace 呈現；以 Kubernetes 專用 sessionId
+    // 對應前端的 terminal session key，讓 xterm 與既有終端機共用同一套顯示與生命週期。
+    this.runtimeEventOffs.push(onWailsEvent('kubernetes-shell-output', (data) => {
+      const shellSessionId = String(data?.sessionId || '');
+      if (!shellSessionId) return;
+      const state = terminalStore.getState();
+      const sessionKey = Object.keys(state.sessions).find((key) => (
+        state.sessions[key]?.isKubernetesShell
+        && state.sessions[key]?.config?.kubernetesShellSessionId === shellSessionId
+      ));
+      if (!sessionKey) return;
+      const chunk = String(data?.data || '');
+      const session = state.sessions[sessionKey];
+      const MAX_FRONTEND_OUTPUT_LENGTH = 200000;
+      const merged = (session.outputHtml || '') + chunk;
+      session.outputHtml = merged.length > MAX_FRONTEND_OUTPUT_LENGTH
+        ? merged.slice(merged.length - MAX_FRONTEND_OUTPUT_LENGTH)
+        : merged;
+      state.xtermInstances[sessionKey]?.write(chunk);
+    }));
+
+    this.runtimeEventOffs.push(onWailsEvent('kubernetes-shell-closed', (data) => {
+      const shellSessionId = String(data?.sessionId || '');
+      const state = terminalStore.getState();
+      const sessionKey = Object.keys(state.sessions).find((key) => (
+        state.sessions[key]?.isKubernetesShell
+        && state.sessions[key]?.config?.kubernetesShellSessionId === shellSessionId
+      ));
+      if (!sessionKey) return;
+      if (data?.error) state.xtermInstances[sessionKey]?.writeln(`\r\n${data.error}`);
+      this.removeSessionFromWorkspaces(sessionKey);
+      cleanupFrontendSession(sessionKey);
+      this.routeAfterSessionRemoval();
+    }));
+
     // 4. 啟動背景遙測輪詢定時器 (每 15 秒)
     this.sidebarTimer = setInterval(() => {
       const sidebar = this.querySelector('#controlSidebar');
@@ -409,6 +454,7 @@ export class TermixApp extends HTMLElement {
     if (this.unsubscribeTheme) this.unsubscribeTheme();
     if (this.unsubscribeKubernetesSession) this.unsubscribeKubernetesSession();
     if (this.sidebarTimer) clearInterval(this.sidebarTimer);
+    document.removeEventListener('keydown', this.preventHistoryNavigationByDeleteKey, true);
     document.removeEventListener('keydown', this.handleShortcut);
     this.runtimeEventOffs.forEach((off) => off());
     this.runtimeEventOffs = [];
@@ -517,10 +563,10 @@ export class TermixApp extends HTMLElement {
                   <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
                     ${t('app.settings.k8s.kubeconfigPath')}
                     <div style="display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center;">
-                      <input type="text" id="kubeconfigPathInput" class="no-drag" value="${escapeHtml(themeStore.getState().kubeconfigPath)}" placeholder="~/.kube/config" autocomplete="off" spellcheck="false" style="height: 34px; box-sizing: border-box; background: var(--input-bg); border: 1px solid var(--input-border, var(--color-border)); padding: 8px 12px; border-radius: 6px; color: var(--color-text); font-family: monospace;">
+                      <input type="text" id="kubeconfigPathInput" class="no-drag" value="${escapeHtml(themeStore.getState().kubeconfigPath || defaultKubeconfigPath())}" placeholder="${escapeHtml(defaultKubeconfigPath())}" autocomplete="off" spellcheck="false" style="height: 34px; box-sizing: border-box; background: var(--input-bg); border: 1px solid var(--input-border, var(--color-border)); padding: 8px 12px; border-radius: 6px; color: var(--color-text); font-family: monospace;">
                       <button type="button" id="kubeconfigBrowseBtn" class="no-drag" style="height: 34px; padding: 0 14px; border: 1px solid var(--color-border); background: transparent; color: var(--color-text); border-radius: 6px; cursor: pointer; font-size: 12px;">${t('app.settings.k8s.browse')}</button>
                     </div>
-                    <small style="color: var(--color-text-muted);">${t('app.settings.k8s.kubeconfigHint')}</small>
+                    <small style="color: var(--color-text-muted);">${t('app.settings.k8s.kubeconfigHint', { path: defaultKubeconfigPath() })}</small>
                   </label>
                   <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
                     ${t('app.settings.k8s.defaultNamespace')}
@@ -849,9 +895,23 @@ export class TermixApp extends HTMLElement {
     });
   }
 
+  // 防止 WebView 把無文字焦點的刪除鍵解讀成上一頁，造成 Vaults、Kubernetes 或
+  // Terminal 分頁被歷史路由切換。可編輯欄位與 xterm textarea 一律放行。
+  preventHistoryNavigationByDeleteKey(event) {
+    if (
+      (event.key === 'Backspace' || event.key === 'Delete')
+      && !isTextEditingTarget(event.target)
+    ) {
+      event.preventDefault();
+    }
+  }
+
   // 全域快捷鍵派發器：單一 keydown → 依平台生效表比對 → 派發到 handler。
   handleShortcut(event) {
     if (this._recordingAction) return; // 錄製中不派發（雙保險，錄製監聽已於 capture 階段吞鍵）
+    // 刪除鍵保留給文字輸入與終端機。即使使用者曾設定含 Backspace／Delete 的快捷鍵，
+    // 也不可讓它關閉 Session、刪除 Kubernetes 資源或切換分頁。
+    if (event.key === 'Backspace' || event.key === 'Delete') return;
     const active = document.activeElement;
     // 焦點在「非終端」的可編輯欄位（設定/表單輸入）時，一律讓原生編輯行為生效，不攔截。
     // xterm 的 helper textarea 例外（視為終端聚焦，快捷鍵照常生效）。
@@ -1246,18 +1306,15 @@ export class TermixApp extends HTMLElement {
   }
 
   handleRecordingKey(e) {
+    // Backspace／Delete 一律保留給文字刪除；錄製快捷鍵時不再把它解讀為停用動作。
+    // 此處不可 preventDefault，否則 xterm 或輸入欄位會收不到原生刪除行為。
+    if (e.key === 'Backspace' || e.key === 'Delete') return;
     e.preventDefault();
     e.stopImmediatePropagation();
     if (['Meta', 'Control', 'Alt', 'Shift'].includes(e.key)) return; // 等待完整組合
-    const actionId = this._recordingAction;
     if (e.key === 'Escape') {
       this.stopRecordingShortcut();
       this.refreshShortcutRows();
-      return;
-    }
-    if (e.key === 'Backspace' || e.key === 'Delete') {
-      this.stopRecordingShortcut();
-      this.finishRecordingShortcut(actionId, ''); // 停用
       return;
     }
     const binding = eventToBinding(e);
@@ -2157,6 +2214,18 @@ export class TermixApp extends HTMLElement {
 
   routeAfterSessionRemoval() {
     const state = terminalStore.getState();
+    const activeWorkspaceId = state.activeWorkspaceId;
+
+    // Kubernetes、Vaults 與 Control Panel 是固定應用程式分頁，不屬於 Terminal
+    // Workspace。背景 Session 結束時不得因為找不到同名 Workspace 而切離目前頁面。
+    if (
+      activeWorkspaceId === KUBERNETES_SESSION_ID
+      || activeWorkspaceId === 'host-tab'
+      || activeWorkspaceId === 'control-panel-tab'
+    ) {
+      return;
+    }
+
     if (state.workspaces.length === 0) {
       terminalStore.getState().setActiveWorkspaceId('host-tab');
       terminalStore.getState().setActivePaneSessionKey(null);
@@ -2164,7 +2233,7 @@ export class TermixApp extends HTMLElement {
       return;
     }
 
-    if (!state.workspaces.some((ws) => ws.id === state.activeWorkspaceId)) {
+    if (!state.workspaces.some((ws) => ws.id === activeWorkspaceId)) {
       const nextWs = state.workspaces[0];
       terminalStore.getState().setActiveWorkspaceId(nextWs.id);
       const firstPane = nextWs.columns[0]?.panes[0];

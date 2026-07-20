@@ -52,12 +52,14 @@ test('Session 骨架提供 Namespace 與資源導覽', () => {
   assert.match(sessionSource, /loadDashboardProgressive\('\*'\)/);
 });
 
-test('Pod Shell runtime events 使用共用 facade 並在卸載時清理', () => {
+test('Pod Shell 會建立 Terminal Workspace Session', () => {
   assert.match(sessionSource, /import \{ onWailsEvent[^}]*\} from '\.\.\/\.\.\/platform\/wails\/events\.ts'/);
-  assert.match(sessionSource, /onWailsEvent\('kubernetes-shell-output'/);
-  assert.match(sessionSource, /onWailsEvent\('kubernetes-shell-closed'/);
-  assert.match(sessionSource, /this\.runtimeEventOffs\.forEach\(off => typeof off === 'function' && off\(\)\)/);
-  assert.doesNotMatch(sessionSource, /window\.runtime/);
+  assert.match(sessionSource, /async openPodShellSession\(pod, container\)/);
+  assert.match(sessionSource, /KubernetesAPI\.startPodShell/);
+  assert.match(sessionSource, /terminalStore\.getState\(\)\.addSession/);
+  assert.match(sessionSource, /isKubernetesShell: true/);
+  assert.match(sessionSource, /window\.location\.hash = '#\/terminal'/);
+  assert.doesNotMatch(sessionSource, /kubernetesPodShellTerminal/);
 });
 
 test('Session 只在指定區段顯示重新整理按鈕', () => {

@@ -4,6 +4,7 @@ import { HostAPI } from './HostAPI';
 import { KeychainAPI } from './KeychainAPI';
 import { terminalStore } from '../terminal/TerminalStore';
 import { TerminalAPI } from '../terminal/TerminalAPI';
+import { KubernetesAPI } from '../kubernetes/KubernetesAPI.js';
 import { onWailsEvent } from '../../platform/wails/events.ts';
 import { clearSessionLogs, deleteSessionLogs, LOGS_CHANGED_EVENT, readSessionLogs, sanitizeTerminalLogOutput } from '../terminal/SessionLogStore';
 import { snippetStore } from '../snippets/SnippetStore';
@@ -543,6 +544,10 @@ export class HostListPage extends HTMLElement {
     this.knownHosts = [];
     this.knownHostsLoaded = false;
     this.knownHostsLoading = false;
+    // Vaults 的 Port Forwarding 分頁彙整目前 Kubernetes Session 建立的所有轉發。
+    this.kubernetesForwards = [];
+    this.kubernetesForwardsLoading = false;
+    this.kubernetesForwardsError = '';
     this.handleLogsChanged = () => {
       if (hostStore.getState().selectedTab === 'logs') {
         this.render();
@@ -569,6 +574,10 @@ export class HostListPage extends HTMLElement {
     // 初始渲染後建立指紋基準，供後續訂閱比對。
     this.lastViewFingerprint = this.getViewFingerprint();
     window.addEventListener(LOGS_CHANGED_EVENT, this.handleLogsChanged);
+    this.kubernetesForwardsTimer = setInterval(() => {
+      if (hostStore.getState().selectedTab === 'forwarding') this.loadKubernetesForwards();
+    }, 3000);
+    if (state.selectedTab === 'forwarding') this.loadKubernetesForwards();
 
     if (this.unsubscribe) {
       this.unsubscribe();
@@ -699,6 +708,64 @@ export class HostListPage extends HTMLElement {
     if (this.unsubscribeSnippet) this.unsubscribeSnippet();
     if (this.unsubscribeTerminal) this.unsubscribeTerminal();
     window.removeEventListener(LOGS_CHANGED_EVENT, this.handleLogsChanged);
+    clearInterval(this.kubernetesForwardsTimer);
+  }
+
+  async loadKubernetesForwards() {
+    if (this.kubernetesForwardsLoading) return;
+    this.kubernetesForwardsLoading = true;
+    this.kubernetesForwardsError = '';
+    if (hostStore.getState().selectedTab === 'forwarding') {
+      this.render();
+      this.setupListeners();
+    }
+    try {
+      const forwards = await KubernetesAPI.listPodPortForwards({});
+      this.kubernetesForwards = Array.isArray(forwards) ? forwards : [];
+    } catch (error) {
+      this.kubernetesForwardsError = error?.message || String(error);
+    } finally {
+      this.kubernetesForwardsLoading = false;
+    }
+    if (hostStore.getState().selectedTab === 'forwarding') {
+      this.render();
+      this.setupListeners();
+    }
+  }
+
+  async stopKubernetesForward(id) {
+    try {
+      await KubernetesAPI.stopPodPortForward({ id });
+      await this.loadKubernetesForwards();
+    } catch (error) {
+      this.kubernetesForwardsError = error?.message || String(error);
+      this.render();
+      this.setupListeners();
+    }
+  }
+
+  renderPortForwardingPage() {
+    const forwards = this.kubernetesForwards;
+    const rows = forwards.map((forward) => {
+      const isService = Boolean(forward.serviceName);
+      const type = isService ? 'Service' : 'Pod';
+      const target = isService ? forward.serviceName : forward.podName;
+      return `<tr>
+        <td style="padding: 12px 14px;"><span style="display: inline-flex; align-items: center; gap: 6px;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #34d399;"></span>Kubernetes ${type}</span></td>
+        <td style="padding: 12px 14px; font-family: monospace;">${escapeHtml(forward.namespace || 'default')}/${escapeHtml(target || '-')}</td>
+        <td style="padding: 12px 14px; font-family: monospace;">${escapeHtml(forward.address || '127.0.0.1')}:${escapeHtml(forward.localPort)}</td>
+        <td style="padding: 12px 14px; font-family: monospace;">${escapeHtml(forward.remotePort)}</td>
+        <td style="padding: 12px 14px; text-align: right;"><button type="button" class="no-drag stop-kubernetes-vault-forward" data-forward-id="${escapeHtml(forward.id)}" style="min-height: 30px; padding: 0 10px; border: none; border-radius: 4px; background: #991b1b; color: #fff; cursor: pointer;">停止</button></td>
+      </tr>`;
+    }).join('');
+    return `<div class="vault-toolbar" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <div><h2 style="margin: 0; font-size: 18px;">Port Forwarding</h2><p style="margin: 6px 0 0; color: var(--color-text-muted); font-size: 12px;">目前 Kubernetes Session 建立的連接埠轉發。</p></div>
+        <button type="button" id="refreshKubernetesVaultForwards" class="no-drag" ${this.kubernetesForwardsLoading ? 'disabled' : ''} style="min-height: 32px; padding: 0 12px; border: 1px solid var(--color-primary); border-radius: 4px; color: var(--color-primary); background: transparent; cursor: pointer;">重新整理</button>
+      </div>
+      ${this.kubernetesForwardsError ? `<div role="alert" style="margin-bottom: 12px; color: #fca5a5; font-size: 12px;">${escapeHtml(this.kubernetesForwardsError)}</div>` : ''}
+      <div style="overflow: auto; border: 1px solid rgba(23, 107, 135, 0.2); border-radius: 8px; background: rgba(12, 18, 31, 0.5);">
+        <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 13px;"><thead><tr style="color: var(--color-text-muted); border-bottom: 1px solid rgba(23, 107, 135, 0.2);"><th style="padding: 12px 14px;">來源</th><th style="padding: 12px 14px;">目標</th><th style="padding: 12px 14px;">本機位址</th><th style="padding: 12px 14px;">遠端 Port</th><th style="padding: 12px 14px;"></th></tr></thead><tbody>${rows || `<tr><td colspan="5" style="padding: 36px 14px; text-align: center; color: var(--color-text-muted);">目前沒有作用中的 Kubernetes Port Forward。</td></tr>`}</tbody></table>
+      </div>`;
   }
 
   buildBatchTargetsHtml(state, selectedTargetIds) {
@@ -1782,6 +1849,8 @@ export class HostListPage extends HTMLElement {
       mainBoardHtml = this.renderIntegrationsPage(state);
     } else if (selectedTab === 'kubernetes') {
       mainBoardHtml = `<kubernetes-page></kubernetes-page>`;
+    } else if (selectedTab === 'forwarding') {
+      mainBoardHtml = this.renderPortForwardingPage();
     } else if (selectedTab === 'logs') {
       const logs = readSessionLogs();
       const tableRows = logs.map(log => {
@@ -2485,6 +2554,7 @@ export class HostListPage extends HTMLElement {
           window.location.hash = '#/control-panel';
         } else {
           hostStore.getState().setSelectedTab(tabId);
+          if (tabId === 'forwarding') this.loadKubernetesForwards();
         }
       });
       // a11y：Enter/Space 觸發與滑鼠點擊相同的切換路徑（複用上方 click handler）
@@ -2494,6 +2564,13 @@ export class HostListPage extends HTMLElement {
           item.click();
         }
       });
+    });
+
+    this.querySelector('#refreshKubernetesVaultForwards')?.addEventListener('click', () => {
+      this.loadKubernetesForwards();
+    });
+    this.querySelectorAll('.stop-kubernetes-vault-forward').forEach(button => {
+      button.addEventListener('click', () => this.stopKubernetesForward(button.dataset.forwardId));
     });
 
     // 1b. 側欄底部設定按鈕：開啟全域設定 Modal（複用 App 訂閱的 themeStore 狀態）
