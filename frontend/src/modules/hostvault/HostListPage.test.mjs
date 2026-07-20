@@ -11,4 +11,7 @@ test('Vaults Port Forwarding 顯示並管理 Kubernetes 轉發', () => {
   assert.match(source, /renderPortForwardingPage\(\)/);
   assert.match(source, /stop-kubernetes-vault-forward/);
   assert.match(source, /KubernetesAPI\.stopPodPortForward\(\{ id \}\)/);
+  assert.match(source, /t\('hostvault\.forward\.title'\)/);
+  assert.match(source, /t\('hostvault\.forward\.empty'\)/);
+  assert.doesNotMatch(source, /目前 Kubernetes Session 建立的連接埠轉發。/);
 });

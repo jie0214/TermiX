@@ -748,23 +748,23 @@ export class HostListPage extends HTMLElement {
     const forwards = this.kubernetesForwards;
     const rows = forwards.map((forward) => {
       const isService = Boolean(forward.serviceName);
-      const type = isService ? 'Service' : 'Pod';
+      const type = t(isService ? 'hostvault.forward.service' : 'hostvault.forward.pod');
       const target = isService ? forward.serviceName : forward.podName;
       return `<tr>
-        <td style="padding: 12px 14px;"><span style="display: inline-flex; align-items: center; gap: 6px;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #34d399;"></span>Kubernetes ${type}</span></td>
+        <td style="padding: 12px 14px;"><span style="display: inline-flex; align-items: center; gap: 6px;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #34d399;"></span>${t('hostvault.forward.kubernetesType', { type })}</span></td>
         <td style="padding: 12px 14px; font-family: monospace;">${escapeHtml(forward.namespace || 'default')}/${escapeHtml(target || '-')}</td>
         <td style="padding: 12px 14px; font-family: monospace;">${escapeHtml(forward.address || '127.0.0.1')}:${escapeHtml(forward.localPort)}</td>
         <td style="padding: 12px 14px; font-family: monospace;">${escapeHtml(forward.remotePort)}</td>
-        <td style="padding: 12px 14px; text-align: right;"><button type="button" class="no-drag stop-kubernetes-vault-forward" data-forward-id="${escapeHtml(forward.id)}" style="min-height: 30px; padding: 0 10px; border: none; border-radius: 4px; background: #991b1b; color: #fff; cursor: pointer;">停止</button></td>
+        <td style="padding: 12px 14px; text-align: right;"><button type="button" class="no-drag stop-kubernetes-vault-forward" data-forward-id="${escapeHtml(forward.id)}" style="min-height: 30px; padding: 0 10px; border: none; border-radius: 4px; background: #991b1b; color: #fff; cursor: pointer;">${t('hostvault.forward.stop')}</button></td>
       </tr>`;
     }).join('');
     return `<div class="vault-toolbar" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-        <div><h2 style="margin: 0; font-size: 18px;">Port Forwarding</h2><p style="margin: 6px 0 0; color: var(--color-text-muted); font-size: 12px;">目前 Kubernetes Session 建立的連接埠轉發。</p></div>
-        <button type="button" id="refreshKubernetesVaultForwards" class="no-drag" ${this.kubernetesForwardsLoading ? 'disabled' : ''} style="min-height: 32px; padding: 0 12px; border: 1px solid var(--color-primary); border-radius: 4px; color: var(--color-primary); background: transparent; cursor: pointer;">重新整理</button>
+        <div><h2 style="margin: 0; font-size: 18px;">${t('hostvault.forward.title')}</h2></div>
+        <button type="button" id="refreshKubernetesVaultForwards" class="no-drag" ${this.kubernetesForwardsLoading ? 'disabled' : ''} style="min-height: 32px; padding: 0 12px; border: 1px solid var(--color-primary); border-radius: 4px; color: var(--color-primary); background: transparent; cursor: pointer;">${t('hostvault.forward.refresh')}</button>
       </div>
       ${this.kubernetesForwardsError ? `<div role="alert" style="margin-bottom: 12px; color: #fca5a5; font-size: 12px;">${escapeHtml(this.kubernetesForwardsError)}</div>` : ''}
       <div style="overflow: auto; border: 1px solid rgba(23, 107, 135, 0.2); border-radius: 8px; background: rgba(12, 18, 31, 0.5);">
-        <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 13px;"><thead><tr style="color: var(--color-text-muted); border-bottom: 1px solid rgba(23, 107, 135, 0.2);"><th style="padding: 12px 14px;">來源</th><th style="padding: 12px 14px;">目標</th><th style="padding: 12px 14px;">本機位址</th><th style="padding: 12px 14px;">遠端 Port</th><th style="padding: 12px 14px;"></th></tr></thead><tbody>${rows || `<tr><td colspan="5" style="padding: 36px 14px; text-align: center; color: var(--color-text-muted);">目前沒有作用中的 Kubernetes Port Forward。</td></tr>`}</tbody></table>
+        <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 13px;"><thead><tr style="color: var(--color-text-muted); border-bottom: 1px solid rgba(23, 107, 135, 0.2);"><th style="padding: 12px 14px;">${t('hostvault.forward.source')}</th><th style="padding: 12px 14px;">${t('hostvault.forward.target')}</th><th style="padding: 12px 14px;">${t('hostvault.forward.localAddress')}</th><th style="padding: 12px 14px;">${t('hostvault.forward.remotePort')}</th><th style="padding: 12px 14px;"></th></tr></thead><tbody>${rows || `<tr><td colspan="5" style="padding: 36px 14px; text-align: center; color: var(--color-text-muted);">${t('hostvault.forward.empty')}</td></tr>`}</tbody></table>
       </div>`;
   }
 
