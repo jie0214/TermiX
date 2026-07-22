@@ -82,6 +82,15 @@ const SECTION_ICONS = {
 const sectionIcon = (id) => SECTION_ICONS[id] || 'ti-circle';
 
 const SECTIONS = SECTION_GROUPS.flatMap(([, sections]) => sections);
+const QUICK_ACCESS_GROUP = 'QUICK ACCESS';
+const FAVORITES_SECTION = 'favorites';
+const FAVORITE_RESOURCE_STORAGE_KEY = 'termix.k8s.favoriteResources';
+const FAVORITABLE_SECTIONS = new Set(['deployments', 'statefulsets', 'daemonSets']);
+const FAVORITE_DASHBOARD_KEYS = Object.freeze({
+  deployments: 'deployments',
+  statefulsets: 'statefulSets',
+  daemonSets: 'daemonSets'
+});
 const REFRESHABLE_SECTIONS = new Set([
   'namespaces',
   'nodes',
@@ -234,6 +243,14 @@ function statusBadge(value) {
   return `<span class="kubernetes-status-badge status-${normalized}">${escapeHtml(status)}</span>`;
 }
 
+// Pod 清單的非健康狀態採整列高亮：Pending 為警告，其餘高風險狀態為錯誤。
+function podAttentionTone(pod) {
+  const value = `${pod?.phase || ''} ${pod?.status || ''}`.toLowerCase();
+  if (/pending/.test(value)) return 'warning';
+  if (/failed|error|crash|evicted|lost|unhealthy|not[\s-]?ready|unknown/.test(value)) return 'danger';
+  return '';
+}
+
 // 依狀態語意回傳色票 CSS 變數（供 metric 色點、condition 左側色條）。
 function statusToneColor(value) {
   const s = String(value || '').toLowerCase();
@@ -300,6 +317,7 @@ function renderKubernetesIcon(name, size = 14) {
     edit: '<path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"></path>',
     copy: '<rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path>',
     check: '<path d="M20 6 9 17l-5-5"></path>',
+    alert: '<path d="M12 3 2.8 20h18.4L12 3z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path>',
     box: '<path d="M12 3 3 7.5v9L12 21l9-4.5v-9z"></path><path d="M3 7.5 12 12l9-4.5"></path><path d="M12 12v9"></path>'
   };
   const paths = icons[name] || '';
@@ -361,6 +379,8 @@ export class KubernetesSessionPage extends HTMLElement {
     this.collapsedNavGroups = new Set();
     // Quick access：使用者以星號收藏的資源類型（section id）。以 localStorage 持久化、跨 session 保留。
     this.quickAccessSections = this.loadQuickAccess();
+    // 我的最愛：保存具體工作負載的穩定識別資訊；Dashboard 內的狀態與副本數不寫入，避免快取過期。
+    this.favoriteResources = this.loadFavoriteResources();
     this.handleNamespaceOutsideClick = this.handleNamespaceOutsideClick.bind(this);
     this.logSearch = '';
     this.logRegex = false;
@@ -407,6 +427,139 @@ export class KubernetesSessionPage extends HTMLElement {
     this.saveQuickAccess();
     this.render();
     this.setupListeners();
+  }
+
+  // 目前連線叢集的穩定識別優先使用卡片 ID；舊資料或測試環境沒有 ID 時退回 context / cluster 名稱。
+  favoriteClusterKey(cluster) {
+    const source = cluster && typeof cluster === 'object' ? cluster : {};
+    return String(source.clusterId || source.contextName || source.clusterName || '').trim();
+  }
+
+  loadFavoriteResources() {
+    try {
+      const raw = globalThis.localStorage?.getItem(FAVORITE_RESOURCE_STORAGE_KEY);
+      const list = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(list)) return [];
+      const seen = new Set();
+      return list.filter((item) => {
+        const section = String(item?.section || '');
+        const clusterId = String(item?.clusterId || '').trim();
+        const name = String(item?.name || '').trim();
+        const namespace = String(item?.namespace || '').trim();
+        const key = `${clusterId}|${section}|${namespace}|${name}`;
+        if (!FAVORITABLE_SECTIONS.has(section) || !clusterId || !name || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      }).map(item => ({
+        clusterId: String(item.clusterId).trim(),
+        clusterName: String(item.clusterName || '').trim(),
+        section: String(item.section),
+        kind: String(item.kind || RESOURCE_META[item.section]?.kind || '').trim(),
+        apiVersion: String(item.apiVersion || RESOURCE_META[item.section]?.apiVersion || '').trim(),
+        name: String(item.name).trim(),
+        namespace: String(item.namespace || '').trim()
+      }));
+    } catch {
+      return [];
+    }
+  }
+
+  saveFavoriteResources() {
+    try {
+      globalThis.localStorage?.setItem(FAVORITE_RESOURCE_STORAGE_KEY, JSON.stringify(this.favoriteResources));
+    } catch {
+      // localStorage 不可用時靜默略過（僅失去持久化，功能仍可用於當前 session）。
+    }
+  }
+
+  favoriteResourceKey(clusterId, section, namespace, name) {
+    return `${String(clusterId || '').trim()}|${String(section || '')}|${String(namespace || '').trim()}|${String(name || '').trim()}`;
+  }
+
+  isFavoriteResource(section, item, cluster = kubernetesSessionStore.getState().connectedCluster) {
+    const clusterId = this.favoriteClusterKey(cluster);
+    const key = this.favoriteResourceKey(clusterId, section, item?.namespace, item?.name);
+    return this.favoriteResources.some(favorite => this.favoriteResourceKey(favorite.clusterId, favorite.section, favorite.namespace, favorite.name) === key);
+  }
+
+  toggleFavoriteResource(raw) {
+    let parsed;
+    try { parsed = JSON.parse(decodeURIComponent(raw)); } catch { return; }
+    const section = String(parsed?.section || '');
+    const name = String(parsed?.name || '').trim();
+    if (!FAVORITABLE_SECTIONS.has(section) || !name) return;
+    const cluster = kubernetesSessionStore.getState().connectedCluster;
+    const clusterId = this.favoriteClusterKey(cluster);
+    if (!clusterId) return;
+    const namespace = String(parsed.namespace || '').trim();
+    const key = this.favoriteResourceKey(clusterId, section, namespace, name);
+    const index = this.favoriteResources.findIndex(favorite => this.favoriteResourceKey(favorite.clusterId, favorite.section, favorite.namespace, favorite.name) === key);
+    if (index >= 0) {
+      this.favoriteResources.splice(index, 1);
+    } else {
+      this.favoriteResources.push({
+        clusterId,
+        clusterName: String(cluster?.displayName || cluster?.clusterName || cluster?.contextName || '').trim(),
+        section,
+        kind: RESOURCE_META[section]?.kind || '',
+        apiVersion: RESOURCE_META[section]?.apiVersion || '',
+        name,
+        namespace
+      });
+    }
+    this.saveFavoriteResources();
+    this.rerenderPreservingScroll();
+  }
+
+  favoriteResourceButton(section, item) {
+    if (!FAVORITABLE_SECTIONS.has(section) || !item?.name) return '';
+    const favorite = this.isFavoriteResource(section, item);
+    const label = favorite ? t('k8s.favorites.remove') : t('k8s.favorites.add');
+    const payload = encodeURIComponent(JSON.stringify({ section, name: item.name, namespace: item.namespace || '' }));
+    const starPath = 'M12 17.75l-6.172 3.245 1.18-6.874-5-4.867 6.9-1.002L12 2l3.086 6.253 6.9 1.002-4.993 4.867 1.18 6.873z';
+    const icon = favorite
+      ? `<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="${starPath}"/></svg>`
+      : `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${starPath}"/></svg>`;
+    return `<button type="button" class="no-drag kubernetes-resource-favorite ${favorite ? 'is-favorite' : ''}" data-toggle-resource-favorite="${payload}" title="${label}" aria-label="${label}" aria-pressed="${favorite}">${icon}</button>`;
+  }
+
+  currentClusterFavorites(cluster) {
+    const clusterId = this.favoriteClusterKey(cluster);
+    return this.favoriteResources.filter(favorite => favorite.clusterId === clusterId);
+  }
+
+  renderFavoritesNavLink(activeSection, count) {
+    return `<div class="kubernetes-nav-group kubernetes-nav-favorites"><div class="kubernetes-nav-items"><button type="button" class="no-drag kubernetes-section-link kubernetes-favorites-nav-link ${activeSection === FAVORITES_SECTION ? 'active' : ''}" data-section="${FAVORITES_SECTION}" ${activeSection === FAVORITES_SECTION ? 'aria-current="page"' : ''}><i class="ti ti-star" aria-hidden="true"></i><span>${t('k8s.nav.favorites')}</span><span class="kubernetes-favorites-count" aria-label="${t('k8s.favorites.count', { count })}">${count}</span></button></div></div>`;
+  }
+
+  renderFavoriteResources(dashboard, state) {
+    const favorites = this.currentClusterFavorites(state.connectedCluster);
+    if (!favorites.length) {
+      return `<div class="kubernetes-favorites-empty"><i class="ti ti-star" aria-hidden="true"></i><h2>${t('k8s.favorites.emptyTitle')}</h2><p>${t('k8s.favorites.emptyDetail')}</p></div>`;
+    }
+    const sectionLabel = section => SECTIONS.find(([id]) => id === section)?.[1] || section;
+    const rows = favorites.map((favorite) => {
+      const items = dashboard?.[FAVORITE_DASHBOARD_KEYS[favorite.section]] || [];
+      const item = items.find(candidate => candidate?.name === favorite.name && String(candidate?.namespace || '') === favorite.namespace);
+      const ready = item && ['deployments', 'statefulsets', 'daemonSets'].includes(favorite.section)
+        ? `${Number(item.readyReplicas || 0)}/${Number(item.desiredReplicas || 0)}`
+        : '-';
+      const status = item ? statusBadge(item.status) : `<span class="kubernetes-favorite-missing">${t('k8s.favorites.notFound')}</span>`;
+      const payload = encodeURIComponent(JSON.stringify(favorite));
+      const rowAttrs = item
+        ? `class="kubernetes-favorite-resource-row" tabindex="0" role="button" data-open-resource-favorite="${payload}" aria-label="${t('k8s.row.viewDetailAria', { name: escapeHtml(favorite.name) })}"`
+        : 'class="kubernetes-favorite-resource-row is-missing"';
+      return `<tr ${rowAttrs}>
+        <td><span class="kubernetes-favorite-kind">${escapeHtml(sectionLabel(favorite.section))}</span></td>
+        ${this.ellipsisCell(favorite.name)}
+        <td>${escapeHtml(favorite.clusterName || state.connectedCluster?.displayName || state.connectedCluster?.clusterName || state.connectedCluster?.contextName || '-')}</td>
+        <td>${this.renderNamespaceCell(favorite.namespace)}</td>
+        <td>${status}</td>
+        <td>${escapeHtml(ready)}</td>
+        <td class="kubernetes-pod-actions kubernetes-row-actions">${this.favoriteResourceButton(favorite.section, favorite)}</td>
+      </tr>`;
+    }).join('');
+    return `<div class="kubernetes-favorites-view"><p class="kubernetes-favorites-description">${t('k8s.favorites.description')}</p><div class="kubernetes-resource-table-wrap"><table class="kubernetes-resource-table kubernetes-favorites-table"><caption class="kubernetes-table-caption">${t('k8s.nav.favorites')}</caption><thead><tr><th scope="col">${t('k8s.favorites.type')}</th><th scope="col">${t('k8s.favorites.name')}</th><th scope="col">${t('k8s.favorites.cluster')}</th><th scope="col">${t('k8s.favorites.namespace')}</th><th scope="col">${t('k8s.favorites.status')}</th><th scope="col">${t('k8s.favorites.ready')}</th><th scope="col"><span class="kubernetes-visually-hidden">${t('k8s.favorites.actions')}</span></th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
   }
 
   // 判斷 pod 是否符合 selector：selector 的每個 key/value 都須存在於 pod.labels 且值相等（子集比對）。
@@ -1114,7 +1267,7 @@ export class KubernetesSessionPage extends HTMLElement {
           <caption class="kubernetes-table-caption">${escapeHtml(SECTIONS.find(([id]) => id === section)?.[1] || t('k8s.resource.fallback'))}</caption>
           <thead><tr>${definition.columns.map(([key, label]) => this.sortableTh(section, key, label, { type: sortTypeForKey(key) })).join('')}${withActions ? '<th></th>' : ''}</tr></thead>
           <tbody>${items.map(item => `
-            <tr class="kubernetes-resource-row" tabindex="0" role="button"${namespaced && item.namespace ? ` style="border-left-color:${this.namespaceColor(item.namespace)}"` : ''} data-resource-kind="${RESOURCE_KINDS[section]}" data-resource-name="${escapeHtml(item.name)}" data-resource-namespace="${escapeHtml(item.namespace || '')}" data-resource-apiversion="${escapeHtml(RESOURCE_META[section]?.apiVersion || '')}" aria-label="${t('k8s.row.viewDetailAria', { name: escapeHtml(item.name) })}">${definition.columns.map(([key, , formatter]) => (!formatter && ELLIPSIS_KEYS.has(key)) ? this.ellipsisCell(item[key]) : `<td>${formatter ? formatter(item[key]) : escapeHtml(item[key] ?? '-')}</td>`).join('')}${withActions ? `<td class="kubernetes-pod-actions kubernetes-row-actions">${(section === 'deployments' || section === 'statefulsets') ? this.scaleButton(RESOURCE_KINDS[section], RESOURCE_META[section]?.apiVersion || '', item) : ''}${withServiceForward ? `<button data-service-action="forward" data-service="${encodeURIComponent(JSON.stringify(item))}" ${(Array.isArray(item.portNumbers) && item.portNumbers.length) ? '' : 'disabled'}>Forward</button>` : ''}${this.viewPodsIconButton(RESOURCE_KINDS[section], item)}</td>` : ''}</tr>
+            <tr class="kubernetes-resource-row" tabindex="0" role="button"${namespaced && item.namespace ? ` style="border-left-color:${this.namespaceColor(item.namespace)}"` : ''} data-resource-kind="${RESOURCE_KINDS[section]}" data-resource-name="${escapeHtml(item.name)}" data-resource-namespace="${escapeHtml(item.namespace || '')}" data-resource-apiversion="${escapeHtml(RESOURCE_META[section]?.apiVersion || '')}" aria-label="${t('k8s.row.viewDetailAria', { name: escapeHtml(item.name) })}">${definition.columns.map(([key, , formatter]) => (!formatter && ELLIPSIS_KEYS.has(key)) ? this.ellipsisCell(item[key]) : `<td>${formatter ? formatter(item[key]) : escapeHtml(item[key] ?? '-')}</td>`).join('')}${withActions ? `<td class="kubernetes-pod-actions kubernetes-row-actions">${this.favoriteResourceButton(section, item)}${(section === 'deployments' || section === 'statefulsets') ? this.scaleButton(RESOURCE_KINDS[section], RESOURCE_META[section]?.apiVersion || '', item) : ''}${withServiceForward ? `<button data-service-action="forward" data-service="${encodeURIComponent(JSON.stringify(item))}" ${(Array.isArray(item.portNumbers) && item.portNumbers.length) ? '' : 'disabled'}>Forward</button>` : ''}${this.viewPodsIconButton(RESOURCE_KINDS[section], item)}</td>` : ''}</tr>
           `).join('')}</tbody>
         </table>
       </div>`;
@@ -1530,7 +1683,12 @@ export class KubernetesSessionPage extends HTMLElement {
         const running = String(pod.phase || '').toLowerCase() === 'running';
         const hasPorts = (pod.containers || []).some(item => item.ports?.length);
         const encoded = encodeURIComponent(JSON.stringify(pod));
-        return `<tr class="kubernetes-resource-row" tabindex="0" role="button" aria-label="${t('k8s.row.viewDetailAria', { name: escapeHtml(pod.name) })}" style="border-left-color:${this.namespaceColor(pod.namespace)}" data-resource-kind="pod" data-resource-name="${escapeHtml(pod.name)}" data-resource-namespace="${escapeHtml(pod.namespace)}" data-resource-apiversion="v1">${this.ellipsisCell(pod.name)}<td>${this.renderNamespaceCell(pod.namespace)}</td><td>${escapeHtml(pod.ready)}</td><td>${statusBadge(pod.status)}</td><td>${pod.restarts || 0}</td><td>${escapeHtml(pod.nodeName || '-')}</td><td>${formatAge(pod.creationTimestamp)}</td><td>${metricsAvailable ? formatCPU(pod.cpuUsageMilli) : '-'}</td><td>${metricsAvailable ? formatBytes(pod.memoryUsageBytes) : '-'}</td><td class="kubernetes-pod-actions"><button data-pod-action="logs" data-pod="${encoded}" data-container="${escapeHtml(container)}" ${container ? '' : 'disabled'}>Logs</button><button data-pod-action="shell" data-pod="${encoded}" data-container="${escapeHtml(container)}" ${running && container ? '' : 'disabled'}>Shell</button><button data-pod-action="forward" data-pod="${encoded}" ${running && hasPorts ? '' : 'disabled'}>Forward</button></td></tr>`;
+        const attentionTone = podAttentionTone(pod);
+        const needsAttention = attentionTone !== '';
+        const status = needsAttention
+          ? `<span class="kubernetes-pod-alert-status is-${attentionTone}">${renderKubernetesIcon('alert', 14)}${statusBadge(pod.status)}</span>`
+          : statusBadge(pod.status);
+        return `<tr class="kubernetes-resource-row ${needsAttention ? `kubernetes-pod-row-alert kubernetes-pod-row-alert--${attentionTone}` : ''}" tabindex="0" role="button" aria-label="${t('k8s.row.viewDetailAria', { name: escapeHtml(pod.name) })}" style="border-left-color:${this.namespaceColor(pod.namespace)}" data-resource-kind="pod" data-resource-name="${escapeHtml(pod.name)}" data-resource-namespace="${escapeHtml(pod.namespace)}" data-resource-apiversion="v1">${this.ellipsisCell(pod.name)}<td>${this.renderNamespaceCell(pod.namespace)}</td><td>${escapeHtml(pod.ready)}</td><td>${status}</td><td>${pod.restarts || 0}</td><td>${escapeHtml(pod.nodeName || '-')}</td><td>${formatAge(pod.creationTimestamp)}</td><td>${metricsAvailable ? formatCPU(pod.cpuUsageMilli) : '-'}</td><td>${metricsAvailable ? formatBytes(pod.memoryUsageBytes) : '-'}</td><td class="kubernetes-pod-actions"><button data-pod-action="logs" data-pod="${encoded}" data-container="${escapeHtml(container)}" ${container ? '' : 'disabled'}>Logs</button><button data-pod-action="shell" data-pod="${encoded}" data-container="${escapeHtml(container)}" ${running && container ? '' : 'disabled'}>Shell</button><button data-pod-action="forward" data-pod="${encoded}" ${running && hasPorts ? '' : 'disabled'}>Forward</button></td></tr>`;
       }).join('')}</tbody></table></div></section>`;
   }
 
@@ -1744,7 +1902,7 @@ export class KubernetesSessionPage extends HTMLElement {
             <td>${statusBadge(item.status)}</td>
             <td>${Number(item.readyReplicas || 0)}/${Number(item.desiredReplicas || 0)}</td>
             <td>${formatAge(item.creationTimestamp)}</td>
-            <td class="kubernetes-pod-actions kubernetes-row-actions">${this.viewPodsIconButton('daemonset', item)}</td>
+            <td class="kubernetes-pod-actions kubernetes-row-actions">${this.favoriteResourceButton('daemonSets', item)}${this.viewPodsIconButton('daemonset', item)}</td>
           </tr>`).join('')}</tbody>
         </table>
       </div>`;
@@ -2165,7 +2323,10 @@ export class KubernetesSessionPage extends HTMLElement {
       '.kubernetes-session-nav': read('.kubernetes-session-nav', 'y'),
       '.kubernetes-eventlist-scroll': read('.kubernetes-eventlist-scroll', 'x'),
       '.kubernetes-detail-body': read('.kubernetes-detail-body', 'xy'),
-      '.kubernetes-session-logs': read('.kubernetes-session-logs', 'y')
+      '.kubernetes-session-logs': read('.kubernetes-session-logs', 'y'),
+      // Pod Action Logs 每次串流更新都會重建輸出節點；必須保留其水平位置，
+      // 否則長行日誌的捲軸會在每次更新後回到最左側。
+      '#kubernetesLogOutput': read('#kubernetesLogOutput', 'xy')
     };
   }
 
@@ -2223,7 +2384,7 @@ export class KubernetesSessionPage extends HTMLElement {
     }
     return `
       <div class="kubernetes-detail-backdrop no-drag" data-close-detail="true"></div>
-      <aside class="kubernetes-detail-drawer no-drag" role="dialog" aria-modal="true" aria-labelledby="kubernetesDetailTitle">
+      <aside class="kubernetes-detail-drawer ${isPod ? 'kubernetes-pod-detail-drawer' : ''} no-drag" role="dialog" aria-modal="true" aria-labelledby="kubernetesDetailTitle">
         <header><div><h2 id="kubernetesDetailTitle">${escapeHtml(title)}</h2><p><span class="kubernetes-detail-kind">${escapeHtml(selected.kind || detail?.kind || t('k8s.resource.genericName'))}</span>${namespace ? ` ${t('k8s.detail.inNamespace', { namespace: escapeHtml(namespace) })}` : ''}</p></div><div class="kubernetes-detail-header-actions">${scaleBtnHtml}<button type="button" class="kubernetes-drawer-close no-drag" aria-label="${t('k8s.detail.closeAria')}">${renderKubernetesIcon('close', 22)}</button></div></header>
         ${state.detailError && detail ? `<div class="kubernetes-session-error compact"><strong>${t('k8s.detail.refreshFailedSnapshot')}</strong><span>${escapeHtml(state.detailError)}</span></div>` : ''}
         ${detail ? this.renderResourceDetailTabs(state.detailTab, isPod, isService, Array.isArray(detail.containers) && detail.containers.some(c => (Array.isArray(c.env) && c.env.length) || (Array.isArray(c.envFrom) && c.envFrom.length))) : ''}
@@ -2956,7 +3117,9 @@ export class KubernetesSessionPage extends HTMLElement {
     const activeSection = state.activeSection || 'overview';
     const clusterName = cluster.displayName || cluster.clusterName || cluster.contextName;
     const namespaces = Array.from(new Set(['*', ...(state.namespaces || []), namespace])).filter(Boolean);
-    const sectionTitle = SECTIONS.find(([id]) => id === activeSection)?.[1] || 'Overview';
+    const sectionTitle = activeSection === FAVORITES_SECTION
+      ? t('k8s.nav.favorites')
+      : (SECTIONS.find(([id]) => id === activeSection)?.[1] || 'Overview');
     const namespaceControl = this.renderNamespaceMultiSelect(state, namespaces);
     let content = '';
     if (state.podActionView) {
@@ -2969,7 +3132,9 @@ export class KubernetesSessionPage extends HTMLElement {
     } else if (dashboard) {
       // 首屏 core scope（dashboard.partial）只含核心 section 資料；使用者若在 full 補齊前切到
       // 非核心 section，顯示載入中而非誤導的「沒有資源」。full 到齊後 partial 為 false，恢復正常。
-      if (dashboard.partial && !CORE_SECTIONS.has(activeSection)) {
+      if (activeSection === FAVORITES_SECTION) {
+        content = this.renderFavoriteResources(dashboard, state);
+      } else if (dashboard.partial && !CORE_SECTIONS.has(activeSection)) {
         content = `<div class="kubernetes-session-loading" role="status" aria-live="polite"><span class="kubernetes-spinner" aria-hidden="true"></span><h2>${t('k8s.session.loadingApi')}</h2></div>`;
       } else {
         content = activeSection === 'overview' ? this.renderOverview(dashboard) : this.renderResourceTable(activeSection, dashboard);
@@ -2983,7 +3148,9 @@ export class KubernetesSessionPage extends HTMLElement {
           ${namespaceControl}
           <nav aria-label="${t('k8s.session.navAria')}">${(() => {
             const pins = [...this.quickAccessSections].map(pid => SECTIONS.find(([sid]) => sid === pid)).filter(Boolean);
-            return pins.length ? `<div class="kubernetes-nav-group kubernetes-nav-quick"><div class="kubernetes-nav-quick-heading"><i class="ti ti-star" aria-hidden="true"></i><span>${t('k8s.nav.quickAccess')}</span></div><div class="kubernetes-nav-items">${pins.map(([id, label]) => this.renderNavLink(id, label, activeSection)).join('')}</div></div>` : '';
+            const favorites = this.currentClusterFavorites(cluster);
+            const quickAccessCollapsed = this.collapsedNavGroups.has(QUICK_ACCESS_GROUP);
+            return `${this.renderFavoritesNavLink(activeSection, favorites.length)}${pins.length ? `<div class="kubernetes-nav-group kubernetes-nav-quick ${quickAccessCollapsed ? 'collapsed' : ''}"><button type="button" class="no-drag kubernetes-nav-heading kubernetes-nav-quick-heading" data-nav-group="${QUICK_ACCESS_GROUP}" aria-expanded="${quickAccessCollapsed ? 'false' : 'true'}"><span><i class="ti ti-star" aria-hidden="true"></i>${t('k8s.nav.quickAccess')}</span><svg class="kubernetes-nav-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button><div class="kubernetes-nav-items">${pins.map(([id, label]) => this.renderNavLink(id, label, activeSection)).join('')}</div></div>` : ''}`;
           })()}${SECTION_GROUPS.map(([group, sections]) => `<div class="kubernetes-nav-group ${this.collapsedNavGroups.has(group) ? 'collapsed' : ''}"><button type="button" class="no-drag kubernetes-nav-heading" data-nav-group="${escapeHtml(group)}" aria-expanded="${this.collapsedNavGroups.has(group) ? 'false' : 'true'}"><span>${group}</span><svg class="kubernetes-nav-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button><div class="kubernetes-nav-items">${sections.map(([id, label]) => this.renderNavLink(id, label, activeSection)).join('')}</div></div>`).join('')}</nav>
         </aside>
         <main class="kubernetes-session-content">
@@ -3184,6 +3351,37 @@ export class KubernetesSessionPage extends HTMLElement {
       star.addEventListener('click', (event) => {
         event.stopPropagation();
         this.toggleQuickAccess(star.dataset.star);
+      });
+    });
+    // 工作負載我的最愛：獨立於 Quick access（後者收藏的是區段），避免點星號觸發列的 Detail Drawer。
+    this.querySelectorAll('[data-toggle-resource-favorite]').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        this.toggleFavoriteResource(button.dataset.toggleResourceFavorite);
+      });
+    });
+    // 我的最愛頁面點列：先切換 namespace 與資源區段，再開啟相同 Kubernetes Session 內的 Detail Drawer。
+    this.querySelectorAll('[data-open-resource-favorite]').forEach((row) => {
+      const open = async () => {
+        let favorite;
+        try { favorite = JSON.parse(decodeURIComponent(row.dataset.openResourceFavorite)); } catch { return; }
+        if (!favorite?.name || !FAVORITABLE_SECTIONS.has(favorite.section)) return;
+        const store = kubernetesSessionStore.getState();
+        this.clearSelection();
+        this.podLabelFilter = null;
+        await store.selectNamespace(favorite.namespace || '*');
+        store.selectSection(favorite.section);
+        await store.openResource(favorite.kind, {
+          name: favorite.name,
+          namespace: favorite.namespace,
+          apiVersion: favorite.apiVersion
+        });
+      };
+      row.addEventListener('click', () => { open().catch(() => {}); });
+      row.addEventListener('keydown', event => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        open().catch(() => {});
       });
     });
     this.querySelectorAll('.kubernetes-resource-row').forEach((row) => {

@@ -7,6 +7,7 @@ const routesSource = await readFile(new URL('../../../routing/routes.ts', import
 const legacyRouterSource = await readFile(new URL('../../../routing/legacyRouter.js', import.meta.url), 'utf8');
 const pageSource = await readFile(new URL('../KubernetesPage.js', import.meta.url), 'utf8');
 const sessionSource = await readFile(new URL('../KubernetesSessionPage.js', import.meta.url), 'utf8');
+const styleSource = await readFile(new URL('../../../style.css', import.meta.url), 'utf8');
 
 test('Kubernetes 固定分頁位於 Vaults 與 Terminal 工作區之間', () => {
   const vaultIndex = appSource.indexOf('<span>Vaults</span>');
@@ -50,6 +51,38 @@ test('Session 骨架提供 Namespace 與資源導覽', () => {
   assert.match(sessionSource, /selectSection\(button\.dataset\.section\)/);
   assert.match(sessionSource, /All Namespaces/);
   assert.match(sessionSource, /loadDashboardProgressive\('\*'\)/);
+});
+
+test('Kubernetes 工作負載我的最愛以獨立本機資料保存，並集中於左側單一入口', () => {
+  assert.match(sessionSource, /const FAVORITES_SECTION = 'favorites';/);
+  assert.match(sessionSource, /FAVORITE_RESOURCE_STORAGE_KEY = 'termix\.k8s\.favoriteResources'/);
+  assert.match(sessionSource, /FAVORITABLE_SECTIONS = new Set\(\['deployments', 'statefulsets', 'daemonSets'\]\)/);
+  assert.match(sessionSource, /loadFavoriteResources\(\)/);
+  assert.match(sessionSource, /saveFavoriteResources\(\)/);
+  assert.match(sessionSource, /favoriteClusterKey\(cluster\)/);
+  assert.match(sessionSource, /renderFavoritesNavLink\(activeSection, favorites\.length\)/);
+  assert.match(sessionSource, /kubernetes-favorites-count/);
+  assert.match(sessionSource, /renderFavoriteResources\(dashboard, state\)/);
+  assert.match(sessionSource, /activeSection === FAVORITES_SECTION/);
+  assert.match(sessionSource, /const QUICK_ACCESS_GROUP = 'QUICK ACCESS';/);
+  assert.match(sessionSource, /quickAccessCollapsed = this\.collapsedNavGroups\.has\(QUICK_ACCESS_GROUP\)/);
+  assert.match(sessionSource, /data-nav-group="\$\{QUICK_ACCESS_GROUP\}"/);
+});
+
+test('Deployment、StatefulSet 與 DaemonSet 列提供我的最愛按鈕，收藏頁可切換 Namespace 並開啟 Drawer', () => {
+  assert.match(sessionSource, /favoriteResourceButton\(section, item\)/);
+  assert.match(sessionSource, /favoriteResourceButton\('daemonSets', item\)/);
+  assert.match(sessionSource, /data-toggle-resource-favorite=/);
+  assert.match(sessionSource, /data-open-resource-favorite=/);
+  assert.match(sessionSource, /await store\.selectNamespace\(favorite\.namespace \|\| '\*'\)/);
+  assert.match(sessionSource, /store\.selectSection\(favorite\.section\)/);
+  assert.match(sessionSource, /await store\.openResource\(favorite\.kind/);
+  assert.match(styleSource, /\.kubernetes-resource-favorite/);
+  assert.match(styleSource, /\.kubernetes-nav-favorites/);
+  assert.match(styleSource, /\.kubernetes-session-nav \.kubernetes-favorites-nav-link \{ min-height: 24px; padding: 2px 7px;/);
+  assert.match(styleSource, /\.kubernetes-nav-group\.collapsed \+ \.kubernetes-nav-group\.collapsed \{ margin-top: 2px; \}/);
+  assert.match(styleSource, /\.kubernetes-favorite-resource-row:not\(\.is-missing\):hover > td/);
+  assert.match(styleSource, /\.kubernetes-favorite-resource-row:not\(\.is-missing\):focus-visible/);
 });
 
 test('Pod Shell 會建立 Terminal Workspace Session', () => {
@@ -126,6 +159,11 @@ test('資源列支援滑鼠與鍵盤開啟 Session 內 Detail Drawer', () => {
   assert.match(sessionSource, /kubernetes-detail-drawer/);
   assert.match(sessionSource, /closeResourceDetail\(\)/);
   assert.doesNotMatch(sessionSource, /KUBERNETES_SESSION_ID.*resourceDetail/);
+});
+
+test('Pod Detail Drawer 使用較寬的專屬版面，其他資源維持預設寬度', () => {
+  assert.match(sessionSource, /isPod \? 'kubernetes-pod-detail-drawer' : ''/);
+  assert.match(styleSource, /\.kubernetes-pod-detail-drawer \{ width: min\(760px, 82vw\); \}/);
 });
 
 test('Workload/Service 可經 selector 比對跳轉到關聯 Pods 並過濾', () => {
@@ -242,15 +280,22 @@ test('Events 點列開啟專用 Drawer（本地 selectedEvent、Escape 關閉、
   assert.match(sessionSource, /renderEventsTable\(events, \{ interactive: false \}\)/);
 });
 
-test('捲動保存涵蓋所有容器（主內容含水平、側欄、Events、Detail Drawer），輪詢重繪不回彈', () => {
+test('捲動保存涵蓋所有容器（含 Pod Logs 水平位置），輪詢重繪不回彈', () => {
   // 統一 capture/restore；主內容抓 x+y（pod 等寬表格靠 scrollbody 水平捲動、避免輪詢回彈）。
   assert.match(sessionSource, /captureScrollState\(\)/);
   assert.match(sessionSource, /restoreScrollState\(scrollState\)/);
   assert.match(sessionSource, /read\('\.kubernetes-session-scrollbody', 'xy'\)/);
   assert.match(sessionSource, /read\('\.kubernetes-eventlist-scroll', 'x'\)/);
   assert.match(sessionSource, /read\('\.kubernetes-detail-body', 'xy'\)/);
+  // Logs 串流每次更新都會重建輸出節點；必須保存 x+y，避免水平捲軸回到左側。
+  assert.match(sessionSource, /read\('#kubernetesLogOutput', 'xy'\)/);
   // 還原以 suppressScrollbarAutohide 包住，避免捲動條每次刷新閃現。
   assert.match(sessionSource, /suppressScrollbarAutohide\(\(\) => \{[\s\S]*el\.scrollLeft = pos\.left/);
+});
+
+test('Pod Logs 水平捲軸常態顯示，避免套用全域自動隱藏樣式', () => {
+  assert.match(styleSource, /\.kubernetes-log-output::\-webkit-scrollbar:horizontal \{ height: 12px; \}/);
+  assert.match(styleSource, /\.kubernetes-log-output::\-webkit-scrollbar-thumb:horizontal \{[\s\S]*background: color-mix/);
 });
 
 test('Session 顯示真實 Overview、Metrics 與資源表格', () => {
@@ -266,6 +311,17 @@ test('Session 顯示真實 Overview、Metrics 與資源表格', () => {
   assert.match(sessionSource, /dashboard\.deployments/);
   assert.match(sessionSource, /dashboard\.statefulSets/);
   assert.match(sessionSource, /metricsAvailable \? formatCPU\(value\) : '-'/);
+});
+
+test('Pod 非健康狀態以方案 B 整列高亮並區分 Pending 警告色', () => {
+  assert.match(sessionSource, /function podAttentionTone\(pod\)/);
+  assert.match(sessionSource, /if \(\/pending\/\.test\(value\)\) return 'warning';/);
+  assert.match(sessionSource, /not\[\\s-\]\?ready/);
+  assert.match(sessionSource, /kubernetes-pod-row-alert--\$\{attentionTone\}/);
+  assert.match(sessionSource, /renderKubernetesIcon\('alert', 14\)/);
+  assert.match(styleSource, /\.kubernetes-pods-table tbody tr\.kubernetes-pod-row-alert > td \{ background: color-mix/);
+  assert.match(styleSource, /\.kubernetes-pods-table tbody tr\.kubernetes-pod-row-alert--warning > td \{ background: color-mix/);
+  assert.match(styleSource, /\.kubernetes-pod-alert-status \{ display: inline-flex/);
 });
 
 test('Overview 以健康橫幅 + KPI 卡 + Pod 狀態堆疊條呈現', () => {

@@ -23,7 +23,9 @@ func NewApp(termMgr *terminal.Manager, ctrlPanel *controlpanel.Executor, sshConn
 	}
 }
 
-func (a *App) Startup(ctx context.Context) {
+// Initialize 在 Wails 生命週期開始時設定執行期 Context。
+// 採用 package function，避免 context.Context 被產生為前端可呼叫的 binding。
+func Initialize(a *App, ctx context.Context) {
 	a.ctx = ctx
 	a.terminal.SetContext(ctx)
 }

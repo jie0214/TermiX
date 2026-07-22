@@ -105,6 +105,8 @@ func main() {
 		Height:    900,
 		MinWidth:  980,
 		MinHeight: 680,
+		// macOS 以自訂 shell 繪製 9px 外框，避免標準 NSWindow 系統圓角不可調整。
+		Frameless: runtime.GOOS == "darwin",
 		Menu:      appMenu,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
@@ -112,7 +114,14 @@ func main() {
 		// A:0 = 視窗背景完全透明；實際底色改由 CSS body 控制。
 		// 非透明主題的 body 為不透明色會正常遮蔽；毛玻璃主題 body 透明時可透出桌面。
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 0},
-		OnStartup:        app.Startup,
+		OnStartup: func(ctx context.Context) {
+			termixapp.Initialize(app, ctx)
+			configureNativeWindowAppearance()
+		},
+		OnDomReady: func(context.Context) {
+			// 視窗加入 AppKit 視窗集合後再次裁切，避免啟動時序略過主視窗。
+			configureNativeWindowAppearance()
+		},
 		Bind: []interface{}{
 			app,
 		},

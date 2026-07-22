@@ -53,7 +53,7 @@
   --glass-radius-lg: 18px;
   --glass-radius-md: 14px;
   --glass-radius-sm: 10px;
-  --window-surface-radius: 20px;
+  --window-surface-radius: 9px;
 
   --transition-speed: 0.3s;
 
@@ -165,7 +165,7 @@
   --glass-radius-lg: 22px;
   --glass-radius-md: 16px;
   --glass-radius-sm: 12px;
-  --window-surface-radius: 24px;
+  --window-surface-radius: 9px;
 }
 
 :root.theme-graphite {
@@ -379,7 +379,7 @@
   --glass-radius-lg: 20px;
   --glass-radius-md: 15px;
   --glass-radius-sm: 10px;
-  --window-surface-radius: 22px;
+  --window-surface-radius: 9px;
 }
 
 :root.theme-tahoe-sunset {
@@ -425,7 +425,7 @@
   --glass-radius-lg: 20px;
   --glass-radius-md: 15px;
   --glass-radius-sm: 10px;
-  --window-surface-radius: 22px;
+  --window-surface-radius: 9px;
 }
 
 :root.theme-tahoe-nebula {
@@ -471,7 +471,7 @@
   --glass-radius-lg: 20px;
   --glass-radius-md: 15px;
   --glass-radius-sm: 10px;
-  --window-surface-radius: 22px;
+  --window-surface-radius: 9px;
 }
 
 :root.theme-tahoe-forest {
@@ -517,7 +517,7 @@
   --glass-radius-lg: 20px;
   --glass-radius-md: 15px;
   --glass-radius-sm: 10px;
-  --window-surface-radius: 22px;
+  --window-surface-radius: 9px;
 }
 
 :root.theme-purple-dark {
@@ -568,7 +568,7 @@
   --glass-radius-lg: 20px;
   --glass-radius-md: 15px;
   --glass-radius-sm: 10px;
-  --window-surface-radius: 22px;
+  --window-surface-radius: 9px;
 
   --comp-theme-color: #a855f7;
   --comp-theme-rgb: 168, 85, 247;
@@ -622,7 +622,7 @@
   --glass-radius-lg: 20px;
   --glass-radius-md: 15px;
   --glass-radius-sm: 10px;
-  --window-surface-radius: 22px;
+  --window-surface-radius: 9px;
 
   --comp-theme-color: #9eff2b;
   --comp-theme-rgb: 158, 255, 43;
@@ -676,7 +676,7 @@
   --glass-radius-lg: 20px;
   --glass-radius-md: 15px;
   --glass-radius-sm: 10px;
-  --window-surface-radius: 22px;
+  --window-surface-radius: 9px;
 }
 
 /*
@@ -718,7 +718,7 @@
   --glass-radius-lg: 20px;
   --glass-radius-md: 15px;
   --glass-radius-sm: 10px;
-  --window-surface-radius: 22px;
+  --window-surface-radius: 9px;
 }
 
 /* ── 第 2 層：透明度 = light（所有透明色變體共用「剛好」的透明度）── */
@@ -869,6 +869,18 @@ body {
     radial-gradient(circle at 12% 10%, color-mix(in srgb, var(--color-primary) 18%, transparent), transparent 34%),
     radial-gradient(circle at 88% 0%, rgba(255, 255, 255, 0.12), transparent 26%),
     linear-gradient(135deg, var(--color-shell-bg), var(--color-bg)) !important;
+}
+
+/* macOS 無邊框視窗：由 shell 繪製唯一可見的最外層 9px 圓角。 */
+html.frameless-macos,
+html.frameless-macos body,
+html.frameless-macos #app {
+  background: transparent;
+}
+
+html.frameless-macos .shell {
+  border-radius: 9px;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-border) 72%, transparent), 0 16px 34px rgba(0, 0, 0, 0.3);
 }
 
 * {
@@ -1289,13 +1301,14 @@ p {
 }
 
 .topbar {
+  position: relative;
   flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 14px;
   margin: 0;
-  min-height: 38px;
+  min-height: 42px;
   padding: 0 10px 0 78px; /* 為 macOS 紅黃綠控制按鈕保留同列空間 */
   border-bottom: 0;
   background: var(--glass-bg) !important;
@@ -1305,6 +1318,39 @@ p {
   --wails-draggable: drag; /* 支援無邊框拖曳視窗 */
   -webkit-app-region: drag;
 }
+
+.mac-window-controls {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  left: 18px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  transform: translateY(-50%);
+  --wails-draggable: no-drag;
+  -webkit-app-region: no-drag;
+}
+
+.mac-window-control {
+  width: 12px;
+  min-width: 12px;
+  height: 12px;
+  min-height: 12px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  box-shadow: none;
+}
+
+.mac-window-control:hover {
+  transform: none;
+  filter: brightness(1.08);
+}
+
+.mac-window-control-close { background: #ff5f57; }
+.mac-window-control-minimise { background: #febc2e; }
+.mac-window-control-zoom { background: #28c840; }
 
 .no-drag,
 .no-drag *,
@@ -1552,7 +1598,7 @@ textarea {
   display: flex;
   gap: 6px;
   overflow-x: auto;
-  min-height: 32px;
+  min-height: 28px;
   align-items: center;
   padding: 0 4px 0 80px;
   min-width: 0;
@@ -1566,14 +1612,14 @@ textarea {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   border: 1px solid var(--glass-border);
   border-left: 3px solid transparent;
   border-radius: 999px;
-  padding: 5px 12px;
+  padding: 3px 10px;
   background: linear-gradient(180deg, var(--glass-bg-strong), var(--glass-bg-soft));
   color: var(--tab-text);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   box-shadow: inset 0 1px 0 var(--glass-inner-border), 0 4px 14px rgba(0, 0, 0, 0.08);
@@ -1600,8 +1646,8 @@ textarea {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   font-size: 12px;
   color: var(--color-subtext);
@@ -1610,7 +1656,7 @@ textarea {
   margin: 0;
   border: 0;
   background: transparent;
-  min-height: 20px;
+  min-height: 18px;
   cursor: pointer;
   --wails-draggable: no-drag;
 }
@@ -1641,8 +1687,8 @@ textarea {
 
 .session-tab-add {
   min-height: 0;
-  padding: 5px 10px;
-  font-size: 16px;
+  padding: 3px 9px;
+  font-size: 15px;
   font-weight: 800;
   line-height: 1;
   /* 低調的圖示按鈕：去掉繼承自 .session-tab 的虛線邊框、漸層底與陰影 */
@@ -1666,14 +1712,14 @@ textarea {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border: 1px solid color-mix(in srgb, var(--terminal-border) 88%, var(--glass-border));
-  border-radius: var(--window-surface-radius);
+  border: 0;
+  border-radius: 0;
   padding: 0;
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--glass-bg-soft) 22%, transparent), transparent 22%),
     linear-gradient(180deg, color-mix(in srgb, var(--terminal-frame-bg) 88%, #ffffff), var(--terminal-frame-bg));
   cursor: text;
-  box-shadow: var(--glass-shadow);
+  box-shadow: none;
   overflow: hidden;
 }
 
@@ -1745,13 +1791,13 @@ textarea {
 .control-panel {
   flex: 0 0 340px;
   width: 340px;
-  margin: 10px 10px 10px 0;
-  max-height: calc(100% - 20px);
+  margin: 0;
+  max-height: 100%;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  border-radius: var(--window-surface-radius);
+  border-radius: 0;
 }
 
 .control-panel.collapsed {
@@ -3085,23 +3131,27 @@ kubernetes-session-page {
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18);
 }
 
-.kubernetes-session-nav nav { display: grid; gap: 4px; }
-.kubernetes-nav-group { display: grid; gap: 4px; }
-.kubernetes-nav-group + .kubernetes-nav-group { margin-top: 12px; }
-.kubernetes-session-nav .kubernetes-nav-heading { display: flex; align-items: center; justify-content: space-between; gap: 6px; width: 100%; margin: 6px 0 6px; padding: 2px 7px; border: 0; background: transparent; box-shadow: none; color: var(--color-text-muted); font-size: 11px; font-weight: 800; letter-spacing: 0.8px; text-align: left; cursor: pointer; }
+.kubernetes-session-nav nav { display: grid; gap: 2px; }
+.kubernetes-nav-group { display: grid; gap: 2px; }
+.kubernetes-nav-group + .kubernetes-nav-group { margin-top: 7px; }
+.kubernetes-session-nav .kubernetes-nav-heading { display: flex; align-items: center; justify-content: space-between; gap: 6px; width: 100%; margin: 4px 0; padding: 2px 7px; border: 0; background: transparent; box-shadow: none; color: var(--color-text-muted); font-size: 11px; font-weight: 800; letter-spacing: 0.8px; text-align: left; cursor: pointer; }
 .kubernetes-session-nav .kubernetes-nav-heading:hover { color: var(--color-subtext); }
 .kubernetes-nav-heading:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; border-radius: 4px; }
 .kubernetes-nav-caret { flex: none; transition: transform .15s ease; opacity: 0.8; }
 .kubernetes-nav-group.collapsed .kubernetes-nav-caret { transform: rotate(-90deg); }
 .kubernetes-nav-group.collapsed .kubernetes-nav-items { display: none; }
+/* 收合群組沒有子項目，移除為展開樹狀清單預留的上下空白，提升側欄資訊密度。 */
+.kubernetes-nav-group.collapsed { gap: 0; }
+.kubernetes-nav-group.collapsed + .kubernetes-nav-group.collapsed { margin-top: 2px; }
+.kubernetes-session-nav .kubernetes-nav-group.collapsed .kubernetes-nav-heading { margin: 1px 0; }
 /* 子項目以單一連續左側 rail + 縮排歸屬到群組（乾淨版樹狀線），讓主／附層級清楚。 */
-.kubernetes-nav-items { display: grid; gap: 2px; margin-left: 11px; padding-left: 11px; border-left: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent); }
+.kubernetes-nav-items { display: grid; gap: 1px; margin-left: 9px; padding-left: 9px; border-left: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent); }
 
 .kubernetes-session-nav .kubernetes-section-link {
   display: flex;
   align-items: center;
   gap: 9px;
-  min-height: 32px;
+  min-height: 29px;
   border: 0;
   border-radius: 6px;
   background: transparent;
@@ -3130,8 +3180,16 @@ kubernetes-session-page {
 .kubernetes-session-nav .kubernetes-nav-star:hover { transform: translateY(-50%); color: var(--color-warning); background: color-mix(in srgb, var(--color-text) 10%, transparent); }
 /* 已收藏＝實心金星，但仍只在 hover 該列時顯示（未 hover 一律隱藏）。 */
 .kubernetes-session-nav .kubernetes-nav-star.pinned { color: var(--color-warning); }
-.kubernetes-nav-quick-heading { display: flex; align-items: center; gap: 6px; margin: 6px 0; padding: 2px 7px; color: var(--color-text-muted); font-size: 11px; font-weight: 800; letter-spacing: 0.8px; }
+.kubernetes-nav-quick-heading { display: flex; align-items: center; gap: 6px; margin: 4px 0; padding: 2px 7px; color: var(--color-text-muted); font-size: 11px; font-weight: 800; letter-spacing: 0.8px; }
+.kubernetes-nav-quick-heading > span { display: inline-flex; align-items: center; gap: 6px; }
 .kubernetes-nav-quick-heading i { color: var(--color-warning); font-size: 13px; }
+/* 我的最愛是單一導覽入口，與 Quick access 的資源類型捷徑分開呈現。 */
+.kubernetes-nav-favorites { margin-bottom: 3px; }
+.kubernetes-nav-favorites .kubernetes-nav-items { margin-left: 0; padding-left: 0; border-left: 0; }
+.kubernetes-session-nav .kubernetes-favorites-nav-link { min-height: 24px; padding: 2px 7px; gap: 6px; color: var(--color-text-muted); font-size: 11px; font-weight: 800; letter-spacing: 0.8px; }
+.kubernetes-favorites-nav-link i { color: var(--color-warning); font-size: 13px; }
+.kubernetes-favorites-count { display: inline-flex; align-items: center; justify-content: center; min-width: 19px; height: 18px; margin-left: auto; padding: 0 5px; border-radius: 999px; background: color-mix(in srgb, var(--color-text) 10%, transparent); color: var(--color-text-muted); font-size: 10px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.kubernetes-favorites-nav-link.active .kubernetes-favorites-count { background: color-mix(in srgb, var(--color-primary) 22%, transparent); color: var(--color-primary); }
 .kubernetes-session-content { position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; padding: 24px; text-align: left; }
 /* header 固定於頂部，內容（含寬表格）在 scrollbody 內雙向捲動，橫向捲軸固定在視窗底部可見可拖曳。 */
 .kubernetes-session-scrollbody { flex: 1 1 auto; min-height: 0; min-width: 0; overflow: auto; transition: margin-bottom 0.24s ease; }
@@ -3242,6 +3300,8 @@ kubernetes-session-page {
 .kubernetes-resource-table-wrap::-webkit-scrollbar,
 .kubernetes-shell-view::-webkit-scrollbar,
 .kubernetes-pod-action-view::-webkit-scrollbar { width: 12px; height: 12px; }
+/* Logs 的長行需要持續可見的水平捲軸，避免沿用全域自動隱藏策略。 */
+.kubernetes-log-output::-webkit-scrollbar:horizontal { height: 12px; }
 /* kubernetes 內容/表格橫向溢出時，提供常駐、清楚且可用滑鼠拖曳的捲軸（覆蓋全域透明自動隱藏）。 */
 .kubernetes-session-scrollbody::-webkit-scrollbar-thumb,
 .kubernetes-resource-table-wrap::-webkit-scrollbar-thumb,
@@ -3253,10 +3313,20 @@ kubernetes-session-page {
   border: 2px solid transparent;
   background-clip: padding-box;
 }
+.kubernetes-log-output::-webkit-scrollbar-thumb:horizontal {
+  background: color-mix(in srgb, var(--color-text-muted) 45%, transparent);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
 .kubernetes-session-scrollbody::-webkit-scrollbar-thumb:hover,
 .kubernetes-resource-table-wrap::-webkit-scrollbar-thumb:hover,
 .kubernetes-shell-view::-webkit-scrollbar-thumb:hover,
 .kubernetes-pod-action-view::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-text-muted) 72%, transparent);
+  background-clip: padding-box;
+}
+.kubernetes-log-output::-webkit-scrollbar-thumb:horizontal:hover {
   background: color-mix(in srgb, var(--color-text-muted) 72%, transparent);
   background-clip: padding-box;
 }
@@ -3290,6 +3360,22 @@ kubernetes-session-page {
    不受各自 actions 欄按鈕、狀態徽章等內容高度影響。 */
 .kubernetes-resource-table td { height: 34px; padding: 0 13px; vertical-align: middle; border-bottom: 1px solid color-mix(in srgb, var(--color-border) 65%, transparent); color: var(--color-text); }
 .kubernetes-resource-table tr:last-child td { border-bottom: 0; }
+.kubernetes-favorites-description { margin: 4px 0 0; color: var(--color-subtext); font-size: 13px; }
+.kubernetes-favorites-empty { display: grid; justify-items: center; gap: 9px; max-width: 440px; margin: 72px auto; padding: 34px; border: 1px dashed var(--color-border); border-radius: var(--radius-lg); color: var(--color-subtext); text-align: center; }
+.kubernetes-favorites-empty i { color: var(--color-warning); font-size: 28px; }
+.kubernetes-favorites-empty h2 { margin: 0; color: var(--color-text); font-size: 16px; }
+.kubernetes-favorites-empty p { margin: 0; font-size: 12px; line-height: 1.6; }
+.kubernetes-favorite-resource-row { position: relative; cursor: pointer; transition: background-color .14s ease, box-shadow .14s ease; }
+.kubernetes-favorite-resource-row:not(.is-missing):hover > td,
+.kubernetes-favorite-resource-row:not(.is-missing):focus-visible > td { background: color-mix(in srgb, var(--color-primary) 14%, transparent); }
+.kubernetes-favorite-resource-row:not(.is-missing):hover > td:first-child,
+.kubernetes-favorite-resource-row:not(.is-missing):focus-visible > td:first-child { box-shadow: inset 3px 0 0 var(--color-primary); }
+.kubernetes-favorite-resource-row:not(.is-missing):hover .kubernetes-cell-ellipsis,
+.kubernetes-favorite-resource-row:not(.is-missing):focus-visible .kubernetes-cell-ellipsis { color: var(--color-primary); font-weight: 700; }
+.kubernetes-favorite-resource-row:not(.is-missing):focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
+.kubernetes-favorite-resource-row.is-missing { cursor: default; opacity: 0.72; }
+.kubernetes-favorite-kind { display: inline-flex; align-items: center; min-height: 20px; padding: 0 8px; border-radius: 999px; background: color-mix(in srgb, var(--color-primary) 12%, transparent); color: var(--color-primary); font-size: 10px; font-weight: 700; }
+.kubernetes-favorite-missing { color: var(--color-text-muted); font-size: 11px; }
 .kubernetes-pods-view { margin-top: 18px; }
 .kubernetes-pods-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
 .kubernetes-pod-filters, .kubernetes-pod-tools, .kubernetes-pod-actions { display: flex; align-items: center; gap: 7px; }
@@ -3384,6 +3470,15 @@ kubernetes-session-page {
 .kubernetes-resource-row:hover .kubernetes-view-pods-btn,
 .kubernetes-pod-actions button.kubernetes-view-pods-btn:focus-visible { opacity: 1; }
 .kubernetes-pod-actions button.kubernetes-view-pods-btn:hover { color: var(--color-primary); background: color-mix(in srgb, var(--color-text) 10%, transparent); }
+/* 工作負載收藏星號：未收藏時在列 hover 顯示，已收藏時常態保留以便辨識與取消。 */
+.kubernetes-pod-actions button.kubernetes-resource-favorite { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; min-height: 0; padding: 0; border: 0; border-radius: 6px; background: transparent; box-shadow: none; color: var(--color-text-muted); opacity: 0; cursor: pointer; transition: opacity .12s ease, color .12s ease, background .12s ease; }
+.kubernetes-resource-favorite svg { display: block; }
+.kubernetes-resource-row:hover .kubernetes-resource-favorite,
+.kubernetes-favorite-resource-row:hover .kubernetes-resource-favorite,
+.kubernetes-pod-actions button.kubernetes-resource-favorite:focus-visible,
+.kubernetes-pod-actions button.kubernetes-resource-favorite.is-favorite { opacity: 1; }
+.kubernetes-pod-actions button.kubernetes-resource-favorite:hover { color: var(--color-warning); background: color-mix(in srgb, var(--color-text) 10%, transparent); }
+.kubernetes-pod-actions button.kubernetes-resource-favorite.is-favorite { color: var(--color-warning); }
 /* 抽屜 Overview 內的「檢視關聯 Pods · N」CTA 按鈕。 */
 .kubernetes-view-pods-cta { display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; min-height: 0; border: 1px solid color-mix(in srgb, var(--color-primary) 45%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--color-primary) 12%, transparent); box-shadow: none; color: var(--color-primary); font: inherit; font-size: 13px; cursor: pointer; transition: background .12s ease; }
 .kubernetes-view-pods-cta:hover { background: color-mix(in srgb, var(--color-primary) 20%, transparent); transform: none; }
@@ -3408,6 +3503,18 @@ kubernetes-session-page {
 .kubernetes-resource-row { cursor: pointer; transition: background-color .12s ease, color .12s ease; }
 .kubernetes-resource-row:hover,
 .kubernetes-resource-row:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; background: color-mix(in srgb, var(--color-primary) 10%, transparent); }
+/* Pod 方案 B：直接著色每個儲存格，避免 tr 的透明背景在深色 table 中對比不足。 */
+.kubernetes-pods-table tbody tr.kubernetes-pod-row-alert > td { background: color-mix(in srgb, var(--color-danger) 18%, var(--color-panel-bg)); }
+.kubernetes-pods-table tbody tr.kubernetes-pod-row-alert:hover,
+.kubernetes-pods-table tbody tr.kubernetes-pod-row-alert:focus-visible > td { background: color-mix(in srgb, var(--color-danger) 24%, var(--color-panel-bg)); }
+.kubernetes-pods-table tbody tr.kubernetes-pod-row-alert--warning > td { background: color-mix(in srgb, var(--color-warning) 18%, var(--color-panel-bg)); }
+.kubernetes-pods-table tbody tr.kubernetes-pod-row-alert--warning:hover,
+.kubernetes-pods-table tbody tr.kubernetes-pod-row-alert--warning:focus-visible > td { background: color-mix(in srgb, var(--color-warning) 24%, var(--color-panel-bg)); }
+.kubernetes-pod-alert-status { display: inline-flex; align-items: center; gap: 5px; color: var(--color-danger); }
+.kubernetes-pod-alert-status svg { flex: 0 0 auto; }
+.kubernetes-pod-alert-status .kubernetes-status-badge { background: var(--color-danger-bg); color: var(--color-danger); }
+.kubernetes-pod-alert-status.is-warning { color: var(--color-warning); }
+.kubernetes-pod-alert-status.is-warning .kubernetes-status-badge { background: var(--color-warning-bg); color: var(--color-warning); }
 .kubernetes-table-caption,
 .kubernetes-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
 /* ② Events Type 篩選工具列。 */
@@ -3461,6 +3568,8 @@ kubernetes-session-page {
 
 .kubernetes-detail-backdrop { position: absolute; inset: 0; z-index: 20; background: rgba(5, 10, 18, 0.34); --wails-draggable: no-drag; }
 .kubernetes-detail-drawer { position: absolute; z-index: 21; top: 0; right: 0; bottom: 0; display: flex; width: min(560px, 72vw); min-width: 0; flex-direction: column; border-left: 1px solid var(--color-border); background: var(--color-panel-bg); box-shadow: -14px 0 38px rgba(0, 0, 0, 0.2); color: var(--color-text); --wails-draggable: no-drag; }
+/* Pod 需要同時呈現 metadata、containers、logs 與 YAML，使用較寬的專屬 Drawer。 */
+.kubernetes-pod-detail-drawer { width: min(760px, 82vw); }
 /* 毛玻璃主題：面板變數本身極透，drawer 疊在 session 上會透出後方文字。
    改為不透明毛玻璃 + 加強 backdrop 遮罩，確保可讀。 */
 :root[class*="theme-glass"] .kubernetes-detail-backdrop { background: rgba(5, 10, 18, 0.55); }
@@ -4546,8 +4655,22 @@ kubernetes-session-page {
   transition: border-color 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s ease, transform 0.25s ease;
 }
 
+/* 單一 Pane 為主要工作區時，終端內容直接填滿背景；多 Pane 仍保留分割邊界。 */
+.terminal-pane:only-child {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.terminal-pane.active:only-child {
+  box-shadow: none;
+  transform: none;
+}
+
 .terminal-pane .pane-header {
-  padding: 8px 18px 6px 10px !important;
+  height: 25px;
+  min-height: 25px;
+  padding: 0 12px !important;
   margin-bottom: 0 !important;
 }
 
@@ -5380,9 +5503,9 @@ control-panel-page {
 
 /* ==================== Session Bar 控制面板開關按鈕 ==================== */
 .session-bar-control-btn {
-  height: 32px;
-  width: 36px;
-  min-height: 32px !important;
+  height: 24px;
+  width: 28px;
+  min-height: 24px !important;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -5396,6 +5519,11 @@ control-panel-page {
   transition: all 0.2s ease !important;
   box-shadow: none;
   margin: 0 !important;
+}
+
+.session-bar-control-btn svg {
+  width: 15px;
+  height: 15px;
 }
 
 .session-bar-control-btn:hover {

@@ -231,6 +231,7 @@ export class TermixApp extends HTMLElement {
     themeStore.getState().loadSettings();
     snippetStore.getState().loadSnippets();
     this.render();
+    this.setupMacWindowControls();
     this.initRouter();
     this.setupTabListeners();
     this.setupSidebarListeners();
@@ -465,10 +466,19 @@ export class TermixApp extends HTMLElement {
   render() {
     const sidebarEditMode = this.controlSidebarTab === 'snippets' ? this.snippetPanelEditMode : this.controlPanelEditMode;
     const sidebarEditTitle = sidebarEditMode ? t('app.sidebar.finishArrange') : t('app.sidebar.editArrange');
+    const useCustomMacWindowControls = detectPlatform() === 'mac'
+      && typeof window.runtime?.WindowMinimise === 'function';
     this.innerHTML = `
       <main class="shell" style="display: flex; flex-direction: column; height: calc(100vh / var(--ui-scale, 1)); width: calc(100vw / var(--ui-scale, 1)); overflow: hidden; background: var(--bg-main);">
         <!-- 頂部 TOPBAR -->
-        <header class="topbar" style="display: flex; align-items: center; justify-content: space-between; padding: 0 16px; height: 48px; border-bottom: 1px solid var(--color-border); background: var(--color-titlebar-bg); flex: 0 0 auto; --wails-draggable: drag;">
+        <header class="topbar" style="display: flex; align-items: center; justify-content: space-between; padding: 0 16px; height: 42px; border-bottom: 1px solid var(--color-border); background: var(--color-titlebar-bg); flex: 0 0 auto; --wails-draggable: drag;">
+          ${useCustomMacWindowControls ? `
+            <div class="mac-window-controls no-drag" aria-label="視窗控制">
+              <button type="button" class="mac-window-control mac-window-control-close" data-window-control="close" aria-label="關閉 TermiX" title="關閉 TermiX"></button>
+              <button type="button" class="mac-window-control mac-window-control-minimise" data-window-control="minimise" aria-label="最小化視窗" title="最小化視窗"></button>
+              <button type="button" class="mac-window-control mac-window-control-zoom" data-window-control="zoom" aria-label="縮放視窗" title="縮放視窗"></button>
+            </div>
+          ` : ''}
           <div class="titlebar-content" style="display: flex; align-items: center; flex: 1; min-width: 0; height: 100%; --wails-draggable: drag;">
             <div id="sessionTabs" class="session-tabs" style="flex: 0 1 auto; --wails-draggable: no-drag;">
               <!-- 動態渲染 Session Tabs，Vaults 固定在最左側 -->
@@ -612,6 +622,34 @@ export class TermixApp extends HTMLElement {
       </div>
     `;
     this.renderTabs();
+  }
+
+  setupMacWindowControls() {
+    const controls = this.querySelector('.mac-window-controls');
+    const dragHandle = this.querySelector('.topbar-drag-handle');
+
+    // 無邊框視窗沒有原生標題列，於 Session 列右側空白拖曳區提供與 macOS 一致的
+    // 雙擊縮放行為。僅綁定空白區，避免干擾 Session Tab 與其操作按鈕。
+    if (dragHandle && typeof window.runtime?.WindowToggleMaximise === 'function') {
+      dragHandle.addEventListener('dblclick', (event) => {
+        event.preventDefault();
+        window.runtime.WindowToggleMaximise();
+      });
+    }
+
+    if (!controls || !window.runtime) return;
+
+    document.documentElement.classList.add('frameless-macos');
+
+    controls.querySelector('[data-window-control="close"]')?.addEventListener('click', () => {
+      window.runtime.Quit();
+    });
+    controls.querySelector('[data-window-control="minimise"]')?.addEventListener('click', () => {
+      window.runtime.WindowMinimise();
+    });
+    controls.querySelector('[data-window-control="zoom"]')?.addEventListener('click', () => {
+      window.runtime.WindowToggleMaximise();
+    });
   }
 
   renderTabs() {
