@@ -48,6 +48,8 @@ import type {
 } from '../../domain';
 
 export interface WailsAppContract {
+  GetLegacyWebSettings(): Promise<Record<string, string>>;
+  GetLegacyControlPanelComponents(): Promise<string>;
   StartLocalTerminal(shellPath: string): Promise<OperationResult>;
   ConnectTerminal(config: SSHConfig): Promise<OperationResult>;
   ConnectHost(hostId: string): Promise<OperationResult>;

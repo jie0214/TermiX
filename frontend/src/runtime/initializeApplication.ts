@@ -2,7 +2,8 @@ import '@xterm/xterm/css/xterm.css';
 
 import '../style.css';
 import '../components/controls/button-system.css';
-import { installBrowserWailsMock } from '../platform/wails';
+import { getAppBinding, installBrowserWailsMock } from '../platform/wails';
+import { migrateWebSettings } from './webSettingsMigration';
 import { installGlobalErrorHandlers } from './globalErrorOverlay';
 import { installInteractionInterception } from './interactionInterception';
 import { installScrollbarAutohide } from './scrollbarAutohide';
@@ -14,6 +15,7 @@ export function initializeApplication(): Promise<void> {
   initializationPromise ??= (async () => {
     installBrowserWailsMock();
     installGlobalErrorHandlers();
+    await migrateWebSettings(localStorage, getAppBinding('GetLegacyWebSettings'));
     installInteractionInterception();
     installScrollbarAutohide();
     await import('../App.js');
