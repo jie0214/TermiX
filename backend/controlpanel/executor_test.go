@@ -1,9 +1,9 @@
 package controlpanel
 
 import (
+	"github.com/jie0214/TermiX/shared/dto"
 	"os"
 	"path/filepath"
-	"github.com/jie0214/TermiX/shared/dto"
 	"runtime"
 	"testing"
 

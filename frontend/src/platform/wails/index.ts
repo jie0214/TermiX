@@ -7,9 +7,16 @@ export {
 export { installBrowserWailsMock } from './browserMock';
 export {
   emitWailsEvent,
+  getClipboardText,
+  hasWailsWindowControls,
+  minimiseWailsWindow,
   offWailsEvent,
   onWailsEvent,
+  openBrowserURL,
   onceWailsEvent,
+  quitWailsApplication,
+  setClipboardText,
+  toggleWailsWindowMaximise,
 } from './events';
 export type {
   WailsAppBindings,

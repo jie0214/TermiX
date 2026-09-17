@@ -150,6 +150,7 @@ export namespace dto {
 	    }
 	}
 	export class SSHConfig {
+	    alias: string;
 	    host: string;
 	    port: number;
 	    username: string;
@@ -169,6 +170,7 @@ export namespace dto {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.alias = source["alias"];
 	        this.host = source["host"];
 	        this.port = source["port"];
 	        this.username = source["username"];

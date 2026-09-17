@@ -20,6 +20,10 @@ const controlPanelPageSource = fs.readFileSync(
   path.join(__dirname, '..', 'frontend', 'src', 'modules', 'controlpanel', 'ControlPanelPage.js'),
   'utf8'
 );
+const updateNotificationSource = fs.readFileSync(
+  path.join(__dirname, '..', 'frontend', 'src', 'runtime', 'updateNotification.ts'),
+  'utf8'
+);
 
 function assert(condition, message) {
   if (!condition) {
@@ -34,9 +38,20 @@ assert(
   'App 使用共用 Wails binding facade'
 );
 assert(
-  appSource.includes("import { onWailsEvent } from './platform/wails/events.ts';"),
+  appSource.includes("from './platform/wails/events.ts';"),
   'App 使用共用 Wails event facade'
 );
+for (const methodName of [
+  'hasWailsWindowControls',
+  'minimiseWailsWindow',
+  'quitWailsApplication',
+  'toggleWailsWindowMaximise'
+]) {
+  assert(
+    appSource.includes(`${methodName}(`),
+    `App 透過 facade 呼叫 ${methodName}`
+  );
+}
 for (const eventName of ['open-global-settings', 'terminal-output', 'terminal-closed']) {
   assert(
     appSource.includes(`onWailsEvent("${eventName}"`),
@@ -74,6 +89,15 @@ assert(
   'Host List 不使用全域 EventsOff 移除其他訂閱者'
 );
 assert(!/window\.(go|runtime)/.test(hostListSource), 'Host List 不直接存取 window.go 或 window.runtime');
+
+assert(
+  updateNotificationSource.includes("import { getAppBinding, openBrowserURL } from '../platform/wails';"),
+  '更新通知使用共用 Wails facade'
+);
+assert(
+  !/(?:window|globalThis)\.(go|runtime)/.test(updateNotificationSource),
+  '更新通知不直接存取 window.go 或 runtime'
+);
 
 assert(
   controlPanelAPISource.includes("import { requireAppBinding } from '../../platform/wails/bindings.ts';"),

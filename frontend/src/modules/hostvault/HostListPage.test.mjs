@@ -15,3 +15,11 @@ test('Vaults Port Forwarding 顯示並管理 Kubernetes 轉發', () => {
   assert.match(source, /t\('hostvault\.forward\.empty'\)/);
   assert.doesNotMatch(source, /目前 Kubernetes Session 建立的連接埠轉發。/);
 });
+
+test('Vaults 對匯入與持久化資料進行 HTML 屬性及文字跳脫', () => {
+  assert.match(source, /data-group-id="\$\{escapeHtml\(group\.id\)\}"/);
+  assert.match(source, /class="vault-card-title">\$\{escapeHtml\(item\.alias \|\| item\.label\)\}/);
+  assert.match(source, /value="\$\{escapeHtml\(drawerHost\.config\?\.host\)\}"/);
+  assert.match(source, /value="\$\{escapeHtml\(state\.searchQuery\)\}"/);
+  assert.match(source, /data-comp-id="\$\{escapeHtml\(comp\.id\)\}"/);
+});

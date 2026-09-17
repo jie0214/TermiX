@@ -1,5 +1,7 @@
 package app
 
+import "errors"
+
 func (a *App) ListSnippets() ([]Snippet, error) {
 	return a.snippets.ListSnippets()
 }
@@ -25,5 +27,9 @@ func (a *App) SetHostStartupSnippet(request HostStartupSnippetRequest) (HostStar
 }
 
 func (a *App) ExecuteSnippetBatch(request ExecuteSnippetBatchRequest) (SnippetBatchResult, error) {
+	if !a.beginOperation() {
+		return SnippetBatchResult{}, errors.New("正在準備結束或更新，請稍後再試。")
+	}
+	defer a.endOperation()
 	return a.snippets.ExecuteSnippetBatch(request)
 }

@@ -85,7 +85,7 @@ export function showToast(message, options = {}) {
       : '';
     // error 類附關閉鈕（可手動移除），其餘維持自動淡出。
     const closeHtml = type === 'error'
-      ? `<button type="button" aria-label="${escapeHtml(t('misc.toast.closeNotification'))}" style="position:absolute;top:4px;right:4px;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;padding:0;background:none;border:0;color:var(--color-text);opacity:0.6;font-size:16px;line-height:1;cursor:pointer;">×</button>`
+      ? `<button class="ui-button ui-button--quiet ui-button--icon" type="button" aria-label="${escapeHtml(t('misc.toast.closeNotification'))}" style="position:absolute;top:4px;right:4px;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;padding:0;opacity:0.6;line-height:1;cursor:pointer;">×</button>`
       : '';
     toast.innerHTML = `${closeHtml}${titleHtml}<div${type === 'error' ? ' style="padding-right:24px;"' : ''}>${escapeHtml(message)}</div>`;
 

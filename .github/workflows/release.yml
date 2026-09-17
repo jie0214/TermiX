@@ -7,7 +7,7 @@ on:
       - 'v*'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   # 由 GitVersion 依 git 狀態推算版本（單一事實來源），供各平台共用。
@@ -17,7 +17,7 @@ jobs:
       version: ${{ steps.gv.outputs.majorMinorPatch }}
       semver: ${{ steps.gv.outputs.semVer }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Setup GitVersion
@@ -28,9 +28,62 @@ jobs:
         id: gv
         uses: gittools/actions/gitversion/execute@v3
 
+  verify:
+    name: Verify release source
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Test private release script
+        if: ${{ hashFiles('tests/release_script_test.sh') != '' }}
+        run: bash tests/release_script_test.sh
+
+      - name: Test macOS release safeguards
+        run: |
+          python3 tests/macos_release_test.py
+          python3 tests/appcast_test.py
+
+      - name: Install frontend dependencies
+        run: npm ci --ignore-scripts --prefix frontend
+
+      - name: Audit frontend dependencies
+        run: npm audit --prefix frontend --audit-level=moderate
+
+      - name: Test frontend
+        run: npm test --prefix frontend
+
+      - name: Type-check frontend
+        run: npm run typecheck --prefix frontend
+
+      # main.go 會嵌入 frontend/dist，因此所有 Go 編譯型檢查前都必須先產生前端建置產物。
+      - name: Build frontend
+        run: npm run build --prefix frontend
+
+      - name: Check backend formatting
+        run: go fmt ./... && git diff --exit-code
+
+      - name: Test backend
+        run: go test ./...
+
+      - name: Vet backend
+        run: go vet ./...
+
   build:
     name: Build ${{ matrix.name }}
-    needs: version
+    needs:
+      - version
+      - verify
     runs-on: ${{ matrix.os }}
     env:
       VERSION: ${{ needs.version.outputs.version }}
@@ -45,15 +98,15 @@ jobs:
           - os: ubuntu-latest
             name: linux
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
-          go-version: '1.25'
+          go-version-file: go.mod
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Install Wails CLI
         shell: bash
@@ -61,14 +114,52 @@ jobs:
           go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
-      # ---- macOS：通用二進位 → 壓縮 .app ----
+      # ---- macOS：通用二進位 → Developer ID 簽署 → 公證 → 附加票證 → ZIP ----
+      - name: Check macOS signing configuration
+        if: runner.os == 'macOS'
+        env:
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: bash scripts/macos-ci-release.sh --check
+
       - name: Build macOS
         if: runner.os == 'macOS'
         shell: bash
+        env:
+          CGO_LDFLAGS: -framework UniformTypeIdentifiers
         run: |
-          wails build -platform darwin/universal -ldflags "-X main.version=${VERSION}"
-          mkdir -p dist
-          ditto -c -k --keepParent build/bin/TermiX.app "dist/TermiX-${VERSION}-macos.zip"
+          wails build -clean -platform darwin/universal -ldflags "-X main.version=${VERSION}"
+          bash scripts/macos-sparkle.sh build/bin/TermiX.app
+
+      - name: Test native updater lifecycle
+        if: runner.os == 'macOS'
+        run: |
+          clang -fblocks -framework Cocoa tests/native_updater_test.m -o "${RUNNER_TEMP}/termix-native-updater-test"
+          "${RUNNER_TEMP}/termix-native-updater-test"
+
+      - name: Sign and notarize macOS
+        if: runner.os == 'macOS'
+        env:
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          MACOS_NOTARY_LOG_DIR: ${{ runner.temp }}/termix-notarization
+        run: bash scripts/macos-ci-release.sh build/bin/TermiX.app "dist/TermiX-${VERSION}-macos.zip"
+
+      - name: Upload notarization diagnostics
+        if: ${{ failure() && runner.os == 'macOS' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-notarization-diagnostics
+          path: ${{ runner.temp }}/termix-notarization/*.json
+          if-no-files-found: ignore
 
       # ---- Windows：產出可執行檔並壓成 zip ----
       - name: Build Windows
@@ -91,7 +182,7 @@ jobs:
           tar -czf "dist/TermiX-${VERSION}-linux-amd64.tar.gz" -C build/bin TermiX
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: termix-${{ matrix.name }}
           path: dist/*
@@ -101,8 +192,10 @@ jobs:
     name: Create Release
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -118,8 +211,9 @@ jobs:
           echo "---- release notes ----"; cat RELEASE_NOTES.md
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
+          pattern: termix-*
           path: dist
 
       - name: Create GitHub Release

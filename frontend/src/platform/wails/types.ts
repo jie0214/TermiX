@@ -17,6 +17,9 @@ export interface WailsRuntime {
   BrowserOpenURL?(url: string): void;
   ClipboardGetText?(): Promise<string>;
   ClipboardSetText?(text: string): Promise<boolean>;
+  Quit?(): void;
+  WindowMinimise?(): void;
+  WindowToggleMaximise?(): void;
 }
 
 declare global {

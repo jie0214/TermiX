@@ -31,9 +31,9 @@ Available for macOS, Windows, and Linux.
 Download the file for your OS from the project's [Releases](https://github.com/jie0214/TermiX/releases) page:
 
 ### macOS
-1. Download the `.app` (or `.dmg`) and unzip it.
+1. Download and open the macOS DMG (older Releases provide a ZIP).
 2. Drag `TermiX.app` into your Applications folder.
-3. On first launch, if you see "cannot verify developer", right-click the app → "Open" → "Open" again.
+3. Open `TermiX.app`. The updated release workflow requires Developer ID signing and Apple notarization. Older packages may still show an unverified-developer warning; check the download source and version first.
 
 ### Windows
 1. Download and run the installer (`.exe`).
@@ -43,7 +43,7 @@ Download the file for your OS from the project's [Releases](https://github.com/j
 1. Download the binary and make it executable: `chmod +x TermiX`.
 2. Run it directly: `./TermiX`.
 
-> The current builds are not code-signed, so your system may show a security warning — follow the steps above to bypass it. If Releases doesn't yet provide your platform, see "Build from source" below.
+> The macOS release workflow now requires signing and notarization; existing Release files are unchanged. Maintainers can follow the [macOS release guide](docs/macos-release.md) (Traditional Chinese). Windows packages are not yet code-signed. If Releases doesn't yet provide your platform, see "Build from source" below.
 
 ---
 
@@ -70,7 +70,7 @@ Not required for normal use; the following are optional:
 ## FAQ
 
 - **Kubernetes resources show access failures or missing values**: usually insufficient `~/.kube/config` permissions, or the cluster doesn't expose metrics; confirm your account has the right permissions for the cluster.
-- **Security warning on launch**: because the builds aren't signed; follow the "Download and install" steps to bypass it.
+- **Security warning on launch**: verify that the download comes from the official Release. Older macOS packages and unsigned Windows packages can still show warnings. If macOS rejects a signed release, report the version and complete error message.
 - **FunctionBox can't run some commands**: this is the safe default; if you must run local commands, see the environment variables above.
 
 ---

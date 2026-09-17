@@ -210,6 +210,7 @@ export interface WailsAppContract {
     content: string,
   ): Promise<string>;
 
+  HandleNativeUpdateCheck(manual: boolean): Promise<boolean>;
   CheckForUpdate(): Promise<UpdateInfo>;
 
   DownloadUpdate(): Promise<DownloadResult>;

@@ -20,9 +20,9 @@ export const controlpanel: DictBundle = {
     'cp.import.title': 'Import components from a JSON or YAML backup file',
 
     // 空狀態
-    'cp.empty.info': 'No status boards yet. Click "+ NEW OBJECT" above to create one.',
-    'cp.empty.switch': 'No toggle objects yet. Click "+ NEW OBJECT" above to create one.',
-    'cp.empty.function': 'No quick commands yet. Click "+ NEW OBJECT" above to create one.',
+    'cp.empty.info': 'No status boards yet. Click "New" above to create one.',
+    'cp.empty.switch': 'No toggle objects yet. Click "New" above to create one.',
+    'cp.empty.function': 'No quick commands yet. Click "New" above to create one.',
 
     // 抽屜介紹
     'cp.intro.title': 'Custom Control Components',
@@ -149,9 +149,9 @@ export const controlpanel: DictBundle = {
     'cp.import.title': '從備份的 JSON 或 YAML 檔案匯入組件',
 
     // 空狀態
-    'cp.empty.info': '尚無狀態看板，請點選上方「+ NEW OBJECT」建立',
-    'cp.empty.switch': '尚無狀態切換物件，請點選上方「+ NEW OBJECT」建立',
-    'cp.empty.function': '尚無快捷指令，請點選上方「+ NEW OBJECT」建立',
+    'cp.empty.info': '尚無狀態看板，請點選上方「新增」建立',
+    'cp.empty.switch': '尚無狀態切換物件，請點選上方「新增」建立',
+    'cp.empty.function': '尚無快捷指令，請點選上方「新增」建立',
 
     // 抽屜介紹
     'cp.intro.title': '自訂控制組件',
@@ -278,9 +278,9 @@ export const controlpanel: DictBundle = {
     'cp.import.title': 'バックアップした JSON または YAML ファイルからコンポーネントをインポート',
 
     // 空狀態
-    'cp.empty.info': 'ステータスボードはまだありません。上の「+ NEW OBJECT」をクリックして作成してください。',
-    'cp.empty.switch': 'トグルオブジェクトはまだありません。上の「+ NEW OBJECT」をクリックして作成してください。',
-    'cp.empty.function': 'クイックコマンドはまだありません。上の「+ NEW OBJECT」をクリックして作成してください。',
+    'cp.empty.info': 'ステータスボードはまだありません。上の「新規」をクリックして作成してください。',
+    'cp.empty.switch': 'トグルオブジェクトはまだありません。上の「新規」をクリックして作成してください。',
+    'cp.empty.function': 'クイックコマンドはまだありません。上の「新規」をクリックして作成してください。',
 
     // 抽屜介紹
     'cp.intro.title': 'カスタム制御コンポーネント',

@@ -410,8 +410,9 @@ export class TerminalPage extends HTMLElement {
     if (reconnecting) initialState = 'connecting';
     else if (ctx && ctx.pendingInput) initialState = 'pending';
 
+    const safeSessionKey = escapeHtml(sessionKey);
     return `
-      <div class="pane-reconnect-overlay" data-session-key="${sessionKey}" data-reconnect-state="${initialState}"
+      <div class="pane-reconnect-overlay" data-session-key="${safeSessionKey}" data-reconnect-state="${initialState}"
            style="position: absolute; inset: 0; z-index: 90; display: ${initialState === 'hidden' ? 'none' : 'flex'}; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: rgba(7, 10, 16, 0.82); backdrop-filter: blur(1.5px); border-radius: 6px; box-sizing: border-box; padding: 16px; text-align: center;">
         <div class="reconnect-overlay-msg" style="font-size: 13.5px; font-weight: 700; color: #d7e0e5; line-height: 1.5; max-width: 90%;"></div>
         <div class="reconnect-overlay-actions" style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;"></div>
@@ -466,19 +467,19 @@ export class TerminalPage extends HTMLElement {
     if (uiState === 'connecting') {
       msgEl.textContent = t('terminal.reconnectConnecting', { name: label });
       actionsEl.innerHTML = `
-        <button type="button" class="no-drag reconnect-btn-abort" data-session-key="${sessionKey}" style="${btnBase}">${t('common.close')}</button>
+        <button type="button" class="no-drag reconnect-btn-abort ui-button ui-button--secondary" data-session-key="${escapeHtml(sessionKey)}" style="${btnBase}">${t('common.close')}</button>
       `;
     } else if (uiState === 'failed') {
       msgEl.textContent = t('terminal.reconnectFailed', { name: label });
       actionsEl.innerHTML = `
-        <button type="button" class="no-drag reconnect-btn-retry" data-session-key="${sessionKey}" style="${btnPrimary}">${t('terminal.reconnectRetry')}</button>
-        <button type="button" class="no-drag reconnect-btn-abort" data-session-key="${sessionKey}" style="${btnBase}">${t('common.close')}</button>
+        <button type="button" class="no-drag reconnect-btn-retry ui-button ui-button--primary" data-session-key="${escapeHtml(sessionKey)}" style="${btnPrimary}">${t('terminal.reconnectRetry')}</button>
+        <button type="button" class="no-drag reconnect-btn-abort ui-button ui-button--secondary" data-session-key="${escapeHtml(sessionKey)}" style="${btnBase}">${t('common.close')}</button>
       `;
     } else if (uiState === 'pending') {
       msgEl.textContent = t('terminal.reconnectPending');
       actionsEl.innerHTML = `
-        <button type="button" class="no-drag reconnect-btn-flush" data-session-key="${sessionKey}" style="${btnPrimary}">${t('terminal.reconnectFlush')}</button>
-        <button type="button" class="no-drag reconnect-btn-discard" data-session-key="${sessionKey}" style="${btnBase}">${t('terminal.reconnectDiscard')}</button>
+        <button type="button" class="no-drag reconnect-btn-flush ui-button ui-button--danger" data-session-key="${escapeHtml(sessionKey)}" style="${btnPrimary}">${t('terminal.reconnectFlush')}</button>
+        <button type="button" class="no-drag reconnect-btn-discard ui-button ui-button--danger" data-session-key="${escapeHtml(sessionKey)}" style="${btnBase}">${t('terminal.reconnectDiscard')}</button>
       `;
     }
 
@@ -567,10 +568,11 @@ export class TerminalPage extends HTMLElement {
           const session = state.sessions[pane.sessionKey];
           if (!session) return;
           const isActive = pane.sessionKey === state.activePaneSessionKey;
+          const safeSessionKey = escapeHtml(pane.sessionKey);
           targetsHtml += `
-            <div class="no-drag batch-target-item ${isActive ? 'active' : ''}" data-session-key="${pane.sessionKey}" style="padding: 10px 12px; margin: 4px 8px; border-radius: 6px; cursor: pointer; font-size: 12.5px; transition: all 0.2s; display: flex; align-items: center; gap: 8px; color: ${isActive ? 'var(--color-primary)' : 'var(--color-subtext)'}; background: ${isActive ? 'color-mix(in srgb, var(--color-primary) 15%, transparent)' : 'transparent'}; border-left: 3px solid ${isActive ? 'var(--color-primary)' : 'transparent'};">
+            <div class="no-drag batch-target-item ${isActive ? 'active' : ''}" data-session-key="${safeSessionKey}" style="padding: 10px 12px; margin: 4px 8px; border-radius: 6px; cursor: pointer; font-size: 12.5px; transition: all 0.2s; display: flex; align-items: center; gap: 8px; color: ${isActive ? 'var(--color-primary)' : 'var(--color-subtext)'}; background: ${isActive ? 'color-mix(in srgb, var(--color-primary) 15%, transparent)' : 'transparent'}; border-left: 3px solid ${isActive ? 'var(--color-primary)' : 'transparent'};">
               <span class="pane-status-dot" style="width: 6px; height: 6px; border-radius: 50%; background: ${session.isSudo ? '#ef4444' : '#2ecc71'}; flex-shrink: 0;"></span>
-              <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: ${isActive ? '700' : 'normal'};">${session.label}</span>
+              <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: ${isActive ? '700' : 'normal'};">${escapeHtml(session.label)}</span>
             </div>
           `;
         });
@@ -604,28 +606,31 @@ export class TerminalPage extends HTMLElement {
         if (!session) return;
         const isPaneActive = pane.sessionKey === state.activePaneSessionKey;
         const isBroadcasting = state.broadcastInputSessions.has(pane.sessionKey);
+        const safeSessionKey = escapeHtml(pane.sessionKey);
+        const paneHeightValue = Number(pane.height);
+        const paneHeight = Number.isFinite(paneHeightValue) ? Math.min(100, Math.max(0, paneHeightValue)) : 100;
 
         colPanesHtml += `
-          <div class="no-drag terminal-pane ${isPaneActive ? 'active' : ''}" data-session-key="${pane.sessionKey}" data-col-idx="${colIdx}" data-pane-idx="${paneIdx}" style="height: ${pane.height}%; flex: 0 0 ${pane.height}%; display: flex; flex-direction: column; width: 100%; min-width: 0; padding: 10px; box-sizing: border-box; position: relative;">
+          <div class="no-drag terminal-pane ${isPaneActive ? 'active' : ''}" data-session-key="${safeSessionKey}" data-col-idx="${colIdx}" data-pane-idx="${paneIdx}" style="height: ${paneHeight}%; flex: 0 0 ${paneHeight}%; display: flex; flex-direction: column; width: 100%; min-width: 0; padding: 10px; box-sizing: border-box; position: relative;">
             <div class="pane-header" style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 6px; border-bottom: 1px solid rgba(36, 54, 65, 0.5); margin-bottom: 8px; flex: 0 0 auto;">
-              <span class="pane-title" style="font-size: 11.5px; font-weight: 700; color: ${isPaneActive ? 'var(--color-primary)' : 'var(--color-text-muted)'};">${session.label} ~</span>
+              <span class="pane-title" style="font-size: 11.5px; font-weight: 700; color: ${isPaneActive ? 'var(--color-primary)' : 'var(--color-text-muted)'};">${escapeHtml(session.label)} ~</span>
               <div style="display: flex; align-items: center; gap: 8px;">
                 <span class="pane-status-dot" style="width: 6px; height: 6px; border-radius: 50%; background: ${session.isSudo ? '#ef4444' : '#2ecc71'};"></span>
-                <button type="button" aria-label="${t('terminal.broadcastInput')}" class="no-drag pane-broadcast-toggle ${isBroadcasting ? 'active' : ''} ${session.isLogView ? 'hidden' : ''}" data-session-key="${pane.sessionKey}" title="${t('terminal.broadcastInput')}" aria-pressed="${isBroadcasting ? 'true' : 'false'}">
+                <button type="button" aria-label="${t('terminal.broadcastInput')}" class="no-drag pane-broadcast-toggle ${isBroadcasting ? 'active' : ''} ${session.isLogView ? 'hidden' : ''} ui-button ui-button--secondary" data-session-key="${safeSessionKey}" title="${t('terminal.broadcastInput')}" aria-pressed="${isBroadcasting ? 'true' : 'false'}">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M4 10v4"/><path d="M8 7v10"/><path d="M12 4v16"/><path d="M16 7v10"/><path d="M20 10v4"/>
                   </svg>
                 </button>
-                <button type="button" class="no-drag close-pane" data-session-key="${pane.sessionKey}" style="cursor: pointer; font-size: 14px; font-weight: bold; color: var(--color-subtext); line-height: 1; padding: 2px 4px; background: transparent; border: none; transition: color 0.2s;" title="${t('terminal.closePane')}" aria-label="${t('terminal.closePane')}">&times;</button>
+                <button type="button" class="no-drag close-pane ui-button ui-button--quiet ui-button--icon ui-button--compact" data-session-key="${safeSessionKey}" style="cursor: pointer; line-height: 1; padding: 2px 4px; transition: color 0.2s;" title="${t('terminal.closePane')}" aria-label="${t('terminal.closePane')}">&times;</button>
               </div>
             </div>
             
-            <div class="no-drag xterm-pane-container ${session.isLogView ? 'hidden' : ''}" data-session-key="${pane.sessionKey}" style="flex: 1; min-height: 0; width: 100%; text-align: left;"></div>
+            <div class="no-drag xterm-pane-container ${session.isLogView ? 'hidden' : ''}" data-session-key="${safeSessionKey}" style="flex: 1; min-height: 0; width: 100%; text-align: left;"></div>
             
-            <pre class="pane-output traditional-ui-pane ${session.isLogView ? '' : 'hidden'}" data-session-key="${pane.sessionKey}" style="flex: 1; overflow-y: auto; margin: 0; padding: 0 0 10px 0; color: #d7e0e5; background: transparent; border: none; line-height: 1.6; white-space: pre-wrap; font-family: monospace; font-size: ${terminalTextSize}px; text-align: left;">${escapeHtml(session.outputHtml || "")}</pre>
+            <pre class="pane-output traditional-ui-pane ${session.isLogView ? '' : 'hidden'}" data-session-key="${safeSessionKey}" style="flex: 1; overflow-y: auto; margin: 0; padding: 0 0 10px 0; color: #d7e0e5; background: transparent; border: none; line-height: 1.6; white-space: pre-wrap; font-family: monospace; font-size: ${terminalTextSize}px; text-align: left;">${escapeHtml(session.outputHtml || "")}</pre>
             <div class="pane-input-line traditional-ui-pane hidden" style="${session.isLogView ? 'display: none !important;' : 'display: flex;'} align-items: center; gap: 8px; border-top: 1px solid rgba(36, 54, 65, 0.5); padding-top: 6px; margin-top: 6px; flex: 0 0 auto;">
-              <span class="pane-prompt ${session.isSudo ? 'sudo' : 'user'}" data-session-key="${pane.sessionKey}" style="font-weight: 700; font-family: monospace; font-size: ${terminalTextSize}px; color: ${session.isSudo ? '#ef4444' : '#73d391'};">${session.isSudo ? '#' : '$'}</span>
-              <input class="no-drag pane-input" data-session-key="${pane.sessionKey}" autocomplete="off" spellcheck="false" placeholder="${t('terminal.inputPlaceholder')}" style="flex: 1; border: none !important; outline: none !important; background: transparent !important; color: var(--terminal-foreground) !important; padding: 0 !important; font-family: monospace; font-size: ${terminalTextSize}px; min-height: auto;" value="">
+              <span class="pane-prompt ${session.isSudo ? 'sudo' : 'user'}" data-session-key="${safeSessionKey}" style="font-weight: 700; font-family: monospace; font-size: ${terminalTextSize}px; color: ${session.isSudo ? '#ef4444' : '#73d391'};">${session.isSudo ? '#' : '$'}</span>
+              <input class="no-drag pane-input" data-session-key="${safeSessionKey}" autocomplete="off" spellcheck="false" placeholder="${t('terminal.inputPlaceholder')}" style="flex: 1; border: none !important; outline: none !important; background: transparent !important; color: var(--terminal-foreground) !important; padding: 0 !important; font-family: monospace; font-size: ${terminalTextSize}px; min-height: auto;" value="">
             </div>
 
             <!-- 四向拖放高亮 Overlay -->
@@ -650,7 +655,9 @@ export class TerminalPage extends HTMLElement {
           ? `width: 100%; flex: 1 1 100%; display: flex; flex-direction: column; height: 100%; min-height: 0; position: relative;`
           : `display: none !important; width: 100%; flex: 1 1 100%; flex-direction: column; height: 100%; min-height: 0; position: relative;`;
       } else {
-        colStyle = `width: ${col.width}%; flex: 0 0 ${col.width}%; display: flex; flex-direction: column; height: 100%; min-height: 0; position: relative;`;
+        const columnWidthValue = Number(col.width);
+        const columnWidth = Number.isFinite(columnWidthValue) ? Math.min(100, Math.max(0, columnWidthValue)) : 100;
+        colStyle = `width: ${columnWidth}%; flex: 0 0 ${columnWidth}%; display: flex; flex-direction: column; height: 100%; min-height: 0; position: relative;`;
       }
 
       panesHtml += `

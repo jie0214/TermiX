@@ -190,6 +190,10 @@ export function GetKubernetesSecretValue(arg1) {
   return window['go']['app']['App']['GetKubernetesSecretValue'](arg1);
 }
 
+export function HandleNativeUpdateCheck(arg1) {
+  return window['go']['app']['App']['HandleNativeUpdateCheck'](arg1);
+}
+
 export function ImportHostsBackup(arg1, arg2) {
   return window['go']['app']['App']['ImportHostsBackup'](arg1, arg2);
 }
@@ -312,6 +316,10 @@ export function SelectFile(arg1) {
 
 export function SetHostStartupSnippet(arg1) {
   return window['go']['app']['App']['SetHostStartupSnippet'](arg1);
+}
+
+export function ShowNativeUpdateSettings() {
+  return window['go']['app']['App']['ShowNativeUpdateSettings']();
 }
 
 export function StartKubernetesPodPortForward(arg1) {

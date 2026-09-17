@@ -7,9 +7,9 @@ const vm = require('vm');
 
 const sourcePath = path.join(__dirname, '..', 'frontend', 'src', 'stores', 'ThemeStore.js');
 const source = fs.readFileSync(sourcePath, 'utf8')
-  .replace(/^import .*;\n/gm, '')
+  .replace(/^import(?:[\s\S]*?from\s+)?['"][^'"]+['"];\s*$/gm, '')
   .replace(/\bexport\s+(?=function\s+)/g, '')
-  .replace(/\bexport\s+const\s+themeStore\s*=/, 'const themeStore =')
+  .replace(/\bexport\s+const\s+/g, 'const ')
   + '\nthis.themeStore = themeStore;';
 
 const localStorageMock = (() => {
@@ -46,6 +46,11 @@ const rootClasses = new Set();
 const sandbox = {
   console,
   createStore,
+  LOCALES: ['en', 'zh-Hant', 'ja'],
+  DEFAULT_LOCALE: 'en',
+  setActiveLocale: () => {},
+  normalizeShortcutMap: (value) => value && typeof value === 'object' ? value : {},
+  isWindows: () => false,
   window: {
     matchMedia: () => ({
       matches: false,
@@ -61,10 +66,12 @@ const sandbox = {
   document: {
     documentElement: {
       classList: {
+        [Symbol.iterator]: () => rootClasses.values(),
         remove: (...names) => names.forEach(name => rootClasses.delete(name)),
         add: (name) => rootClasses.add(name),
         toggle: (name, enabled) => enabled ? rootClasses.add(name) : rootClasses.delete(name)
-      }
+      },
+      style: { setProperty: () => {} }
     }
   }
 };
@@ -99,7 +106,16 @@ assertEqual(sandbox.normalizeTerminalTextSize(13.26), 13.5, 'Text Size 可使用
 
   await sandbox.themeStore.getState().saveSettings({ theme: 'tahoe', terminalTextSize: 15.4, localTerminalPath: ' /bin/bash ' });
   const saved = JSON.parse(localStorageMock.getItem('termix-global-settings'));
-  assertEqual(saved, { theme: 'tahoe', terminalTextSize: 15.5, localTerminalPath: '/bin/bash' }, 'Settings 會同時保存 Theme、Text Size 與 Local Terminal Path');
+  assertEqual(saved, {
+    theme: 'tahoe',
+    terminalTextSize: 15.5,
+    localTerminalPath: '/bin/bash',
+    locale: 'en',
+    uiScale: 1,
+    kubeconfigPath: '',
+    defaultNamespace: '',
+    shortcuts: {}
+  }, 'Settings 會保存 Theme、Text Size、Local Terminal Path 與其餘正規化設定');
   assertEqual(rootClasses.has('theme-tahoe'), true, 'Tahoe Theme 會套用文件 class');
 
   await sandbox.themeStore.getState().setTheme('dark');

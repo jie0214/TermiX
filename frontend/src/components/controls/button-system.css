@@ -1,0 +1,179 @@
+/* 全站按鈕合約：類型決定外觀，頁面僅負責排列與必要的寬度。
+ * 既有頁面仍有高特異度規則，因此在這個邊界集中覆蓋視覺屬性。
+ * 原生 macOS 視窗控制鈕與狀態元件的業務配色不在覆蓋範圍內。 */
+:root {
+  --button-height: 34px;
+  --button-compact-height: 24px;
+  --button-radius: 8px;
+  --button-font-size: 13px;
+  --button-border: color-mix(in srgb, var(--color-text) 12%, transparent);
+  --button-hover: color-mix(in srgb, var(--color-text) 7%, transparent);
+  --button-selected: color-mix(in srgb, var(--color-text) 10%, var(--color-panel-bg));
+}
+
+.ui-button {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: var(--button-height) !important;
+  padding: 0 12px !important;
+  border-radius: var(--button-radius) !important;
+  font-family: inherit !important;
+  font-size: var(--button-font-size) !important;
+  font-weight: 500 !important;
+  line-height: 1.4;
+  letter-spacing: normal !important;
+  text-transform: none;
+  text-shadow: none !important;
+  box-shadow: none !important;
+  cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, opacity 160ms ease !important;
+}
+
+.ui-button:not(.ui-button--state) {
+  border: 1px solid var(--button-border) !important;
+  color: var(--color-text) !important;
+  background: var(--color-panel-bg) !important;
+}
+
+.ui-button:hover:not(:disabled) {
+  transform: none !important;
+}
+
+.ui-button:not(.ui-button--state):hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-text) 5%, var(--color-panel-bg)) !important;
+  border-color: color-mix(in srgb, var(--color-text) 24%, transparent) !important;
+}
+
+.ui-button.ui-button--primary {
+  color: var(--action-on-solid) !important;
+  background: var(--action-solid) !important;
+  border-color: transparent !important;
+  font-weight: 600 !important;
+}
+
+.ui-button.ui-button--primary:hover:not(:disabled) {
+  background: var(--action-solid-hover) !important;
+  border-color: transparent !important;
+}
+
+.ui-button.ui-button--quiet,
+.ui-button.ui-button--menu,
+.ui-button.ui-button--tab {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: var(--color-subtext) !important;
+}
+
+.ui-button:is(.ui-button--quiet, .ui-button--menu, .ui-button--tab):hover:not(:disabled) {
+  background: var(--button-hover) !important;
+  border-color: transparent !important;
+  color: var(--color-text) !important;
+}
+
+.ui-button.ui-button--menu {
+  display: flex;
+  justify-content: flex-start;
+  width: 100%;
+  text-align: left;
+  color: var(--color-text) !important;
+}
+
+.ui-button.ui-button--tab {
+  justify-content: flex-start;
+  font-weight: 500 !important;
+}
+
+.ui-button:is(.ui-button--tab, .ui-button--choice):is(.active, .selected, [aria-selected="true"], [aria-pressed="true"], [aria-checked="true"], [aria-current="page"]) {
+  color: var(--color-text) !important;
+  background: var(--button-selected) !important;
+  border-color: var(--button-border) !important;
+  font-weight: 600 !important;
+  box-shadow: inset 0 -2px 0 var(--color-primary) !important;
+}
+
+.ui-button.ui-button--quiet:is(.active, .pinned, .is-favorite, [aria-pressed="true"], [aria-expanded="true"]) {
+  color: var(--color-primary) !important;
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent) !important;
+}
+
+.ui-button.ui-button--danger,
+.ui-button.ui-button--tab.danger {
+  color: var(--color-danger) !important;
+  background: color-mix(in srgb, var(--color-danger) 8%, var(--color-panel-bg)) !important;
+  border-color: color-mix(in srgb, var(--color-danger) 24%, transparent) !important;
+}
+
+.ui-button.ui-button--danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-danger) 15%, var(--color-panel-bg)) !important;
+  border-color: color-mix(in srgb, var(--color-danger) 48%, transparent) !important;
+}
+
+.ui-button.ui-button--danger.confirm-stage {
+  outline: 2px solid var(--color-danger);
+  outline-offset: 2px;
+}
+
+.ui-button.ui-button--icon {
+  width: var(--button-height) !important;
+  height: var(--button-height) !important;
+  min-width: var(--button-height) !important;
+  flex-shrink: 0;
+  padding: 0 !important;
+  gap: 0;
+}
+
+.ui-button.ui-button--compact {
+  --button-height: var(--button-compact-height);
+  --button-radius: 6px;
+}
+
+.ui-button > :is(svg, .ti) {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  font-size: 16px;
+}
+
+.ui-button .action-chevron {
+  width: 12px;
+  height: 12px;
+  font-size: 12px;
+}
+
+.ui-button:focus-visible {
+  outline: 2px solid var(--color-focus) !important;
+  outline-offset: 2px !important;
+}
+
+.ui-button:disabled {
+  cursor: not-allowed !important;
+  opacity: 0.45 !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* 暫停、錄製與自訂狀態維持語意，不改變共用尺寸與字級。 */
+.ui-button.paused {
+  color: var(--color-warning) !important;
+}
+
+.ui-button.ui-button--state {
+  font-weight: 600 !important;
+}
+
+.control-sidebar-tab-btn.ui-button,
+.vault-view-btn.ui-button,
+.theme-mode-btn.ui-button,
+.ui-scale-btn.ui-button {
+  justify-content: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-button {
+    transition: none !important;
+    animation: none !important;
+  }
+}

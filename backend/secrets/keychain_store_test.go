@@ -3,6 +3,7 @@ package secrets
 import (
 	"context"
 	"encoding/hex"
+	"os"
 	"os/exec"
 	"runtime"
 	"testing"
@@ -35,6 +36,9 @@ func TestDecodeKeychainValue(t *testing.T) {
 func TestKeychainStoreMultilineRoundTrip(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("僅在 macOS 驗證 security CLI")
+	}
+	if os.Getenv("TERMIX_KEYCHAIN_INTEGRATION") != "1" {
+		t.Skip("設定 TERMIX_KEYCHAIN_INTEGRATION=1 才執行真實 Keychain 整合測試")
 	}
 	if _, err := exec.LookPath("security"); err != nil {
 		t.Skip("找不到 security 指令")

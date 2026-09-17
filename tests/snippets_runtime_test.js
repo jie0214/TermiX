@@ -13,14 +13,14 @@ if (!fs.existsSync(storePath) || !fs.existsSync(runtimePath)) {
 }
 
 const storeSource = fs.readFileSync(storePath, 'utf8')
-  .replace(/^import .*;\n/gm, '')
+  .replace(/^import(?:[\s\S]*?from\s+)?['"][^'"]+['"];\s*$/gm, '')
   .replace(/\bexport\s+(?=function\s+)/g, '')
   .replace(/\bexport\s+const\s+SNIPPETS_KEY\s*=/, 'const SNIPPETS_KEY =')
   .replace(/\bexport\s+const\s+SNIPPET_PACKAGES_KEY\s*=/, 'const SNIPPET_PACKAGES_KEY =')
   .replace(/\bexport\s+const\s+snippetStore\s*=/, 'const snippetStore =')
   + '\nObject.assign(this, { snippetStore, toTerminalPayload });';
 const runtimeSource = fs.readFileSync(runtimePath, 'utf8')
-  .replace(/^import .*;\n/gm, '')
+  .replace(/^import(?:[\s\S]*?from\s+)?['"][^'"]+['"];\s*$/gm, '')
   .replace(/\bexport\s+(?=(async\s+)?function\s+)/g, '')
   + '\nObject.assign(this, { isLocalSession, pasteSnippetToSession, runSnippetInSession, runStartupSnippets, getHostSnippetTargets });';
 
@@ -63,6 +63,7 @@ const terminalState = {
 };
 const sandbox = {
   console,
+  t: (key) => key === 'misc.snippet.sessionNotFound' ? 'Snippet 或 Terminal session 不存在' : key,
   createStore,
   localStorage: localStorageMock,
   TerminalAPI: {

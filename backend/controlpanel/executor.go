@@ -6,10 +6,11 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"github.com/jie0214/TermiX/shared/dto"
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/jie0214/TermiX/shared/dto"
 )
 
 const unsafeLocalCommandEnv = "TERMIX_ALLOW_UNSAFE_LOCAL_COMMANDS"

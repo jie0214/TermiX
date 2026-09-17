@@ -41,6 +41,16 @@ export const terminalStore = createStore((set, get) => ({
 
   // Workspace (Tabs) 管理
   setWorkspaces: (workspaces) => set({ workspaces }),
+
+  renameWorkspace: (wsId, value) => {
+    const label = String(value ?? '').trim().slice(0, 80);
+    if (!label) return;
+    set((state) => ({
+      workspaces: state.workspaces.map(ws => ws.id === wsId
+        ? { ...ws, label, isCustomLabel: true }
+        : ws)
+    }));
+  },
   
   addWorkspace: (ws) => set((state) => ({
     workspaces: [...state.workspaces, ws],

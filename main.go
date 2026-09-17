@@ -98,6 +98,7 @@ func main() {
 	defer fxApp.Stop(context.Background())
 
 	appMenu := termixapp.NewMenu(app)
+	stopStatusBar := func() {}
 
 	err := wails.Run(&options.App{
 		Title:     "TermiX",
@@ -117,8 +118,17 @@ func main() {
 		OnStartup: func(ctx context.Context) {
 			termixapp.Initialize(app, ctx)
 			configureNativeWindowAppearance()
+			stopStatusBar = startNativeStatusBar(ctx, app)
 		},
+		OnBeforeClose: func(context.Context) bool {
+			if !termixapp.PrepareAppClose(app) {
+				return true
+			}
+			return finishNativeQuit()
+		},
+		OnShutdown: func(context.Context) { stopStatusBar() },
 		OnDomReady: func(context.Context) {
+			startNativeUpdater(app)
 			// 視窗加入 AppKit 視窗集合後再次裁切，避免啟動時序略過主視窗。
 			configureNativeWindowAppearance()
 		},

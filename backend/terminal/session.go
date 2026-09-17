@@ -4,15 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/jie0214/TermiX/backend/common"
-	termixssh "github.com/jie0214/TermiX/backend/ssh"
-	"github.com/jie0214/TermiX/shared/events"
 	"io"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/jie0214/TermiX/backend/common"
+	termixssh "github.com/jie0214/TermiX/backend/ssh"
 	"github.com/jie0214/TermiX/shared/dto"
+	"github.com/jie0214/TermiX/shared/events"
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 	"golang.org/x/crypto/ssh"
 )
@@ -36,7 +36,7 @@ func (m *Manager) getSession(config dto.SSHConfig) (*session, bool, string, erro
 		if err == nil {
 			return t, false, "", nil
 		}
-		m.closeSessionByKey(key)
+		m.closeSessionByKey(key, "remote")
 	} else {
 		m.mu.Unlock()
 	}
@@ -56,7 +56,7 @@ func (m *Manager) getSession(config dto.SSHConfig) (*session, bool, string, erro
 		if err == nil {
 			return t, false, "", nil
 		}
-		m.closeSessionByKey(key)
+		m.closeSessionByKey(key, "remote")
 	} else {
 		m.mu.Unlock()
 	}
@@ -143,6 +143,10 @@ func (m *Manager) getSession(config dto.SSHConfig) (*session, bool, string, erro
 	appCtx, frontendReady := m.contextSnapshot()
 	terminal := &session{
 		key:            key,
+		host:           config.Host,
+		alias:          config.Alias,
+		username:       config.Username,
+		port:           config.Port,
 		client:         client,
 		session:        sshSession,
 		stdin:          stdin,
@@ -375,22 +379,6 @@ func isDigitsOnly(text string) bool {
 	return true
 }
 
-func commandOutputHasLine(output string, expected string) bool {
-	expected = strings.TrimSpace(expected)
-	if expected == "" {
-		return false
-	}
-	normalized := strings.ReplaceAll(output, "\r\n", "\n")
-	normalized = strings.ReplaceAll(normalized, "\r", "\n")
-	normalized = common.StripANSI(normalized)
-	for _, line := range strings.Split(normalized, "\n") {
-		if strings.TrimSpace(line) == expected {
-			return true
-		}
-	}
-	return false
-}
-
 func (t *session) execute(command string, timeout time.Duration) (string, error) {
 	t.execMu.Lock()
 	defer t.execMu.Unlock()
@@ -606,21 +594,24 @@ func (t *session) drain() {
 }
 
 func (t *session) close() {
-	select {
-	case <-t.closed:
-	default:
-		close(t.closed)
-	}
-	if t.stdin != nil {
-		t.stdin.Close()
-	}
-	if t.session != nil {
-		t.session.Close()
-	}
-	if t.client != nil {
-		t.client.Close()
-	}
-	if t.cmd != nil && t.cmd.Process != nil {
-		_ = t.cmd.Process.Kill()
-	}
+	t.closeOnce.Do(func() {
+		select {
+		case <-t.closed:
+		default:
+			close(t.closed)
+		}
+		if t.stdin != nil {
+			t.stdin.Close()
+		}
+		if t.session != nil {
+			t.session.Close()
+		}
+		if t.client != nil {
+			t.client.Close()
+		}
+		if t.cmd != nil && t.cmd.Process != nil {
+			_ = t.cmd.Process.Kill()
+		}
+
+	})
 }

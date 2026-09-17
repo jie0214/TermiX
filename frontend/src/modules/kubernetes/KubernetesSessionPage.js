@@ -520,7 +520,7 @@ export class KubernetesSessionPage extends HTMLElement {
     const icon = favorite
       ? `<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="${starPath}"/></svg>`
       : `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${starPath}"/></svg>`;
-    return `<button type="button" class="no-drag kubernetes-resource-favorite ${favorite ? 'is-favorite' : ''}" data-toggle-resource-favorite="${payload}" title="${label}" aria-label="${label}" aria-pressed="${favorite}">${icon}</button>`;
+    return `<button type="button" class="no-drag kubernetes-resource-favorite ${favorite ? 'is-favorite' : ''} ui-button ui-button--quiet ui-button--icon ui-button--compact" data-toggle-resource-favorite="${payload}" title="${label}" aria-label="${label}" aria-pressed="${favorite}">${icon}</button>`;
   }
 
   currentClusterFavorites(cluster) {
@@ -529,7 +529,7 @@ export class KubernetesSessionPage extends HTMLElement {
   }
 
   renderFavoritesNavLink(activeSection, count) {
-    return `<div class="kubernetes-nav-group kubernetes-nav-favorites"><div class="kubernetes-nav-items"><button type="button" class="no-drag kubernetes-section-link kubernetes-favorites-nav-link ${activeSection === FAVORITES_SECTION ? 'active' : ''}" data-section="${FAVORITES_SECTION}" ${activeSection === FAVORITES_SECTION ? 'aria-current="page"' : ''}><i class="ti ti-star" aria-hidden="true"></i><span>${t('k8s.nav.favorites')}</span><span class="kubernetes-favorites-count" aria-label="${t('k8s.favorites.count', { count })}">${count}</span></button></div></div>`;
+    return `<div class="kubernetes-nav-group kubernetes-nav-favorites"><div class="kubernetes-nav-items"><button type="button" class="no-drag kubernetes-section-link kubernetes-favorites-nav-link ${activeSection === FAVORITES_SECTION ? 'active' : ''} ui-button ui-button--tab" data-section="${FAVORITES_SECTION}" ${activeSection === FAVORITES_SECTION ? 'aria-current="page"' : ''}><i class="ti ti-star" aria-hidden="true"></i><span>${t('k8s.nav.favorites')}</span><span class="kubernetes-favorites-count" aria-label="${t('k8s.favorites.count', { count })}">${count}</span></button></div></div>`;
   }
 
   renderFavoriteResources(dashboard, state) {
@@ -583,7 +583,7 @@ export class KubernetesSessionPage extends HTMLElement {
     const selector = item?.selector;
     if (!selector || !Object.keys(selector).length) return '';
     const payload = encodeURIComponent(JSON.stringify({ kind: String(kind || '').toLowerCase(), name: item.name, namespace: item.namespace || '', selector }));
-    return `<button type="button" class="kubernetes-view-pods-btn no-drag" data-view-pods="${payload}" title="${t('k8s.detail.viewPods')}" aria-label="${t('k8s.detail.viewPods')}">${renderKubernetesIcon('box', 15)}</button>`;
+    return `<button type="button" class="kubernetes-view-pods-btn no-drag ui-button ui-button--quiet ui-button--icon" data-view-pods="${payload}" title="${t('k8s.detail.viewPods')}" aria-label="${t('k8s.detail.viewPods')}">${renderKubernetesIcon('box', 15)}</button>`;
   }
 
   // Overview 抽屜內的「檢視關聯 Pods · N」大按鈕；依 kind 在 dashboard 快照中找 selector。
@@ -599,7 +599,7 @@ export class KubernetesSessionPage extends HTMLElement {
     if (!selector || !Object.keys(selector).length) return '';
     const count = this.matchingPodsCount(state, namespace, selector);
     const payload = encodeURIComponent(JSON.stringify({ kind: String(kind).toLowerCase(), name, namespace, selector }));
-    return `<section class="kubernetes-detail-section"><button type="button" class="kubernetes-view-pods-cta no-drag" data-view-pods="${payload}">${renderKubernetesIcon('box', 16)}<span>${t('k8s.detail.viewPods')}</span><span class="kubernetes-view-pods-count">${count}</span></button></section>`;
+    return `<section class="kubernetes-detail-section"><button type="button" class="kubernetes-view-pods-cta no-drag ui-button ui-button--secondary" data-view-pods="${payload}">${renderKubernetesIcon('box', 16)}<span>${t('k8s.detail.viewPods')}</span><span class="kubernetes-view-pods-count">${count}</span></button></section>`;
   }
 
   // 點「檢視關聯 Pods」：設定 label 過濾條件、重置狀態/搜尋、關閉抽屜、切到 Pods 區段（由 store 訂閱重繪）。
@@ -627,8 +627,8 @@ export class KubernetesSessionPage extends HTMLElement {
       ? `<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="${starPath}"/></svg>`
       : `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${starPath}"/></svg>`;
     return `<div class="kubernetes-nav-link-wrap">`
-      + `<button type="button" class="no-drag kubernetes-section-link ${activeSection === id ? 'active' : ''}" data-section="${id}" ${activeSection === id ? 'aria-current="page"' : ''}><i class="ti ${sectionIcon(id)}" aria-hidden="true"></i><span>${label}</span></button>`
-      + `<button type="button" class="no-drag kubernetes-nav-star ${pinned ? 'pinned' : ''}" data-star="${id}" title="${starTitle}" aria-label="${starTitle}" aria-pressed="${pinned}">${starSvg}</button>`
+      + `<button type="button" class="no-drag kubernetes-section-link ${activeSection === id ? 'active' : ''} ui-button ui-button--tab" data-section="${id}" ${activeSection === id ? 'aria-current="page"' : ''}><i class="ti ${sectionIcon(id)}" aria-hidden="true"></i><span>${label}</span></button>`
+      + `<button type="button" class="no-drag kubernetes-nav-star ${pinned ? 'pinned' : ''} ui-button ui-button--quiet ui-button--icon ui-button--compact" data-star="${id}" title="${starTitle}" aria-label="${starTitle}" aria-pressed="${pinned}">${starSvg}</button>`
       + `</div>`;
   }
 
@@ -1267,7 +1267,7 @@ export class KubernetesSessionPage extends HTMLElement {
           <caption class="kubernetes-table-caption">${escapeHtml(SECTIONS.find(([id]) => id === section)?.[1] || t('k8s.resource.fallback'))}</caption>
           <thead><tr>${definition.columns.map(([key, label]) => this.sortableTh(section, key, label, { type: sortTypeForKey(key) })).join('')}${withActions ? '<th></th>' : ''}</tr></thead>
           <tbody>${items.map(item => `
-            <tr class="kubernetes-resource-row" tabindex="0" role="button"${namespaced && item.namespace ? ` style="border-left-color:${this.namespaceColor(item.namespace)}"` : ''} data-resource-kind="${RESOURCE_KINDS[section]}" data-resource-name="${escapeHtml(item.name)}" data-resource-namespace="${escapeHtml(item.namespace || '')}" data-resource-apiversion="${escapeHtml(RESOURCE_META[section]?.apiVersion || '')}" aria-label="${t('k8s.row.viewDetailAria', { name: escapeHtml(item.name) })}">${definition.columns.map(([key, , formatter]) => (!formatter && ELLIPSIS_KEYS.has(key)) ? this.ellipsisCell(item[key]) : `<td>${formatter ? formatter(item[key]) : escapeHtml(item[key] ?? '-')}</td>`).join('')}${withActions ? `<td class="kubernetes-pod-actions kubernetes-row-actions">${this.favoriteResourceButton(section, item)}${(section === 'deployments' || section === 'statefulsets') ? this.scaleButton(RESOURCE_KINDS[section], RESOURCE_META[section]?.apiVersion || '', item) : ''}${withServiceForward ? `<button data-service-action="forward" data-service="${encodeURIComponent(JSON.stringify(item))}" ${(Array.isArray(item.portNumbers) && item.portNumbers.length) ? '' : 'disabled'}>Forward</button>` : ''}${this.viewPodsIconButton(RESOURCE_KINDS[section], item)}</td>` : ''}</tr>
+            <tr class="kubernetes-resource-row" tabindex="0" role="button"${namespaced && item.namespace ? ` style="border-left-color:${this.namespaceColor(item.namespace)}"` : ''} data-resource-kind="${RESOURCE_KINDS[section]}" data-resource-name="${escapeHtml(item.name)}" data-resource-namespace="${escapeHtml(item.namespace || '')}" data-resource-apiversion="${escapeHtml(RESOURCE_META[section]?.apiVersion || '')}" aria-label="${t('k8s.row.viewDetailAria', { name: escapeHtml(item.name) })}">${definition.columns.map(([key, , formatter]) => (!formatter && ELLIPSIS_KEYS.has(key)) ? this.ellipsisCell(item[key]) : `<td>${formatter ? formatter(item[key]) : escapeHtml(item[key] ?? '-')}</td>`).join('')}${withActions ? `<td class="kubernetes-pod-actions kubernetes-row-actions">${this.favoriteResourceButton(section, item)}${(section === 'deployments' || section === 'statefulsets') ? this.scaleButton(RESOURCE_KINDS[section], RESOURCE_META[section]?.apiVersion || '', item) : ''}${withServiceForward ? `<button class="ui-button ui-button--secondary" data-service-action="forward" data-service="${encodeURIComponent(JSON.stringify(item))}" ${(Array.isArray(item.portNumbers) && item.portNumbers.length) ? '' : 'disabled'}>Forward</button>` : ''}${this.viewPodsIconButton(RESOURCE_KINDS[section], item)}</td>` : ''}</tr>
           `).join('')}</tbody>
         </table>
       </div>`;
@@ -1287,7 +1287,7 @@ export class KubernetesSessionPage extends HTMLElement {
   // 避免重複點擊並提供回饋（Pods 與各 section 共用）。
   renderRefreshButton(id) {
     const busy = this.manualRefreshing;
-    return `<button type="button" id="${id}" class="no-drag kubernetes-secondary-btn" ${busy ? 'disabled aria-busy="true"' : ''}>${busy ? `<span class="kubernetes-spinner-mini kubernetes-refresh-spinner" aria-hidden="true"></span><span>${t('k8s.refresh.busy')}</span>` : t('common.refresh')}</button>`;
+    return `<button type="button" id="${id}" class="no-drag kubernetes-secondary-btn ui-button ui-button--secondary" ${busy ? 'disabled aria-busy="true"' : ''}>${busy ? `<span class="kubernetes-spinner-mini kubernetes-refresh-spinner" aria-hidden="true"></span><span>${t('k8s.refresh.busy')}</span>` : t('common.refresh')}</button>`;
   }
 
   // 依 namespace 名稱以決定性方式（簡單字串 hash）從固定調色盤取色，
@@ -1329,10 +1329,10 @@ export class KubernetesSessionPage extends HTMLElement {
     return `<div class="kubernetes-selection-bar${count ? ' visible' : ''} no-drag" role="region" aria-label="${t('k8s.select.deleteSelected')}">`
       + `<div class="kubernetes-selection-bar-left">`
       + `<span class="kubernetes-selection-count">${t('k8s.select.count', { count })}</span>`
-      + `<button type="button" id="kubernetesClearSelection" class="no-drag kubernetes-selection-clear">${renderKubernetesIcon('close', 14)}<span>${t('k8s.select.clearAria')}</span></button>`
+      + `<button type="button" id="kubernetesClearSelection" class="no-drag kubernetes-selection-clear ui-button ui-button--quiet">${renderKubernetesIcon('close', 14)}<span>${t('k8s.select.clearAria')}</span></button>`
       + `<span class="kubernetes-selection-risk"${hasHighRisk ? '' : ' style="display:none"'}>${t('k8s.select.hasHighRisk')}</span>`
       + `</div>`
-      + `<button type="button" id="kubernetesBulkDelete" class="no-drag kubernetes-danger-btn kubernetes-selection-delete">${renderKubernetesIcon('trash', 14)}<span>${t('k8s.select.deleteSelected')}</span></button>`
+      + `<button type="button" id="kubernetesBulkDelete" class="no-drag kubernetes-danger-btn kubernetes-selection-delete ui-button ui-button--danger">${renderKubernetesIcon('trash', 14)}<span>${t('k8s.select.deleteSelected')}</span></button>`
       + `</div>`;
   }
 
@@ -1487,7 +1487,7 @@ export class KubernetesSessionPage extends HTMLElement {
     const payload = encodeURIComponent(JSON.stringify({
       kind, name: item.name, namespace: item.namespace || '', apiVersion: apiVersion || '', desired: Number(item.desiredReplicas || 0)
     }));
-    return `<button type="button" class="no-drag kubernetes-scale-btn" data-scale="${payload}" title="${t('k8s.scale.title')}" aria-label="${t('k8s.scale.title')}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18M7 8l5-5 5 5M7 16l5 5 5-5"/></svg><span>${t('k8s.scale.btn')}</span></button>`;
+    return `<button type="button" class="no-drag kubernetes-scale-btn ui-button ui-button--secondary" data-scale="${payload}" title="${t('k8s.scale.title')}" aria-label="${t('k8s.scale.title')}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18M7 8l5-5 5 5M7 16l5 5 5-5"/></svg><span>${t('k8s.scale.btn')}</span></button>`;
   }
 
   // 開啟副本數步進器對話框（append 到 body，不受元件重繪影響）。列尾鈕與 drawer 共用。
@@ -1505,15 +1505,15 @@ export class KubernetesSessionPage extends HTMLElement {
         <h2 class="kubernetes-scale-title">${t('k8s.scale.title')}</h2>
         <p class="kubernetes-scale-res">${escapeHtml(fullId)}</p>
         <div class="kubernetes-scale-stepper">
-          <button type="button" data-step="dec" aria-label="${t('k8s.scale.decAria')}">−</button>
+          <button class="ui-button ui-button--secondary" type="button" data-step="dec" aria-label="${t('k8s.scale.decAria')}">−</button>
           <input type="text" inputmode="numeric" class="kubernetes-scale-input" value="${current}" aria-label="${t('k8s.scale.inputAria')}">
-          <button type="button" data-step="inc" aria-label="${t('k8s.scale.incAria')}">+</button>
+          <button class="ui-button ui-button--secondary" type="button" data-step="inc" aria-label="${t('k8s.scale.incAria')}">+</button>
         </div>
         <p class="kubernetes-scale-cur">${t('k8s.scale.current', { current })} <b class="kubernetes-scale-target">${current}</b></p>
         <p class="kubernetes-scale-warn" hidden>${t('k8s.scale.zeroWarn')}</p>
         <div class="kubernetes-scale-actions">
-          <button type="button" class="no-drag kubernetes-secondary-btn" data-scale-cancel>${t('common.cancel')}</button>
-          <button type="button" class="no-drag kubernetes-primary-btn" data-scale-apply>${t('k8s.scale.apply')}</button>
+          <button type="button" class="no-drag kubernetes-secondary-btn ui-button ui-button--secondary" data-scale-cancel>${t('common.cancel')}</button>
+          <button type="button" class="no-drag kubernetes-primary-btn ui-button ui-button--primary" data-scale-apply>${t('k8s.scale.apply')}</button>
         </div>
       </div>`;
     document.body.appendChild(overlay);
@@ -1587,7 +1587,7 @@ export class KubernetesSessionPage extends HTMLElement {
     if (legacyValue !== '*' && !selectItems.includes(legacyValue)) selectItems.push(legacyValue);
     return `<div class="kubernetes-namespace-field kubernetes-namespace-multiselect${clusterScoped ? ' cluster-scoped' : ''}" data-namespace-multiselect${scopeHint}>
       <span id="kubernetesNamespaceLabel">${t('k8s.namespace.label')}</span>
-      <button type="button" id="kubernetesNamespaceToggle" class="no-drag kubernetes-namespace-toggle" aria-haspopup="true" aria-expanded="${open ? 'true' : 'false'}" aria-labelledby="kubernetesNamespaceLabel kubernetesNamespaceToggle"${scopeHint} ${disabled}>
+      <button type="button" id="kubernetesNamespaceToggle" class="no-drag kubernetes-namespace-toggle ui-button ui-button--secondary" aria-haspopup="true" aria-expanded="${open ? 'true' : 'false'}" aria-labelledby="kubernetesNamespaceLabel kubernetesNamespaceToggle"${scopeHint} ${disabled}>
         <span class="kubernetes-namespace-summary">${escapeHtml(summary)}</span>
         <span class="kubernetes-namespace-caret" aria-hidden="true">▾</span>
       </button>
@@ -1672,11 +1672,11 @@ export class KubernetesSessionPage extends HTMLElement {
     const visible = this.applyTableSort('pods', filtered);
     const filters = [['all', t('k8s.pods.filter.all')], ['running', t('k8s.pods.filter.running')], ['pending', t('k8s.pods.filter.pending')], ['unhealthy', t('k8s.pods.filter.unhealthy')], ['failed', t('k8s.pods.filter.failed')], ['succeeded', t('k8s.pods.filter.succeeded')]];
     const filterChip = labelFilter
-      ? `<div class="kubernetes-pod-filter-chip no-drag"><span class="kubernetes-pod-filter-chip-icon" aria-hidden="true">${renderKubernetesIcon('filter', 14)}</span><span class="kubernetes-pod-filter-chip-kind">${escapeHtml(labelFilter.kind || '')}</span><span class="kubernetes-pod-filter-chip-name">${escapeHtml(labelFilter.name || '')}</span><span class="kubernetes-pod-filter-chip-suffix">${t('k8s.pods.filterBySuffix')}</span><button type="button" class="kubernetes-pod-filter-clear" data-clear-pod-filter="true" title="${t('k8s.pods.clearFilter')}" aria-label="${t('k8s.pods.clearFilter')}">${renderKubernetesIcon('close', 14)}</button></div>`
+      ? `<div class="kubernetes-pod-filter-chip no-drag"><span class="kubernetes-pod-filter-chip-icon" aria-hidden="true">${renderKubernetesIcon('filter', 14)}</span><span class="kubernetes-pod-filter-chip-kind">${escapeHtml(labelFilter.kind || '')}</span><span class="kubernetes-pod-filter-chip-name">${escapeHtml(labelFilter.name || '')}</span><span class="kubernetes-pod-filter-chip-suffix">${t('k8s.pods.filterBySuffix')}</span><button type="button" class="kubernetes-pod-filter-clear ui-button ui-button--quiet ui-button--icon" data-clear-pod-filter="true" title="${t('k8s.pods.clearFilter')}" aria-label="${t('k8s.pods.clearFilter')}">${renderKubernetesIcon('close', 14)}</button></div>`
       : '';
     return `<section class="kubernetes-pods-view">
       ${filterChip}
-      <div class="kubernetes-pods-toolbar"><div class="kubernetes-pod-filters">${filters.map(([id, label]) => `<button type="button" data-pod-filter="${id}" class="no-drag ${this.podFilter === id ? 'active' : ''}">${label} ${counts[id]}</button>`).join('')}</div><div class="kubernetes-pod-tools"><input id="kubernetesPodSearch" class="no-drag" value="${escapeHtml(this.podSearch)}" placeholder="${t('k8s.pods.searchPlaceholder')}"><span class="kubernetes-watching">${t('k8s.pods.watching')}</span>${this.renderRefreshButton('refreshKubernetesPods')}</div></div>
+      <div class="kubernetes-pods-toolbar"><div class="kubernetes-pod-filters">${filters.map(([id, label]) => `<button type="button" data-pod-filter="${id}" class="no-drag ${this.podFilter === id ? 'active' : ''} ui-button ui-button--choice">${label} ${counts[id]}</button>`).join('')}</div><div class="kubernetes-pod-tools"><input id="kubernetesPodSearch" class="no-drag" value="${escapeHtml(this.podSearch)}" placeholder="${t('k8s.pods.searchPlaceholder')}"><span class="kubernetes-watching">${t('k8s.pods.watching')}</span>${this.renderRefreshButton('refreshKubernetesPods')}</div></div>
       <div class="kubernetes-resource-table-wrap kubernetes-pods-table-wrap"><table class="kubernetes-resource-table kubernetes-pods-table"><thead><tr>${this.sortableTh('pods', 'name', 'Name')}${this.sortableTh('pods', 'namespace', 'Namespace')}<th scope="col">Ready</th>${this.sortableTh('pods', 'status', 'Status')}${this.sortableTh('pods', 'restarts', 'Restarts', { type: 'number' })}<th scope="col">Node</th>${this.sortableTh('pods', 'creationTimestamp', 'Age', { type: 'time' })}${this.sortableTh('pods', 'cpuUsageMilli', 'CPU', { type: 'number' })}${this.sortableTh('pods', 'memoryUsageBytes', 'Memory', { type: 'number' })}<th scope="col">Actions</th></tr></thead><tbody>
       ${visible.map(pod => {
         const container = pod.containers?.[0]?.name || '';
@@ -1688,7 +1688,7 @@ export class KubernetesSessionPage extends HTMLElement {
         const status = needsAttention
           ? `<span class="kubernetes-pod-alert-status is-${attentionTone}">${renderKubernetesIcon('alert', 14)}${statusBadge(pod.status)}</span>`
           : statusBadge(pod.status);
-        return `<tr class="kubernetes-resource-row ${needsAttention ? `kubernetes-pod-row-alert kubernetes-pod-row-alert--${attentionTone}` : ''}" tabindex="0" role="button" aria-label="${t('k8s.row.viewDetailAria', { name: escapeHtml(pod.name) })}" style="border-left-color:${this.namespaceColor(pod.namespace)}" data-resource-kind="pod" data-resource-name="${escapeHtml(pod.name)}" data-resource-namespace="${escapeHtml(pod.namespace)}" data-resource-apiversion="v1">${this.ellipsisCell(pod.name)}<td>${this.renderNamespaceCell(pod.namespace)}</td><td>${escapeHtml(pod.ready)}</td><td>${status}</td><td>${pod.restarts || 0}</td><td>${escapeHtml(pod.nodeName || '-')}</td><td>${formatAge(pod.creationTimestamp)}</td><td>${metricsAvailable ? formatCPU(pod.cpuUsageMilli) : '-'}</td><td>${metricsAvailable ? formatBytes(pod.memoryUsageBytes) : '-'}</td><td class="kubernetes-pod-actions"><button data-pod-action="logs" data-pod="${encoded}" data-container="${escapeHtml(container)}" ${container ? '' : 'disabled'}>Logs</button><button data-pod-action="shell" data-pod="${encoded}" data-container="${escapeHtml(container)}" ${running && container ? '' : 'disabled'}>Shell</button><button data-pod-action="forward" data-pod="${encoded}" ${running && hasPorts ? '' : 'disabled'}>Forward</button></td></tr>`;
+        return `<tr class="kubernetes-resource-row ${needsAttention ? `kubernetes-pod-row-alert kubernetes-pod-row-alert--${attentionTone}` : ''}" tabindex="0" role="button" aria-label="${t('k8s.row.viewDetailAria', { name: escapeHtml(pod.name) })}" style="border-left-color:${this.namespaceColor(pod.namespace)}" data-resource-kind="pod" data-resource-name="${escapeHtml(pod.name)}" data-resource-namespace="${escapeHtml(pod.namespace)}" data-resource-apiversion="v1">${this.ellipsisCell(pod.name)}<td>${this.renderNamespaceCell(pod.namespace)}</td><td>${escapeHtml(pod.ready)}</td><td>${status}</td><td>${pod.restarts || 0}</td><td>${escapeHtml(pod.nodeName || '-')}</td><td>${formatAge(pod.creationTimestamp)}</td><td>${metricsAvailable ? formatCPU(pod.cpuUsageMilli) : '-'}</td><td>${metricsAvailable ? formatBytes(pod.memoryUsageBytes) : '-'}</td><td class="kubernetes-pod-actions"><button class="ui-button ui-button--secondary" data-pod-action="logs" data-pod="${encoded}" data-container="${escapeHtml(container)}" ${container ? '' : 'disabled'}>Logs</button><button class="ui-button ui-button--secondary" data-pod-action="shell" data-pod="${encoded}" data-container="${escapeHtml(container)}" ${running && container ? '' : 'disabled'}>Shell</button><button class="ui-button ui-button--secondary" data-pod-action="forward" data-pod="${encoded}" ${running && hasPorts ? '' : 'disabled'}>Forward</button></td></tr>`;
       }).join('')}</tbody></table></div></section>`;
   }
 
@@ -1696,7 +1696,7 @@ export class KubernetesSessionPage extends HTMLElement {
     const pod = state.selectedResource || {};
     const action = state.podActionView || {};
     if (action.type === 'logs') {
-      return `<section class="kubernetes-pod-action-view"><header><button id="closeKubernetesPodAction" class="no-drag kubernetes-secondary-btn">${t('k8s.podAction.backToPods')}</button><div><h1>${t('k8s.podAction.logsTitle', { name: escapeHtml(pod.name) })}</h1><p>${escapeHtml(pod.namespace)} / ${escapeHtml(action.container)}</p></div><span class="kubernetes-watching">${this.logPaused ? t('k8s.podAction.paused') : t('k8s.podAction.streaming')}</span></header>${this.renderLogsPanel(state, [action.container].filter(Boolean), action.container, 'action')}</section>`;
+      return `<section class="kubernetes-pod-action-view"><header><button id="closeKubernetesPodAction" class="no-drag kubernetes-secondary-btn ui-button ui-button--secondary">${t('k8s.podAction.backToPods')}</button><div><h1>${t('k8s.podAction.logsTitle', { name: escapeHtml(pod.name) })}</h1><p>${escapeHtml(pod.namespace)} / ${escapeHtml(action.container)}</p></div><span class="kubernetes-watching">${this.logPaused ? t('k8s.podAction.paused') : t('k8s.podAction.streaming')}</span></header>${this.renderLogsPanel(state, [action.container].filter(Boolean), action.container, 'action')}</section>`;
     }
     return '';
   }
@@ -2285,7 +2285,7 @@ export class KubernetesSessionPage extends HTMLElement {
     return `
       <div class="kubernetes-detail-backdrop no-drag" data-close-event="true"></div>
       <aside class="kubernetes-detail-drawer kubernetes-event-drawer no-drag" role="dialog" aria-modal="true" aria-labelledby="kubernetesEventTitle">
-        <header><div><h2 id="kubernetesEventTitle">${escapeHtml(ev.reason || '-')}</h2><p><span class="kubernetes-detail-kind kubernetes-event-drawer-sev kubernetes-event--${sev}">${escapeHtml(ev.type || 'Normal')}</span></p></div><button type="button" class="kubernetes-drawer-close no-drag" aria-label="${t('k8s.events.drawerCloseAria')}">${renderKubernetesIcon('close', 22)}</button></header>
+        <header><div><h2 id="kubernetesEventTitle">${escapeHtml(ev.reason || '-')}</h2><p><span class="kubernetes-detail-kind kubernetes-event-drawer-sev kubernetes-event--${sev}">${escapeHtml(ev.type || 'Normal')}</span></p></div><button type="button" class="kubernetes-drawer-close no-drag ui-button ui-button--quiet ui-button--icon" aria-label="${t('k8s.events.drawerCloseAria')}">${renderKubernetesIcon('close', 22)}</button></header>
         <div class="kubernetes-detail-body">
           <section class="kubernetes-detail-section"><dl class="kubernetes-detail-fields kubernetes-detail-fields--striped">${fields.map(([key, value]) => `<div><dt>${escapeHtml(key)}</dt><dd>${escapeHtml(String(value))}</dd></div>`).join('')}</dl></section>
           <section class="kubernetes-detail-section"><h3>${t('k8s.events.message')}</h3><div class="kubernetes-event-drawer-message">${escapeHtml(ev.message || '-')}</div></section>
@@ -2385,7 +2385,7 @@ export class KubernetesSessionPage extends HTMLElement {
     return `
       <div class="kubernetes-detail-backdrop no-drag" data-close-detail="true"></div>
       <aside class="kubernetes-detail-drawer ${isPod ? 'kubernetes-pod-detail-drawer' : ''} no-drag" role="dialog" aria-modal="true" aria-labelledby="kubernetesDetailTitle">
-        <header><div><h2 id="kubernetesDetailTitle">${escapeHtml(title)}</h2><p><span class="kubernetes-detail-kind">${escapeHtml(selected.kind || detail?.kind || t('k8s.resource.genericName'))}</span>${namespace ? ` ${t('k8s.detail.inNamespace', { namespace: escapeHtml(namespace) })}` : ''}</p></div><div class="kubernetes-detail-header-actions">${scaleBtnHtml}<button type="button" class="kubernetes-drawer-close no-drag" aria-label="${t('k8s.detail.closeAria')}">${renderKubernetesIcon('close', 22)}</button></div></header>
+        <header><div><h2 id="kubernetesDetailTitle">${escapeHtml(title)}</h2><p><span class="kubernetes-detail-kind">${escapeHtml(selected.kind || detail?.kind || t('k8s.resource.genericName'))}</span>${namespace ? ` ${t('k8s.detail.inNamespace', { namespace: escapeHtml(namespace) })}` : ''}</p></div><div class="kubernetes-detail-header-actions">${scaleBtnHtml}<button type="button" class="kubernetes-drawer-close no-drag ui-button ui-button--quiet ui-button--icon" aria-label="${t('k8s.detail.closeAria')}">${renderKubernetesIcon('close', 22)}</button></div></header>
         ${state.detailError && detail ? `<div class="kubernetes-session-error compact"><strong>${t('k8s.detail.refreshFailedSnapshot')}</strong><span>${escapeHtml(state.detailError)}</span></div>` : ''}
         ${detail ? this.renderResourceDetailTabs(state.detailTab, isPod, isService, Array.isArray(detail.containers) && detail.containers.some(c => (Array.isArray(c.env) && c.env.length) || (Array.isArray(c.envFrom) && c.envFrom.length))) : ''}
         <div class="kubernetes-detail-body"${detail ? ` id="k8s-detail-panel" role="tabpanel" aria-labelledby="k8s-detail-tab-${escapeHtml(state.detailTab || 'overview')}"` : ''}>${body}</div>
@@ -2403,7 +2403,7 @@ export class KubernetesSessionPage extends HTMLElement {
     tabs.push(['delete', 'Delete']);
     // 內容面板 id 固定為 k8s-detail-panel；各 tab id 為 k8s-detail-tab-${id}。
     // aria-controls 指向面板、aria-selected 標示 active；面板側於 renderDetailDrawer 補 aria-labelledby。
-    return `<nav class="kubernetes-pod-detail-tabs" aria-label="${t('k8s.detail.tabsAria')}" role="tablist">${tabs.map(([id, label]) => `<button type="button" id="k8s-detail-tab-${id}" class="no-drag ${activeTab === id ? 'active' : ''} ${id === 'delete' ? 'danger' : ''}" data-detail-tab="${id}" role="tab" aria-selected="${activeTab === id}" aria-controls="k8s-detail-panel">${label}</button>`).join('')}</nav>`;
+    return `<nav class="kubernetes-pod-detail-tabs" aria-label="${t('k8s.detail.tabsAria')}" role="tablist">${tabs.map(([id, label]) => `<button type="button" id="k8s-detail-tab-${id}" class="no-drag ${activeTab === id ? 'active' : ''} ${id === 'delete' ? 'danger' : ''} ui-button ui-button--tab" data-detail-tab="${id}" role="tab" aria-selected="${activeTab === id}" aria-controls="k8s-detail-panel">${label}</button>`).join('')}</nav>`;
   }
 
   renderResourceDetailTab(detail, selected, state) {
@@ -2501,8 +2501,8 @@ export class KubernetesSessionPage extends HTMLElement {
         <div class="kubernetes-secret-row-head">
           <code class="kubernetes-secret-key">${escapeHtml(key)}</code>
           <div class="kubernetes-secret-actions">
-            <button type="button" class="kubernetes-secret-btn" data-secret-copy data-secret-key="${escapeHtml(key)}" aria-label="${t('k8s.detail.secretCopy')}" title="${t('k8s.detail.secretCopy')}"><i class="ti ti-copy" aria-hidden="true"></i></button>
-            <button type="button" class="kubernetes-secret-btn" data-secret-reveal data-secret-key="${escapeHtml(key)}" aria-label="${eyeLabel}" title="${eyeLabel}"><i class="ti ${eyeIcon}" aria-hidden="true"></i></button>
+            <button type="button" class="kubernetes-secret-btn ui-button ui-button--quiet ui-button--icon" data-secret-copy data-secret-key="${escapeHtml(key)}" aria-label="${t('k8s.detail.secretCopy')}" title="${t('k8s.detail.secretCopy')}"><i class="ti ti-copy" aria-hidden="true"></i></button>
+            <button type="button" class="kubernetes-secret-btn ui-button ui-button--quiet ui-button--icon" data-secret-reveal data-secret-key="${escapeHtml(key)}" aria-label="${eyeLabel}" title="${eyeLabel}"><i class="ti ${eyeIcon}" aria-hidden="true"></i></button>
           </div>
         </div>
         <div class="kubernetes-secret-value">${valueHtml}</div>
@@ -2688,7 +2688,7 @@ export class KubernetesSessionPage extends HTMLElement {
         <div class="kubernetes-log-bar-search">
           <span class="kubernetes-log-bar-icon" aria-hidden="true">${renderKubernetesIcon('search', 15)}</span>
           <input id="kubernetesLogSearch" class="no-drag" value="${escapeHtml(this.logSearch)}" placeholder="${t('k8s.logs.searchPlaceholder')}">
-          <button type="button" aria-label="${t('k8s.logs.toggleRegex')}" id="toggleKubernetesLogRegex" class="kubernetes-log-rex ${this.logRegex ? 'active' : ''}" title="${t('k8s.logs.toggleRegex')}">.*</button>
+          <button type="button" aria-label="${t('k8s.logs.toggleRegex')}" id="toggleKubernetesLogRegex" class="kubernetes-log-rex ${this.logRegex ? 'active' : ''} ui-button ui-button--quiet ui-button--icon" title="${t('k8s.logs.toggleRegex')}">.*</button>
         </div>
         <div class="kubernetes-log-bar-level">
           <select id="kubernetesLogLevel" class="no-drag">
@@ -2699,20 +2699,20 @@ export class KubernetesSessionPage extends HTMLElement {
             <option value="debug" ${this.logLevel === 'debug' ? 'selected' : ''}>${t('k8s.logs.levelDebug')}</option>
           </select>
         </div>
-        <button type="button" id="toggleKubernetesLogsPause" class="kubernetes-log-bar-btn ${this.logPaused ? 'paused' : ''}" title="${this.logPaused ? t('k8s.logs.follow') : t('k8s.logs.pause')}" aria-label="${this.logPaused ? t('k8s.logs.follow') : t('k8s.logs.pause')}">${this.logPaused ? renderKubernetesIcon('play', 16) : renderKubernetesIcon('pause', 16)}</button>
-        <button type="button" id="reloadKubernetesPodLogs" class="kubernetes-log-bar-btn accent" title="${t('k8s.logs.load')}" aria-label="${t('k8s.logs.load')}" ${canLoad ? '' : 'disabled'}>${state.logsLoading ? '<span class="kubernetes-spinner-mini kubernetes-refresh-spinner"></span>' : renderKubernetesIcon('refresh', 16)}</button>
-        <button type="button" id="downloadKubernetesLogs" class="kubernetes-log-bar-btn" title="${t('k8s.logs.download')}" aria-label="${t('k8s.logs.download')}" ${hasLogs ? '' : 'disabled'}>${renderKubernetesIcon('download', 16)}</button>
+        <button type="button" id="toggleKubernetesLogsPause" class="kubernetes-log-bar-btn ${this.logPaused ? 'paused' : ''} ui-button ui-button--quiet ui-button--icon" title="${this.logPaused ? t('k8s.logs.follow') : t('k8s.logs.pause')}" aria-label="${this.logPaused ? t('k8s.logs.follow') : t('k8s.logs.pause')}">${this.logPaused ? renderKubernetesIcon('play', 16) : renderKubernetesIcon('pause', 16)}</button>
+        <button type="button" id="reloadKubernetesPodLogs" class="kubernetes-log-bar-btn accent ui-button ui-button--quiet ui-button--icon" title="${t('k8s.logs.load')}" aria-label="${t('k8s.logs.load')}" ${canLoad ? '' : 'disabled'}>${state.logsLoading ? '<span class="kubernetes-spinner-mini kubernetes-refresh-spinner"></span>' : renderKubernetesIcon('refresh', 16)}</button>
+        <button type="button" id="downloadKubernetesLogs" class="kubernetes-log-bar-btn ui-button ui-button--quiet ui-button--icon" title="${t('k8s.logs.download')}" aria-label="${t('k8s.logs.download')}" ${hasLogs ? '' : 'disabled'}>${renderKubernetesIcon('download', 16)}</button>
         <div class="kubernetes-log-options-wrap">
-          <button type="button" id="toggleKubernetesLogOptions" class="kubernetes-log-bar-btn ${this.logDisplayOptionsOpen ? 'active' : ''}" title="${t('k8s.logs.displayOptions')}" aria-label="${t('k8s.logs.displayOptions')}">${renderKubernetesIcon('sliders', 16)}</button>
+          <button type="button" id="toggleKubernetesLogOptions" class="kubernetes-log-bar-btn ${this.logDisplayOptionsOpen ? 'active' : ''} ui-button ui-button--quiet ui-button--icon" title="${t('k8s.logs.displayOptions')}" aria-label="${t('k8s.logs.displayOptions')}">${renderKubernetesIcon('sliders', 16)}</button>
           ${this.logDisplayOptionsOpen ? this.renderLogDisplayOptions() : ''}
         </div>
-        <button type="button" id="clearKubernetesLogs" class="kubernetes-log-bar-btn danger" title="${t('k8s.logs.clear')}" aria-label="${t('k8s.logs.clear')}" ${state.podLogs ? '' : 'disabled'}>${renderKubernetesIcon('trash', 16)}</button>
+        <button type="button" id="clearKubernetesLogs" class="kubernetes-log-bar-btn danger ui-button ui-button--danger ui-button--icon" title="${t('k8s.logs.clear')}" aria-label="${t('k8s.logs.clear')}" ${state.podLogs ? '' : 'disabled'}>${renderKubernetesIcon('trash', 16)}</button>
       </div>
       ${state.logsError ? `<div class="kubernetes-session-error compact" role="alert"><strong>${t('k8s.logs.loadFailed')}</strong><span>${escapeHtml(state.logsError)}</span></div>` : ''}
       ${state.logsTruncated ? `<div class="kubernetes-log-truncated" role="status">${t('k8s.logs.truncated')}</div>` : ''}
       ${state.podLogs ? `<div class="kubernetes-log-output-wrap">
         <div id="kubernetesLogOutput" class="kubernetes-log-output ${this.logLineWrap ? 'wrap' : ''}" data-count="${logs.length}" tabindex="0" role="log">${this.renderLogLines(logs)}</div>
-        <button type="button" id="kubernetesLogJump" class="kubernetes-log-jump no-drag" hidden>${renderKubernetesIcon('arrowDown', 13)}<span class="kubernetes-log-jump-count">0</span><span>${t('k8s.logs.jumpLatest')}</span></button>
+        <button type="button" id="kubernetesLogJump" class="kubernetes-log-jump no-drag ui-button ui-button--secondary" hidden>${renderKubernetesIcon('arrowDown', 13)}<span class="kubernetes-log-jump-count">0</span><span>${t('k8s.logs.jumpLatest')}</span></button>
       </div>` : `<div class="kubernetes-log-empty">${state.logsLoading ? t('k8s.logs.reading') : t('k8s.logs.selectContainer')}</div>`}
     </div>`;
   }
@@ -2817,7 +2817,7 @@ export class KubernetesSessionPage extends HTMLElement {
       <label><input id="kubernetesLogLineWrap" class="no-drag" type="checkbox" ${this.logLineWrap ? 'checked' : ''}>${t('k8s.logs.lineWrap')}</label>
       <strong>${t('k8s.logs.timestamp')}</strong>
       <div class="kubernetes-log-timestamp-options">
-        ${['off', 'utc', 'local'].map(mode => `<button type="button" class="no-drag ${this.logTimestampMode === mode ? 'active' : ''}" data-log-timestamp="${mode}">${mode === 'off' ? t('k8s.logs.timestampOff') : mode.toUpperCase()}</button>`).join('')}
+        ${['off', 'utc', 'local'].map(mode => `<button type="button" class="no-drag ${this.logTimestampMode === mode ? 'active' : ''} ui-button ui-button--choice" data-log-timestamp="${mode}">${mode === 'off' ? t('k8s.logs.timestampOff') : mode.toUpperCase()}</button>`).join('')}
       </div>
     </div>`;
   }
@@ -2899,9 +2899,9 @@ export class KubernetesSessionPage extends HTMLElement {
     }
 
     const toolbar = `<div class="kubernetes-yaml-toolbar">
-      <button type="button" id="toggleKubernetesYAMLSearch" class="no-drag kubernetes-icon-btn ${this.yamlSearchOpen ? 'active' : ''}" title="${t('k8s.yaml.search')}" aria-label="${t('k8s.yaml.search')}" ${editing ? 'disabled' : ''}>${renderKubernetesIcon('search', 20)}</button>
-      <button type="button" id="editKubernetesYAML" class="no-drag kubernetes-icon-btn ${editing ? 'active' : ''}" title="${editDisabled ? t('k8s.yaml.editDisabledHint') : t('k8s.yaml.edit')}" aria-label="${t('k8s.yaml.edit')}" ${editDisabled ? 'disabled' : ''}>${renderKubernetesIcon('edit', 20)}</button>
-      <button type="button" id="copyKubernetesYAML" class="no-drag kubernetes-icon-btn" title="${t('k8s.yaml.copy')}" aria-label="${t('k8s.yaml.copy')}">${renderKubernetesIcon('copy', 20)}</button>
+      <button type="button" id="toggleKubernetesYAMLSearch" class="no-drag kubernetes-icon-btn ${this.yamlSearchOpen ? 'active' : ''} ui-button ui-button--quiet ui-button--icon" title="${t('k8s.yaml.search')}" aria-label="${t('k8s.yaml.search')}" ${editing ? 'disabled' : ''}>${renderKubernetesIcon('search', 20)}</button>
+      <button type="button" id="editKubernetesYAML" class="no-drag kubernetes-icon-btn ${editing ? 'active' : ''} ui-button ui-button--quiet ui-button--icon" title="${editDisabled ? t('k8s.yaml.editDisabledHint') : t('k8s.yaml.edit')}" aria-label="${t('k8s.yaml.edit')}" ${editDisabled ? 'disabled' : ''}>${renderKubernetesIcon('edit', 20)}</button>
+      <button type="button" id="copyKubernetesYAML" class="no-drag kubernetes-icon-btn ui-button ui-button--quiet ui-button--icon" title="${t('k8s.yaml.copy')}" aria-label="${t('k8s.yaml.copy')}">${renderKubernetesIcon('copy', 20)}</button>
     </div>`;
 
     const searchBox = (this.yamlSearchOpen && !editing)
@@ -2909,11 +2909,11 @@ export class KubernetesSessionPage extends HTMLElement {
       : '';
 
     const body = editing
-      ? `${state.updateError ? `<div class="kubernetes-session-error compact" role="alert"><strong>${t('k8s.yaml.applyFailed')}</strong><span>${escapeHtml(state.updateError)}</span><button type="button" id="reloadKubernetesResourceYAML" class="no-drag kubernetes-secondary-btn" ${state.updateLoading ? 'disabled' : ''}>${t('k8s.yaml.reloadLatest')}</button></div>` : ''}
+      ? `${state.updateError ? `<div class="kubernetes-session-error compact" role="alert"><strong>${t('k8s.yaml.applyFailed')}</strong><span>${escapeHtml(state.updateError)}</span><button type="button" id="reloadKubernetesResourceYAML" class="no-drag kubernetes-secondary-btn ui-button ui-button--secondary" ${state.updateLoading ? 'disabled' : ''}>${t('k8s.yaml.reloadLatest')}</button></div>` : ''}
         <textarea id="kubernetesYAMLEditor" class="no-drag kubernetes-yaml-editor" spellcheck="false" autocapitalize="off" autocomplete="off" ${state.updateLoading ? 'readonly' : ''}>${escapeHtml(draft)}</textarea>
         <div class="kubernetes-yaml-edit-actions">
-          <button type="button" id="applyKubernetesYAML" class="no-drag kubernetes-primary-btn" title="${t('k8s.yaml.apply')}" aria-label="${t('k8s.yaml.apply')}" ${state.updateLoading ? 'disabled' : ''}>${renderKubernetesIcon('check', 14)}<span>${state.updateLoading ? t('k8s.yaml.applying') : t('k8s.yaml.apply')}</span></button>
-          <button type="button" id="cancelKubernetesYAML" class="no-drag kubernetes-secondary-btn" title="${t('k8s.yaml.cancel')}" aria-label="${t('k8s.yaml.cancel')}" ${state.updateLoading ? 'disabled' : ''}>${renderKubernetesIcon('close', 14)}<span>${t('k8s.yaml.cancel')}</span></button>
+          <button type="button" id="applyKubernetesYAML" class="no-drag kubernetes-primary-btn ui-button ui-button--primary" title="${t('k8s.yaml.apply')}" aria-label="${t('k8s.yaml.apply')}" ${state.updateLoading ? 'disabled' : ''}>${renderKubernetesIcon('check', 14)}<span>${state.updateLoading ? t('k8s.yaml.applying') : t('k8s.yaml.apply')}</span></button>
+          <button type="button" id="cancelKubernetesYAML" class="no-drag kubernetes-secondary-btn ui-button ui-button--secondary" title="${t('k8s.yaml.cancel')}" aria-label="${t('k8s.yaml.cancel')}" ${state.updateLoading ? 'disabled' : ''}>${renderKubernetesIcon('close', 14)}<span>${t('k8s.yaml.cancel')}</span></button>
         </div>`
       : `${editDisabled ? `<div class="kubernetes-yaml-readonly-hint" role="status">${t('k8s.yaml.readonlyHint')}</div>` : ''}
         <pre class="kubernetes-yaml-output" tabindex="0"><code>${viewHtml}</code></pre>`;
@@ -2975,9 +2975,9 @@ export class KubernetesSessionPage extends HTMLElement {
         ${uptime ? `<span class="kubernetes-forward-uptime">· ${t('k8s.forward.uptime', { time: uptime })}</span>` : ''}
         <span class="kubernetes-forward-spring"></span>
         <div class="kubernetes-forward-row-actions">
-          <button type="button" class="no-drag kubernetes-forward-iconbtn open-kubernetes-forward" data-forward-url="http://${escapeHtml(addr)}" title="${t('k8s.forward.open')}" aria-label="${t('k8s.forward.open')}">${renderKubernetesIcon('external', 15)}</button>
-          <button type="button" class="no-drag kubernetes-forward-iconbtn copy-kubernetes-forward" data-forward-addr="${escapeHtml(addr)}" title="${t('k8s.forward.copy')}" aria-label="${t('k8s.forward.copy')}">${renderKubernetesIcon('copy', 15)}</button>
-          <button type="button" class="no-drag kubernetes-forward-iconbtn danger stop-kubernetes-forward" data-forward-id="${escapeHtml(item.id)}" title="${t('k8s.forward.stop')}" aria-label="${t('k8s.forward.stop')}" ${state.forwardsLoading ? 'disabled' : ''}>${renderKubernetesIcon('stop', 15)}</button>
+          <button type="button" class="no-drag kubernetes-forward-iconbtn open-kubernetes-forward ui-button ui-button--quiet ui-button--icon" data-forward-url="http://${escapeHtml(addr)}" title="${t('k8s.forward.open')}" aria-label="${t('k8s.forward.open')}">${renderKubernetesIcon('external', 15)}</button>
+          <button type="button" class="no-drag kubernetes-forward-iconbtn copy-kubernetes-forward ui-button ui-button--quiet ui-button--icon" data-forward-addr="${escapeHtml(addr)}" title="${t('k8s.forward.copy')}" aria-label="${t('k8s.forward.copy')}">${renderKubernetesIcon('copy', 15)}</button>
+          <button type="button" class="no-drag kubernetes-forward-iconbtn danger stop-kubernetes-forward ui-button ui-button--danger ui-button--icon" data-forward-id="${escapeHtml(item.id)}" title="${t('k8s.forward.stop')}" aria-label="${t('k8s.forward.stop')}" ${state.forwardsLoading ? 'disabled' : ''}>${renderKubernetesIcon('stop', 15)}</button>
         </div>
       </div>`;
     }).join('')}</div>`;
@@ -2996,7 +2996,7 @@ export class KubernetesSessionPage extends HTMLElement {
     const cards = ports.map(port => {
       const local = this.forwardSuggestedLocalPort(port.port);
       const label = escapeHtml(port.name || port.container || t('k8s.forward.portLabel', { port: port.port }));
-      return `<div class="kubernetes-forward-row"><span class="kubernetes-forward-dot" aria-hidden="true"></span><span class="kubernetes-forward-name">${label}</span><span class="kubernetes-forward-badge">${port.port}/${escapeHtml(port.protocol || 'TCP')}</span><span class="kubernetes-forward-map">localhost:<b>${local}</b> → pod:${port.port}</span><span class="kubernetes-forward-spring"></span><button type="button" class="no-drag kubernetes-forward-go start-kubernetes-forward" data-local-port="${local}" data-remote-port="${port.port}" ${state.forwardsLoading ? 'disabled' : ''}>${t('k8s.forward.forward')}</button></div>`;
+      return `<div class="kubernetes-forward-row"><span class="kubernetes-forward-dot" aria-hidden="true"></span><span class="kubernetes-forward-name">${label}</span><span class="kubernetes-forward-badge">${port.port}/${escapeHtml(port.protocol || 'TCP')}</span><span class="kubernetes-forward-map">localhost:<b>${local}</b> → pod:${port.port}</span><span class="kubernetes-forward-spring"></span><button type="button" class="no-drag kubernetes-forward-go start-kubernetes-forward ui-button ui-button--primary" data-local-port="${local}" data-remote-port="${port.port}" ${state.forwardsLoading ? 'disabled' : ''}>${t('k8s.forward.forward')}</button></div>`;
     }).join('');
     return `<section class="kubernetes-detail-section kubernetes-pod-forward"><h3>${t('k8s.forward.title')}</h3>
       ${state.forwardsError ? `<div class="kubernetes-session-error compact" role="alert"><strong>${t('k8s.forward.operationFailed')}</strong><span>${escapeHtml(state.forwardsError)}</span></div>` : ''}
@@ -3009,7 +3009,7 @@ export class KubernetesSessionPage extends HTMLElement {
           <span class="kubernetes-forward-cseg">localhost:<input id="kubernetesForwardCustomLocal" class="no-drag" type="number" min="0" max="65535" placeholder="${t('k8s.forward.autoPort')}"></span>
           <span class="kubernetes-forward-cseg">pod:<input id="kubernetesForwardCustomRemote" class="no-drag" type="number" min="1" max="65535" placeholder="${t('k8s.forward.portPlaceholder')}"></span>
         </div>
-        <button type="button" id="startKubernetesCustomForward" class="no-drag kubernetes-forward-go ghost" ${state.forwardsLoading ? 'disabled' : ''}>${t('k8s.forward.createCustom')}</button>
+        <button type="button" id="startKubernetesCustomForward" class="no-drag kubernetes-forward-go ghost ui-button ui-button--primary" ${state.forwardsLoading ? 'disabled' : ''}>${t('k8s.forward.createCustom')}</button>
       </div>
       <p class="kubernetes-forward-hint"><span class="kubernetes-forward-hint-icon" aria-hidden="true">ⓘ</span> ${t('k8s.forward.portConflictHint')}</p>
       <h3>${t('k8s.forward.active')}</h3>
@@ -3027,7 +3027,7 @@ export class KubernetesSessionPage extends HTMLElement {
     }
     const cards = ports.map(port => {
       const local = this.forwardSuggestedLocalPort(port);
-      return `<div class="kubernetes-forward-row"><span class="kubernetes-forward-dot" aria-hidden="true"></span><span class="kubernetes-forward-name">${t('k8s.forward.servicePortLabel', { port })}</span><span class="kubernetes-forward-badge">${port}/TCP</span><span class="kubernetes-forward-map">localhost:<b>${local}</b> → svc:${port}</span><span class="kubernetes-forward-spring"></span><button type="button" class="no-drag kubernetes-forward-go start-kubernetes-service-forward" data-local-port="${local}" data-remote-port="${port}" ${state.forwardsLoading ? 'disabled' : ''}>${t('k8s.forward.forward')}</button></div>`;
+      return `<div class="kubernetes-forward-row"><span class="kubernetes-forward-dot" aria-hidden="true"></span><span class="kubernetes-forward-name">${t('k8s.forward.servicePortLabel', { port })}</span><span class="kubernetes-forward-badge">${port}/TCP</span><span class="kubernetes-forward-map">localhost:<b>${local}</b> → svc:${port}</span><span class="kubernetes-forward-spring"></span><button type="button" class="no-drag kubernetes-forward-go start-kubernetes-service-forward ui-button ui-button--primary" data-local-port="${local}" data-remote-port="${port}" ${state.forwardsLoading ? 'disabled' : ''}>${t('k8s.forward.forward')}</button></div>`;
     }).join('');
     return `<section class="kubernetes-detail-section kubernetes-pod-forward"><h3>${t('k8s.forward.title')}</h3>
       ${state.forwardsError ? `<div class="kubernetes-session-error compact" role="alert"><strong>${t('k8s.forward.operationFailed')}</strong><span>${escapeHtml(state.forwardsError)}</span></div>` : ''}
@@ -3040,7 +3040,7 @@ export class KubernetesSessionPage extends HTMLElement {
           <span class="kubernetes-forward-cseg">localhost:<input id="kubernetesServiceForwardCustomLocal" class="no-drag" type="number" min="0" max="65535" placeholder="${t('k8s.forward.autoPort')}"></span>
           <span class="kubernetes-forward-cseg">svc:<input id="kubernetesServiceForwardCustomRemote" class="no-drag" type="number" min="1" max="65535" placeholder="${t('k8s.forward.portPlaceholder')}"></span>
         </div>
-        <button type="button" id="startKubernetesServiceCustomForward" class="no-drag kubernetes-forward-go ghost" ${state.forwardsLoading ? 'disabled' : ''}>${t('k8s.forward.createCustom')}</button>
+        <button type="button" id="startKubernetesServiceCustomForward" class="no-drag kubernetes-forward-go ghost ui-button ui-button--primary" ${state.forwardsLoading ? 'disabled' : ''}>${t('k8s.forward.createCustom')}</button>
       </div>
       <p class="kubernetes-forward-hint"><span class="kubernetes-forward-hint-icon" aria-hidden="true">ⓘ</span> ${t('k8s.forward.portConflictHint')}</p>
       <h3>${t('k8s.forward.active')}</h3>
@@ -3065,7 +3065,7 @@ export class KubernetesSessionPage extends HTMLElement {
           <strong>${t('k8s.delete.deleteLabel', { id: escapeHtml(fullId) })}</strong>
           <small>${t('k8s.delete.highRiskHint', { name: `<code>${escapeHtml(name)}</code>` })}</small>
           <input type="text" id="kubernetesDeleteConfirmInput" class="no-drag" autocomplete="off" spellcheck="false" placeholder="${t('k8s.delete.confirmPlaceholder')}" value="${escapeHtml(typed)}" ${state.deleteLoading ? 'disabled' : ''}>
-          <button type="button" id="deleteKubernetesResource" class="no-drag kubernetes-danger-btn" ${(state.deleteLoading || !matched) ? 'disabled' : ''}>${state.deleteLoading ? t('k8s.delete.deleting') : t('k8s.delete.confirm')}</button>
+          <button type="button" id="deleteKubernetesResource" class="no-drag kubernetes-danger-btn ui-button ui-button--danger" ${(state.deleteLoading || !matched) ? 'disabled' : ''}>${state.deleteLoading ? t('k8s.delete.deleting') : t('k8s.delete.confirm')}</button>
         </div>
       </section>`;
     }
@@ -3078,7 +3078,7 @@ export class KubernetesSessionPage extends HTMLElement {
       : (confirming ? t('k8s.delete.confirmDelete', { id: escapeHtml(fullId) }) : t('k8s.delete.delete'));
     return `<section class="kubernetes-detail-section kubernetes-pod-delete">
       ${state.deleteError ? `<div class="kubernetes-session-error compact" role="alert"><strong>${t('k8s.delete.failed', { kind: escapeHtml(kind) })}</strong><span>${escapeHtml(state.deleteError)}</span></div>` : ''}
-      <div><span><strong>${t('k8s.delete.deleteLabel', { id: escapeHtml(fullId) })}</strong><small>${t('k8s.delete.lowRiskHint')}</small></span><button type="button" id="deleteKubernetesResource" class="no-drag kubernetes-danger-btn ${confirming ? 'confirm-stage' : ''}" ${state.deleteLoading ? 'disabled' : ''}>${buttonLabel}</button></div>
+      <div><span><strong>${t('k8s.delete.deleteLabel', { id: escapeHtml(fullId) })}</strong><small>${t('k8s.delete.lowRiskHint')}</small></span><button type="button" id="deleteKubernetesResource" class="no-drag kubernetes-danger-btn ${confirming ? 'confirm-stage' : ''} ui-button ui-button--danger" ${state.deleteLoading ? 'disabled' : ''}>${buttonLabel}</button></div>
     </section>`;
   }
 
@@ -3090,9 +3090,9 @@ export class KubernetesSessionPage extends HTMLElement {
     return `
       <div class="kubernetes-detail-backdrop no-drag" data-close-create="true"></div>
       <aside class="kubernetes-create-drawer no-drag" role="dialog" aria-modal="true" aria-labelledby="kubernetesCreateResourceTitle">
-        <header><h2 id="kubernetesCreateResourceTitle">${t('k8s.create.title')}</h2><button type="button" class="kubernetes-drawer-close no-drag" aria-label="${t('k8s.create.closeAria')}">${renderKubernetesIcon('close', 22)}</button></header>
+        <header><h2 id="kubernetesCreateResourceTitle">${t('k8s.create.title')}</h2><button type="button" class="kubernetes-drawer-close no-drag ui-button ui-button--quiet ui-button--icon" aria-label="${t('k8s.create.closeAria')}">${renderKubernetesIcon('close', 22)}</button></header>
         <div class="kubernetes-create-toolbar">
-          <div class="kubernetes-create-actions"><button type="button" id="applyKubernetesResource" class="no-drag kubernetes-primary-btn" ${state.createLoading || state.createSaving ? 'disabled' : ''}>${state.createLoading ? t('k8s.create.applying') : t('k8s.create.apply')}</button><button type="button" id="saveKubernetesResourceYAML" class="no-drag kubernetes-secondary-btn" ${state.createLoading || state.createSaving ? 'disabled' : ''}>${state.createSaving ? t('k8s.create.saving') : t('k8s.create.save')}</button></div>
+          <div class="kubernetes-create-actions"><button type="button" id="applyKubernetesResource" class="no-drag kubernetes-primary-btn ui-button ui-button--primary" ${state.createLoading || state.createSaving ? 'disabled' : ''}>${state.createLoading ? t('k8s.create.applying') : t('k8s.create.apply')}</button><button type="button" id="saveKubernetesResourceYAML" class="no-drag kubernetes-secondary-btn ui-button ui-button--secondary" ${state.createLoading || state.createSaving ? 'disabled' : ''}>${state.createSaving ? t('k8s.create.saving') : t('k8s.create.save')}</button></div>
           <label><span class="kubernetes-visually-hidden">${t('k8s.create.resourceType')}</span><select id="kubernetesCreateResourceType" class="no-drag" ${state.createLoading || state.createSaving ? 'disabled' : ''}>${KUBERNETES_CREATE_RESOURCE_GROUPS.map(([group, types]) => `<optgroup label="${escapeHtml(group)}">${types.map(type => `<option value="${type}" ${type === state.createResourceType ? 'selected' : ''}>${type}</option>`).join('')}</optgroup>`).join('')}</select></label>
         </div>
         ${state.createError || state.createSaveError ? `<div class="kubernetes-session-error compact kubernetes-create-error" role="alert"><strong>${t('k8s.create.operationFailed')}</strong><span>${escapeHtml(state.createError || state.createSaveError)}</span></div>` : ''}
@@ -3150,11 +3150,11 @@ export class KubernetesSessionPage extends HTMLElement {
             const pins = [...this.quickAccessSections].map(pid => SECTIONS.find(([sid]) => sid === pid)).filter(Boolean);
             const favorites = this.currentClusterFavorites(cluster);
             const quickAccessCollapsed = this.collapsedNavGroups.has(QUICK_ACCESS_GROUP);
-            return `${this.renderFavoritesNavLink(activeSection, favorites.length)}${pins.length ? `<div class="kubernetes-nav-group kubernetes-nav-quick ${quickAccessCollapsed ? 'collapsed' : ''}"><button type="button" class="no-drag kubernetes-nav-heading kubernetes-nav-quick-heading" data-nav-group="${QUICK_ACCESS_GROUP}" aria-expanded="${quickAccessCollapsed ? 'false' : 'true'}"><span><i class="ti ti-star" aria-hidden="true"></i>${t('k8s.nav.quickAccess')}</span><svg class="kubernetes-nav-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button><div class="kubernetes-nav-items">${pins.map(([id, label]) => this.renderNavLink(id, label, activeSection)).join('')}</div></div>` : ''}`;
-          })()}${SECTION_GROUPS.map(([group, sections]) => `<div class="kubernetes-nav-group ${this.collapsedNavGroups.has(group) ? 'collapsed' : ''}"><button type="button" class="no-drag kubernetes-nav-heading" data-nav-group="${escapeHtml(group)}" aria-expanded="${this.collapsedNavGroups.has(group) ? 'false' : 'true'}"><span>${group}</span><svg class="kubernetes-nav-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button><div class="kubernetes-nav-items">${sections.map(([id, label]) => this.renderNavLink(id, label, activeSection)).join('')}</div></div>`).join('')}</nav>
+            return `${this.renderFavoritesNavLink(activeSection, favorites.length)}${pins.length ? `<div class="kubernetes-nav-group kubernetes-nav-quick ${quickAccessCollapsed ? 'collapsed' : ''}"><button type="button" class="no-drag kubernetes-nav-heading kubernetes-nav-quick-heading ui-button ui-button--quiet" data-nav-group="${QUICK_ACCESS_GROUP}" aria-expanded="${quickAccessCollapsed ? 'false' : 'true'}"><span><i class="ti ti-star" aria-hidden="true"></i>${t('k8s.nav.quickAccess')}</span><svg class="kubernetes-nav-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button><div class="kubernetes-nav-items">${pins.map(([id, label]) => this.renderNavLink(id, label, activeSection)).join('')}</div></div>` : ''}`;
+          })()}${SECTION_GROUPS.map(([group, sections]) => `<div class="kubernetes-nav-group ${this.collapsedNavGroups.has(group) ? 'collapsed' : ''}"><button type="button" class="no-drag kubernetes-nav-heading ui-button ui-button--quiet" data-nav-group="${escapeHtml(group)}" aria-expanded="${this.collapsedNavGroups.has(group) ? 'false' : 'true'}"><span>${group}</span><svg class="kubernetes-nav-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button><div class="kubernetes-nav-items">${sections.map(([id, label]) => this.renderNavLink(id, label, activeSection)).join('')}</div></div>`).join('')}</nav>
         </aside>
         <main class="kubernetes-session-content">
-          ${state.podActionView ? '' : `<header class="kubernetes-session-header"><div><span>${t('k8s.session.label')}</span><h1>${escapeHtml(sectionTitle)}</h1><p>${escapeHtml(cluster.server || cluster.clusterName || cluster.contextName)}${dashboard?.serverVersion ? ` · ${escapeHtml(dashboard.serverVersion)}` : ''}</p></div><div class="kubernetes-session-actions"><button type="button" id="openKubernetesCreateResource" class="no-drag kubernetes-primary-btn">${t('k8s.session.createResource')}</button></div></header>`}
+          ${state.podActionView ? '' : `<header class="kubernetes-session-header"><div><span>${t('k8s.session.label')}</span><h1>${escapeHtml(sectionTitle)}</h1><p>${escapeHtml(cluster.server || cluster.clusterName || cluster.contextName)}${dashboard?.serverVersion ? ` · ${escapeHtml(dashboard.serverVersion)}` : ''}</p></div><div class="kubernetes-session-actions"><button type="button" id="openKubernetesCreateResource" class="no-drag kubernetes-primary-btn ui-button ui-button--primary">${t('k8s.session.createResource')}</button></div></header>`}
           <div class="kubernetes-session-scrollbody${!state.podActionView && this.selectedRows.size ? ' has-selection-bar' : ''}">
           ${state.dashboardError && dashboard ? `<div class="kubernetes-session-error compact" role="status"><strong>${dashboardErrorTitle(state.dashboardError, true)}</strong><span>${escapeHtml(state.dashboardError)}</span></div>` : ''}
           ${content}

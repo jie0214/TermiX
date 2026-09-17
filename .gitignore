@@ -1,4 +1,6 @@
 build/bin
+build/notarization/
+dist/
 node_modules
 frontend/dist
 .DS_Store
@@ -8,3 +10,5 @@ frontend/package.json.md5
 .spectra/
 openspec/.vector-search.db*
 scratch/
+
+build/sparkle/

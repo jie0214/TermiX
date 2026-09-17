@@ -1,0 +1,55 @@
+/* 僅載入 TermiX 實際使用的 Tabler Icons，避免輸出未使用的 WOFF 與 TTF。 */
+@font-face {
+  font-family: 'tabler-icons';
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url('@tabler/icons-webfont/dist/fonts/tabler-icons.woff2') format('woff2');
+}
+
+.ti {
+  font-family: 'tabler-icons' !important;
+  speak: none;
+  font-style: normal;
+  font-weight: normal;
+  font-variant: normal;
+  text-transform: none;
+  line-height: 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.ti-check::before { content: '\ea5e'; }
+.ti-cloud::before { content: '\ea76'; }
+.ti-copy::before { content: '\ea7a'; }
+.ti-cpu::before { content: '\ef8e'; }
+.ti-database::before { content: '\ea88'; }
+.ti-equal::before { content: '\ee87'; }
+.ti-file-text::before { content: '\eaa2'; }
+.ti-key::before { content: '\eac7'; }
+.ti-keyboard::before { content: '\ebd6'; }
+.ti-link::before { content: '\eade'; }
+.ti-list-details::before { content: '\ef40'; }
+.ti-lock::before { content: '\eae2'; }
+.ti-palette::before { content: '\eb01'; }
+.ti-rotate-2::before { content: '\ebb4'; }
+.ti-settings::before { content: '\eb20'; }
+.ti-shield-lock::before { content: '\ed58'; }
+.ti-star::before { content: '\eb2e'; }
+.ti-tag::before { content: '\10096'; }
+.ti-terminal-2::before { content: '\ebef'; }
+.ti-tool::before { content: '\eb40'; }
+.ti-adjustments-horizontal::before { content: "\ec38"; }
+.ti-arrow-right::before { content: "\ea1f"; }
+.ti-brand-aws::before { content: "\fa4c"; }
+.ti-brand-google::before { content: "\ec1f"; }
+.ti-chevron-down::before { content: "\ea5f"; }
+.ti-dots::before { content: "\ea95"; }
+.ti-download::before { content: "\ea96"; }
+.ti-folder-plus::before { content: "\eaab"; }
+.ti-layout-grid::before { content: "\edba"; }
+.ti-list::before { content: "\eb6b"; }
+.ti-plus::before { content: "\eb0b"; }
+.ti-search::before { content: "\eb1c"; }
+.ti-server::before { content: "\eb1f"; }
+.ti-upload::before { content: "\eb47"; }

@@ -59,7 +59,6 @@ func (s *Service) ResourceDetail(ctx context.Context, request dto.KubernetesReso
 			})
 			if listErr == nil && len(matches.Items) == 1 {
 				item = matches.Items[0].DeepCopy()
-				namespace = item.Namespace
 				getErr = nil
 			}
 		}

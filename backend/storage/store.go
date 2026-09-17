@@ -30,6 +30,16 @@ func OpenDatabase(path string) (*Database, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return nil, fmt.Errorf("建立 SQLite 目錄失敗：%w", err)
 	}
+	databaseFile, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return nil, fmt.Errorf("建立 SQLite 檔案失敗：%w", err)
+	}
+	if err := databaseFile.Close(); err != nil {
+		return nil, fmt.Errorf("關閉 SQLite 檔案失敗：%w", err)
+	}
+	if err := os.Chmod(path, 0600); err != nil {
+		return nil, fmt.Errorf("設定 SQLite 檔案權限失敗：%w", err)
+	}
 
 	dsn := fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)", path)
 	db, err := sql.Open("sqlite", dsn)

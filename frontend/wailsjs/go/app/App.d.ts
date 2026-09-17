@@ -97,6 +97,8 @@ export function GetKubernetesResourceEvents(arg1:dto.KubernetesResourceEventsReq
 
 export function GetKubernetesSecretValue(arg1:dto.KubernetesSecretValueRequest):Promise<dto.KubernetesSecretValue>;
 
+export function HandleNativeUpdateCheck(arg1:boolean):Promise<boolean>;
+
 export function ImportHostsBackup(arg1:string,arg2:dto.HostImportOptions):Promise<dto.OperationResult>;
 
 export function ImportKeychainKey(arg1:dto.ImportKeychainKeyRequest):Promise<dto.OperationResult>;
@@ -158,6 +160,8 @@ export function ScaleKubernetesResource(arg1:dto.KubernetesResourceScaleRequest)
 export function SelectFile(arg1:string):Promise<string>;
 
 export function SetHostStartupSnippet(arg1:dto.HostStartupSnippetRequest):Promise<dto.HostStartupSnippet>;
+
+export function ShowNativeUpdateSettings():Promise<void>;
 
 export function StartKubernetesPodPortForward(arg1:dto.KubernetesPodPortForwardRequest):Promise<dto.KubernetesPodPortForward>;
 

@@ -2,7 +2,7 @@
 // 非阻塞、可手動關閉；每次呼叫只保留最新一張（重複呼叫會取代舊卡）。
 // 樣式沿用主題色變數（--color-*），隨淺/深色主題切換。
 
-import { getAppBinding } from '../platform/wails';
+import { getAppBinding, openBrowserURL } from '../platform/wails';
 import { showToast } from '../components/feedback/toast.js';
 import { t } from '../i18n/index.ts';
 
@@ -16,9 +16,7 @@ function escapeHtml(value: string): string {
 }
 
 function openReleasePage(url: string): void {
-  // Wails runtime 提供 BrowserOpenURL 以系統瀏覽器開啟外部連結；非 Wails 環境則忽略。
-  const runtime = (globalThis as { runtime?: { BrowserOpenURL?: (u: string) => void } }).runtime;
-  runtime?.BrowserOpenURL?.(url);
+  openBrowserURL(url);
 }
 
 /**
@@ -66,16 +64,16 @@ export function showUpdateNotification(latestVersion: string, releaseUrl: string
   const closeLabel = escapeHtml(t('misc.update.close'));
 
   card.innerHTML = `
-    <button type="button" data-action="close" aria-label="${closeLabel}"
-      style="position:absolute;top:8px;right:8px;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;padding:0;background:none;border:0;color:var(--color-text);opacity:0.6;font-size:18px;line-height:1;cursor:pointer;">×</button>
+    <button class="ui-button ui-button--quiet ui-button--icon ui-button--compact" type="button" data-action="close" aria-label="${closeLabel}"
+      style="position:absolute;top:8px;right:8px;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;padding:0;opacity:0.6;line-height:1;cursor:pointer;">×</button>
     <div style="display:flex;align-items:center;gap:8px;font-weight:700;color:var(--color-info);padding-right:24px;">
-      <span aria-hidden="true">🚀</span><span>${title}</span>
+      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg><span>${title}</span>
     </div>
     <div style="margin-top:6px;font-size:13px;line-height:1.5;">${ready}</div>
     <div style="margin-top:4px;font-size:11.5px;line-height:1.5;opacity:0.65;">${hint}</div>
     <div style="margin-top:12px;text-align:right;">
-      <button type="button" data-action="download"
-        style="padding:6px 14px;background:var(--color-info);border:0;border-radius:6px;color:#fff;font-size:12.5px;font-weight:600;cursor:pointer;">${confirmLabel}</button>
+      <button class="ui-button ui-button--primary" type="button" data-action="download"
+        style="padding:6px 14px;cursor:pointer;">${confirmLabel}</button>
     </div>`;
 
   const dismiss = () => {

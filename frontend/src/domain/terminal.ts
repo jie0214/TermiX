@@ -1,6 +1,7 @@
 import type { OperationResult } from './common';
 
 export interface SSHConfig {
+  alias?: string;
   host: string;
   port: number;
   username: string;
@@ -56,4 +57,3 @@ export interface TerminalWorkspace {
   columns: TerminalColumn[];
   activeSessionKey: string;
 }
-

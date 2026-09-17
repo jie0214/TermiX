@@ -41,7 +41,7 @@ func (c *gcpComputeClient) ListInstances(ctx context.Context, projectID string) 
 }
 
 func newGCPComputeClient(ctx context.Context, serviceAccountJSON string) (gcpComputeInstancesAPI, error) {
-	svc, err := compute.NewService(ctx, option.WithCredentialsJSON([]byte(serviceAccountJSON)))
+	svc, err := compute.NewService(ctx, option.WithAuthCredentialsJSON(option.ServiceAccount, []byte(serviceAccountJSON)))
 	if err != nil {
 		return nil, err
 	}

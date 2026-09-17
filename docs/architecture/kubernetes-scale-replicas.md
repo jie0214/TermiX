@@ -1,7 +1,7 @@
 # Kubernetes 調整副本數（Scale）設計方案
 
 > 為 Deployment / StatefulSet 提供「調整 Pod 副本數」的 UI 與後端。設計已定案，本文件為實作依據。
-> 相關背景見 [kubernetes-session.md](./kubernetes-session.md)；多選刪除見 [kubernetes-multiselect-delete.md](./kubernetes-multiselect-delete.md)。
+> 其他 Kubernetes 設計文件見 [架構文件索引](./README.md)；多選刪除見 [kubernetes-multiselect-delete.md](./kubernetes-multiselect-delete.md)。
 
 ## 目錄
 

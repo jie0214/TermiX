@@ -1,6 +1,9 @@
 const SESSION_LOG_KEY = 'termix-session-logs';
 const MAX_SESSION_LOGS = 50;
 const MAX_OUTPUT_LENGTH = 50000;
+const SESSION_LOG_COMPACTION_THRESHOLD = 500000;
+const RECOVERY_MAX_SESSION_LOGS = 15;
+const RECOVERY_MAX_OUTPUT_LENGTH = 5000;
 const LOGS_CHANGED_EVENT = 'termix-session-logs-changed';
 
 const persistedSessionKeys = new Set();
@@ -39,6 +42,32 @@ function normalizeRecord(record, index) {
   };
 }
 
+function isQuotaExceededError(error) {
+  return error?.name === 'QuotaExceededError'
+    || error?.name === 'NS_ERROR_DOM_QUOTA_REACHED'
+    || error?.code === 22;
+}
+
+function compactSessionLogs(logs) {
+  return logs.slice(0, RECOVERY_MAX_SESSION_LOGS).map((log) => ({
+    ...log,
+    outputHtml: String(log?.outputHtml || '').slice(-RECOVERY_MAX_OUTPUT_LENGTH)
+  }));
+}
+
+function persistSessionLogs(logs) {
+  try {
+    localStorage.setItem(SESSION_LOG_KEY, JSON.stringify(logs));
+    return logs;
+  } catch (error) {
+    if (!isQuotaExceededError(error)) throw error;
+    const compactLogs = compactSessionLogs(logs);
+    console.warn('[TermiX] Session Logs 已達儲存上限，改以壓縮紀錄保存。');
+    localStorage.setItem(SESSION_LOG_KEY, JSON.stringify(compactLogs));
+    return compactLogs;
+  }
+}
+
 export function readSessionLogs() {
   try {
     const raw = localStorage.getItem(SESSION_LOG_KEY);
@@ -60,6 +89,21 @@ export function trimSessionOutput(output) {
   return rawOutput.length > MAX_OUTPUT_LENGTH
     ? rawOutput.slice(rawOutput.length - MAX_OUTPUT_LENGTH)
     : rawOutput;
+}
+
+export function compactStoredSessionLogs() {
+  try {
+    const raw = localStorage.getItem(SESSION_LOG_KEY);
+    if (!raw || raw.length <= SESSION_LOG_COMPACTION_THRESHOLD) return false;
+    const logs = readSessionLogs();
+    if (logs.length === 0) return false;
+    persistSessionLogs(compactSessionLogs(logs));
+    dispatchLogsChanged();
+    return true;
+  } catch (error) {
+    console.warn('[TermiX] 無法壓縮 Session Logs', error);
+    return false;
+  }
 }
 
 export function sanitizeTerminalLogOutput(output) {
@@ -96,7 +140,7 @@ export function writeSessionLog(record) {
   const nextLogs = [normalized, ...logs]
     .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
     .slice(0, MAX_SESSION_LOGS);
-  localStorage.setItem(SESSION_LOG_KEY, JSON.stringify(nextLogs));
+  persistSessionLogs(nextLogs);
   dispatchLogsChanged();
   return normalized;
 }
@@ -116,13 +160,14 @@ export function deleteSessionLogs(ids = []) {
   const targetIds = new Set(Array.isArray(ids) ? ids.filter(Boolean) : []);
   if (targetIds.size === 0) return readSessionLogs();
   const nextLogs = readSessionLogs().filter((log) => !targetIds.has(log.id));
+  let persistedLogs = nextLogs;
   if (nextLogs.length === 0) {
     localStorage.removeItem(SESSION_LOG_KEY);
   } else {
-    localStorage.setItem(SESSION_LOG_KEY, JSON.stringify(nextLogs));
+    persistedLogs = persistSessionLogs(nextLogs);
   }
   dispatchLogsChanged();
-  return nextLogs;
+  return persistedLogs;
 }
 
 export function hasSessionLogPersisted(sessionKey) {

@@ -8,6 +8,8 @@ const vm = require('vm');
 const sourcePath = path.join(__dirname, '..', 'frontend', 'src', 'modules', 'controlpanel', 'ControlPanelLayout.js');
 const source = fs.readFileSync(sourcePath, 'utf8')
   .replace(/\bexport\s+(?=function\s+)/g, '');
+const appSource = fs.readFileSync(path.join(__dirname, '..', 'frontend', 'src', 'App.js'), 'utf8');
+const pageSource = fs.readFileSync(path.join(__dirname, '..', 'frontend', 'src', 'modules', 'controlpanel', 'ControlPanelPage.js'), 'utf8');
 
 const sandbox = { console };
 vm.createContext(sandbox);
@@ -95,6 +97,30 @@ assertEqual(
   theme.panelStyle.includes('border-left: 5px solid #E95420') && theme.panelStyle.includes('linear-gradient'),
   true,
   '方塊樣式會套用色條與淡色背景'
+);
+
+assertEqual(
+  appSource.includes('${escapeHtml(val)}</span>')
+    && appSource.includes('${escapeHtml(item.key)}</div>')
+    && appSource.includes('${escapeHtml(session.customInfo[key])}</div>'),
+  true,
+  'Control Panel 遠端輸出與欄位名稱在寫入 innerHTML 前會跳脫'
+);
+
+assertEqual(
+  appSource.includes('const componentColor = sanitizeComponentColor(comp.color);')
+    && appSource.includes('${escapeHtml(comp.localCommand || comp.remoteCommand || \'\')}'),
+  true,
+  'Control Panel 自訂樣式與指令摘要不允許注入 HTML 或任意 CSS'
+);
+
+assertEqual(
+  pageSource.includes('${escapeHtml(comp.name)}</span>')
+    && pageSource.includes('value="${escapeHtml(item.command)}"')
+    && pageSource.includes('${escapeHtml(drawerComp.localCommand)}</textarea>')
+    && pageSource.includes('color: ${sanitizeComponentColor(comp.color)};'),
+  true,
+  'Control Panel 管理頁會跳脫匯入的名稱與指令並限制自訂色彩格式'
 );
 
 console.log('=== Control Panel layout 沙盒測試通過 ===');

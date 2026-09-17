@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -43,6 +44,10 @@ func (a *App) SwitchKubernetesContext(request KubernetesContextSwitchRequest) er
 }
 
 func (a *App) ConnectKubernetesCluster(request KubernetesConnectRequest) (KubernetesSession, error) {
+	if !a.beginOperation() {
+		return KubernetesSession{}, errors.New("正在準備結束或更新，請稍後再試。")
+	}
+	defer a.endOperation()
 	// 該 cluster 未指定 namespace 時，套用設定中的全域預設 namespace 作為 session（操作用）預設。
 	// '*'（All Namespaces）為初始篩選偏好、非真實 namespace，不應寫入 session，故略過。
 	if strings.TrimSpace(request.Namespace) == "" {
@@ -86,6 +91,10 @@ func (a *App) GetKubernetesPodLogs(request KubernetesPodLogsRequest) (Kubernetes
 }
 
 func (a *App) StartKubernetesPodShell(request KubernetesPodShellStartRequest) (KubernetesPodShellSession, error) {
+	if !a.beginOperation() {
+		return KubernetesPodShellSession{}, errors.New("正在準備結束或更新，請稍後再試。")
+	}
+	defer a.endOperation()
 	return a.kubernetes.StartPodShell(a.contextOrBackground(), request,
 		func(sessionID, data string) {
 			runtime.EventsEmit(a.ctx, "kubernetes-shell-output", map[string]string{"sessionId": sessionID, "data": data})
@@ -109,14 +118,26 @@ func (a *App) CloseKubernetesPodShell(sessionID string) {
 }
 
 func (a *App) DeleteKubernetesPod(request KubernetesPodDeleteRequest) error {
+	if !a.beginOperation() {
+		return errors.New("正在準備結束或更新，請稍後再試。")
+	}
+	defer a.endOperation()
 	return a.kubernetes.DeletePod(a.contextOrBackground(), request)
 }
 
 func (a *App) DeleteKubernetesResource(request KubernetesResourceDeleteRequest) error {
+	if !a.beginOperation() {
+		return errors.New("正在準備結束或更新，請稍後再試。")
+	}
+	defer a.endOperation()
 	return a.kubernetes.DeleteResource(a.contextOrBackground(), request)
 }
 
 func (a *App) StartKubernetesPodPortForward(request KubernetesPodPortForwardRequest) (KubernetesPodPortForward, error) {
+	if !a.beginOperation() {
+		return KubernetesPodPortForward{}, errors.New("正在準備結束或更新，請稍後再試。")
+	}
+	defer a.endOperation()
 	return a.kubernetes.StartPodPortForward(a.contextOrBackground(), request)
 }
 
@@ -129,6 +150,10 @@ func (a *App) StopKubernetesPodPortForward(request KubernetesPodPortForwardStopR
 }
 
 func (a *App) StartKubernetesServicePortForward(request KubernetesServicePortForwardRequest) (KubernetesPodPortForward, error) {
+	if !a.beginOperation() {
+		return KubernetesPodPortForward{}, errors.New("正在準備結束或更新，請稍後再試。")
+	}
+	defer a.endOperation()
 	return a.kubernetes.StartServicePortForward(a.contextOrBackground(), request)
 }
 
@@ -137,13 +162,25 @@ func (a *App) ListKubernetesServicePortForwards(request KubernetesServicePortFor
 }
 
 func (a *App) CreateKubernetesResource(request KubernetesResourceCreateRequest) (KubernetesResourceCreateResult, error) {
+	if !a.beginOperation() {
+		return KubernetesResourceCreateResult{}, errors.New("正在準備結束或更新，請稍後再試。")
+	}
+	defer a.endOperation()
 	return a.kubernetes.CreateResource(a.contextOrBackground(), request)
 }
 
 func (a *App) UpdateKubernetesResource(request KubernetesResourceUpdateRequest) (KubernetesResourceCreateResult, error) {
+	if !a.beginOperation() {
+		return KubernetesResourceCreateResult{}, errors.New("正在準備結束或更新，請稍後再試。")
+	}
+	defer a.endOperation()
 	return a.kubernetes.UpdateResource(a.contextOrBackground(), request)
 }
 
 func (a *App) ScaleKubernetesResource(request KubernetesResourceScaleRequest) error {
+	if !a.beginOperation() {
+		return errors.New("正在準備結束或更新，請稍後再試。")
+	}
+	defer a.endOperation()
 	return a.kubernetes.ScaleResource(a.contextOrBackground(), request)
 }

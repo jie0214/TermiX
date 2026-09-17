@@ -2,6 +2,7 @@ package keychain
 
 import (
 	"context"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -19,6 +20,9 @@ import (
 func TestKeychainServiceRealStoreParsable(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("僅在 macOS 驗證真實 Keychain")
+	}
+	if os.Getenv("TERMIX_KEYCHAIN_INTEGRATION") != "1" {
+		t.Skip("設定 TERMIX_KEYCHAIN_INTEGRATION=1 才執行真實 Keychain 整合測試")
 	}
 	if _, err := exec.LookPath("security"); err != nil {
 		t.Skip("找不到 security 指令")

@@ -7,7 +7,7 @@ const vm = require('vm');
 
 const sourcePath = path.join(__dirname, '..', 'frontend', 'src', 'modules', 'terminal', 'TerminalAPI.js');
 const source = fs.readFileSync(sourcePath, 'utf8')
-  .replace(/^import[\s\S]*?from\s+['"].*?['"];\n/, '')
+  .replace(/^import(?:[\s\S]*?from\s+)?['"][^'"]+['"];\s*$/gm, '')
   .replace(/\bexport\s+const\s+TerminalAPI\s*=/, 'const TerminalAPI =')
   + '\nthis.TerminalAPI = TerminalAPI;';
 
@@ -66,6 +66,10 @@ const appBindings = {
 
 const sandbox = {
   console,
+  terminalStore: {
+    getState: () => ({ sessions: {} })
+  },
+  KubernetesAPI: {},
   window: {
     go: {
       app: {

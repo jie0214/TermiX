@@ -8,6 +8,7 @@ import (
 	pty "github.com/aymanbagabas/go-pty"
 	termixssh "github.com/jie0214/TermiX/backend/ssh"
 
+	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 	cryptossh "golang.org/x/crypto/ssh"
 )
 
@@ -33,10 +34,16 @@ type Manager struct {
 	creatingLocks   map[string]*sync.Mutex
 	creatingLocksMu sync.Mutex
 	connector       *termixssh.Connector
+	// 事件傳送與生命週期分離，讓測試能觀察實際關閉後送給前端的內容。
+	emitEvent func(context.Context, string, ...interface{})
 }
 
 type session struct {
 	key         string
+	host        string
+	alias       string
+	username    string
+	port        int
 	client      *cryptossh.Client
 	session     *cryptossh.Session
 	cmd         *pty.Cmd
@@ -46,6 +53,7 @@ type session struct {
 	mu          sync.Mutex
 	execMu      sync.Mutex
 	exitOnce    sync.Once
+	closeOnce   sync.Once
 	seq         uint64
 	isSudo      bool
 	isExecuting bool
@@ -68,6 +76,7 @@ func NewManager(connector *termixssh.Connector) *Manager {
 		pendingCancels:    make(map[string]struct{}),
 		creatingLocks:     make(map[string]*sync.Mutex),
 		connector:         connector,
+		emitEvent:         wailsruntime.EventsEmit,
 	}
 }
 

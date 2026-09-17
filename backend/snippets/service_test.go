@@ -2,9 +2,10 @@ package snippets
 
 import (
 	"path/filepath"
-	"github.com/jie0214/TermiX/shared/dto"
 	"testing"
 	"time"
+
+	"github.com/jie0214/TermiX/shared/dto"
 )
 
 type fakeExecutor struct {
@@ -26,6 +27,14 @@ func (f *fakeExecutor) ExecuteSnippet(config dto.SSHConfig, script string) dto.O
 		return result
 	}
 	return dto.OperationResult{Success: true}
+}
+
+func newServiceForTest(store string, exec executor, now func() time.Time) *Service {
+	return &Service{
+		store:    store,
+		executor: exec,
+		now:      now,
+	}
 }
 
 func TestSnippetCRUDAndHostStartupCleanup(t *testing.T) {

@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { KubernetesAPI } from '../KubernetesAPI.js';
-import { createKubernetesSessionStore } from '../KubernetesSessionStore.js';
+import { createKubernetesSessionStore as createStore } from '../KubernetesSessionStore.js';
+
+function createKubernetesSessionStore(api = {}) {
+  return createStore({
+    getResourceEvents: async () => ({ events: [], eventsError: '' }),
+    ...api
+  });
+}
 
 function cluster(id, namespace = 'default') {
   return {
@@ -579,7 +586,7 @@ test('開啟資源會載入明細並保存標準化識別資訊', async () => {
   assert.equal(state.selectedResource.name, 'api-0');
   assert.equal(state.selectedResource.namespace, 'monitoring');
   assert.equal(state.selectedResource.status, 'Running');
-  assert.equal(state.resourceDetail, detail);
+  assert.deepEqual(state.resourceDetail, { ...detail, events: [], eventsError: '' });
   assert.equal(state.detailLoading, false);
   assert.equal(state.detailError, '');
 });
@@ -624,7 +631,7 @@ test('切換資源後會忽略前一個資源的延遲回應', async () => {
   await oldLoad;
 
   assert.equal(store.getState().selectedResource.name, 'new-pod');
-  assert.deepEqual(store.getState().resourceDetail, { name: 'new-pod' });
+  assert.deepEqual(store.getState().resourceDetail, { name: 'new-pod', events: [], eventsError: '' });
 });
 
 test('載入 Pod Logs 會合併預設值並保存內容與選項', async () => {

@@ -9,6 +9,7 @@ const modelPath = path.join(__dirname, '..', 'frontend', 'src', 'modules', 'host
 const pagePath = path.join(__dirname, '..', 'frontend', 'src', 'modules', 'hostvault', 'HostListPage.js');
 
 const modelSource = fs.readFileSync(modelPath, 'utf8')
+  .replace(/^import(?:[\s\S]*?from\s+)?['"][^'"]+['"];\s*$/gm, '')
   .replace(/\bexport\s+const\s+([A-Z0-9_]+)\s*=/g, 'const $1 =')
   .replace(/\bexport\s+(?=function\s+)/g, '')
   + `
@@ -20,7 +21,7 @@ this.getSecretStatusLabel = getSecretStatusLabel;
 `;
 
 const pageSource = fs.readFileSync(pagePath, 'utf8')
-  .replace(/import[\s\S]*?from\s+['"][^'"]+['"];\n/g, '')
+  .replace(/^import(?:[\s\S]*?from\s+)?['"][^'"]+['"];\s*$/gm, '')
   .replace(/\bexport\s+class\s+HostListPage\b/, 'class HostListPage')
   + `
 this.bindSecretFieldState = bindSecretFieldState;
@@ -74,6 +75,14 @@ function assertEqual(actual, expected, message) {
 
 const sandbox = {
   console,
+  t: (key) => ({
+    'hostvault.showPassword': '顯示密碼',
+    'hostvault.hidePassword': '隱藏密碼',
+    'hostvault.secretStored': '已儲存',
+    'hostvault.secretUpdated': '已更新',
+    'hostvault.secretCleared': '已清除',
+    'hostvault.secretUnset': '未設定'
+  }[key] || key),
   localStorage: {
     getItem: () => null
   },
@@ -129,7 +138,7 @@ const renderedMarkup = sandbox.renderSecretInput(sudoField, {
   }
 }, 'placeholder="若填寫此欄位連線後將自動提權 sudo"');
 
-assertEqual(renderedMarkup.includes('class="no-drag secret-visibility-toggle"'), true, '密碼欄位 HTML 內含眼睛切換按鈕');
+assertEqual(/class="[^"]*\bsecret-visibility-toggle\b[^"]*"/.test(renderedMarkup), true, '密碼欄位 HTML 內含眼睛切換按鈕');
 assertEqual(renderedMarkup.includes('<svg'), true, '密碼欄位切換按鈕使用眼睛圖示');
 assertEqual(renderedMarkup.includes(`data-target="${sudoField.inputId}"`), true, '眼睛按鈕綁定對應的密碼欄位');
 

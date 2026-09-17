@@ -6,13 +6,14 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/jie0214/TermiX/backend/common"
 	"github.com/jie0214/TermiX/backend/knownhosts"
 	"github.com/jie0214/TermiX/shared/constants"
 	"github.com/jie0214/TermiX/shared/dto"
-	"strconv"
-	"strings"
-	"time"
 
 	"go.uber.org/fx"
 	cryptossh "golang.org/x/crypto/ssh"
@@ -275,37 +276,6 @@ func isPasswordPrompt(question string) bool {
 		}
 	}
 	return false
-}
-
-func scriptHeader(config dto.SSHConfig) string {
-	needsPassword := "false"
-	if NeedsSudoPassword(config) {
-		needsPassword = "true"
-	}
-
-	return fmt.Sprintf(`set -e
-NEEDS_SUDO=%s
-SUDO_PASSWORD=%s
-run_sudo() {
-  if [ "$NEEDS_SUDO" = "true" ]; then
-    printf '%%s\n' "$SUDO_PASSWORD" | sudo -S -p '' "$@"
-  else
-    sudo "$@"
-  fi
-}
-if [ "$NEEDS_SUDO" = "true" ]; then
-  echo '[Sudo] 驗證 sudo password'
-  if ! printf '%%s\n' "$SUDO_PASSWORD" | sudo -S -p '' -v; then
-    echo '[Sudo] sudo password 驗證失敗'
-    exit 1
-  fi
-  echo '[Sudo] sudo password 驗證成功'
-fi
-`, needsPassword, common.ShellQuote(config.SudoPassword))
-}
-
-func NeedsSudoPassword(config dto.SSHConfig) bool {
-	return !(config.Username == "ops" && config.AuthMode == constants.AuthModeKey)
 }
 
 func RunRemoteCommand(client *cryptossh.Client, command string, timeout time.Duration) (string, error) {

@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - dev
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Test private release script
+        if: ${{ hashFiles('tests/release_script_test.sh') != '' }}
+        run: bash tests/release_script_test.sh
+
+      - name: Install frontend dependencies
+        run: npm ci --ignore-scripts --prefix frontend
+
+      - name: Test macOS release safeguards
+        run: |
+          python3 tests/macos_release_test.py
+          python3 tests/appcast_test.py
+
+      - name: Audit frontend dependencies
+        run: npm audit --prefix frontend --audit-level=moderate
+
+      - name: Test frontend
+        run: npm test --prefix frontend
+
+      - name: Type-check frontend
+        run: npm run typecheck --prefix frontend
+
+      # main.go 會嵌入 frontend/dist，因此所有 Go 編譯型檢查前都必須先產生前端建置產物。
+      - name: Build frontend
+        run: npm run build --prefix frontend
+
+      - name: Check backend formatting
+        run: go fmt ./... && git diff --exit-code
+
+      - name: Test backend
+        run: go test ./...
+
+      - name: Vet backend
+        run: go vet ./...

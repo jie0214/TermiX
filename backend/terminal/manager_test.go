@@ -200,16 +200,6 @@ func TestSudoShellCommandForcesCurrentPtyPrompt(t *testing.T) {
 	}
 }
 
-func TestCommandOutputHasLineIgnoresPromptNoise(t *testing.T) {
-	output := "root@rsg:/home/user# \r\n\r\nroot\r\nroot@rsg:/home/user# \r\n"
-	if !commandOutputHasLine(output, "root") {
-		t.Fatalf("commandOutputHasLine() should detect standalone root in noisy PTY output: %q", output)
-	}
-	if commandOutputHasLine(output, "user") {
-		t.Fatalf("commandOutputHasLine() should require standalone line match: %q", output)
-	}
-}
-
 func TestStartSudoShellSucceedsWhenReadyArrivesWithoutPrompt(t *testing.T) {
 	writer := &recordingWriteCloser{}
 	terminal := &session{

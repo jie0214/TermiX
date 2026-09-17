@@ -1,3 +1,4 @@
+import { setupDropdowns } from '../../components/controls/dropdown.js';
 import { kubernetesStore } from './KubernetesStore.js';
 import { createKubernetesClusterDraft, validateKubernetesCluster } from './KubernetesModel.js';
 import { kubernetesSessionStore, KUBERNETES_SESSION_ID } from './KubernetesSessionStore.js';
@@ -139,6 +140,7 @@ export class KubernetesPage extends HTMLElement {
   }
 
   disconnectedCallback() {
+    this.dropdownAbortController?.abort();
     if (this.unsubscribe) this.unsubscribe();
     if (this.unsubscribeSession) this.unsubscribeSession();
   }
@@ -244,11 +246,11 @@ export class KubernetesPage extends HTMLElement {
             </dl>
           </div>
         </div>
-        <button type="button" class="no-drag vault-card-edit-btn kubernetes-edit-btn" data-cluster-id="${escapeHtml(cluster.id)}" title="${t('k8s.page.editClusterTitle')}" aria-label="${t('k8s.page.editClusterAria', { name: escapeHtml(cluster.displayName) })}">
+        <button type="button" class="no-drag vault-card-edit-btn kubernetes-edit-btn ui-button ui-button--quiet ui-button--icon" data-cluster-id="${escapeHtml(cluster.id)}" title="${t('k8s.page.editClusterTitle')}" aria-label="${t('k8s.page.editClusterAria', { name: escapeHtml(cluster.displayName) })}">
           ${renderEditIcon()}
         </button>
         <div class="kubernetes-card-footer">
-          <button type="button" class="no-drag kubernetes-connect-btn" data-cluster-id="${escapeHtml(cluster.id)}" ${sessionState.connectionStatus === 'connecting' ? 'disabled' : ''}>
+          <button type="button" class="no-drag kubernetes-connect-btn ui-button ui-button--secondary" data-cluster-id="${escapeHtml(cluster.id)}" ${sessionState.connectionStatus === 'connecting' ? 'disabled' : ''}>
             ${connecting ? t('k8s.page.connecting') : t('common.connect')}
           </button>
         </div>
@@ -276,14 +278,14 @@ export class KubernetesPage extends HTMLElement {
     const users = state.availableUsers || state.users || [];
     const isNew = !draft.id || draft.id.startsWith('k8s_draft_');
     return `
-      <aside id="kubernetesDrawer" class="vault-drawer kubernetes-drawer ${state.drawerOpen ? 'open' : ''}" aria-hidden="${state.drawerOpen ? 'false' : 'true'}">
+      <aside id="kubernetesDrawer" class="vault-drawer kubernetes-drawer ${state.drawerOpen ? 'open' : ''}" aria-hidden="${state.drawerOpen ? 'false' : 'true'}" ${state.drawerOpen ? '' : 'inert'}>
         <div class="settings-dialog kubernetes-drawer-dialog">
           <header class="settings-header kubernetes-drawer-header">
             <div>
               <span>Kubernetes</span>
               <h2>${isNew ? t('k8s.page.newCluster') : t('k8s.page.editClusterHeading')}</h2>
             </div>
-            <button type="button" id="closeKubernetesDrawer" class="no-drag kubernetes-close-btn" title="${t('k8s.page.closeTitle')}" aria-label="${t('k8s.page.closeDrawerAria')}">&times;</button>
+            <button type="button" id="closeKubernetesDrawer" class="no-drag kubernetes-close-btn ui-button ui-button--quiet ui-button--icon" title="${t('k8s.page.closeTitle')}" aria-label="${t('k8s.page.closeDrawerAria')}">&times;</button>
           </header>
           <form id="kubernetesClusterForm" class="kubernetes-form" novalidate>
             <div class="settings-body kubernetes-form-body">
@@ -309,8 +311,8 @@ export class KubernetesPage extends HTMLElement {
               </section>
             </div>
             <footer class="settings-footer kubernetes-form-footer">
-              <button type="button" id="cancelKubernetesDrawer" class="no-drag kubernetes-secondary-btn">${t('k8s.page.cancel')}</button>
-              <button type="submit" class="no-drag kubernetes-primary-btn" ${this.saving ? 'disabled' : ''}>${this.saving ? t('k8s.page.saving') : t('k8s.page.save')}</button>
+              <button type="button" id="cancelKubernetesDrawer" class="no-drag kubernetes-secondary-btn ui-button ui-button--secondary">${t('k8s.page.cancel')}</button>
+              <button type="submit" class="no-drag kubernetes-primary-btn ui-button ui-button--primary" ${this.saving ? 'disabled' : ''}>${this.saving ? t('k8s.page.saving') : t('k8s.page.save')}</button>
             </footer>
           </form>
         </div>
@@ -325,38 +327,30 @@ export class KubernetesPage extends HTMLElement {
     const loadError = state.loadError || sessionState.loadError || '';
     const activeSort = CLUSTER_SORT_OPTIONS.find(o => o.by === state.sortBy && o.dir === state.sortDir) || CLUSTER_SORT_OPTIONS[0];
     const sortItemsHtml = CLUSTER_SORT_OPTIONS.map(o =>
-      `<button type="button" class="no-drag termix-dropdown-item${o === activeSort ? ' active' : ''}" data-sort-by="${o.by}" data-sort-dir="${o.dir}">${o.label}</button>`
+      `<button type="button" class="no-drag termix-dropdown-item${o === activeSort ? ' active' : ''} ui-button ui-button--menu" data-sort-by="${o.by}" data-sort-dir="${o.dir}" aria-pressed="${o === activeSort}"><span>${o.label}</span><i class="ti ti-check menu-check" aria-hidden="true"></i></button>`
     ).join('');
     this.innerHTML = `
       <div class="kubernetes-page-layout">
         <main class="kubernetes-main-board">
+          <div class="vault-commandbar">
           <div class="vault-search-bar kubernetes-search-bar">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="search-icon" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             <input class="no-drag" id="kubernetesSearchInput" type="search" placeholder="${t('k8s.page.searchPlaceholder')}" autocomplete="off" value="${escapeHtml(this.searchQuery)}" aria-label="${t('k8s.page.searchAria')}">
           </div>
-          <div class="vault-toolbar kubernetes-view-controls" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex: 0 0 auto;">
-            <div style="display: flex; gap: 8px; align-items: center;">
-              <button type="button" id="reloadKubernetesBtn" class="no-drag kubernetes-secondary-btn" ${state.isLoading ? 'disabled' : ''}>${state.isLoading ? t('k8s.page.loading') : t('k8s.page.reload')}</button>
-              <button type="button" id="newKubernetesClusterBtn" class="no-drag kubernetes-primary-btn">${t('k8s.page.newClusterButton')}</button>
-            </div>
-            <div style="display: flex; gap: 8px; align-items: center;">
+          <div class="vault-toolbar kubernetes-view-controls">
+              <button type="button" id="newKubernetesClusterBtn" class="vault-action no-drag kubernetes-primary-btn ui-button ui-button--primary"><i class="ti ti-plus" aria-hidden="true"></i><span>${t('hostvault.create')}</span></button>
             <div class="termix-dropdown no-drag">
-              <button class="no-drag termix-dropdown-trigger" type="button" id="kubernetesSortBtn" title="Sort clusters">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M6 12h12M10 18h4"/></svg>
-                ${activeSort.label} ▼
-              </button>
-              <div class="termix-dropdown-menu" style="right: 0; left: auto;">
+              <button type="button" id="kubernetesSortBtn" class="vault-action termix-dropdown-trigger ui-button ui-button--quiet" aria-expanded="false"><i class="ti ti-adjustments-horizontal" aria-hidden="true"></i><span>${t('hostvault.view')}</span><i class="ti ti-chevron-down action-chevron" aria-hidden="true"></i></button>
+              <div class="termix-dropdown-menu vault-action-menu">
+                <div class="vault-menu-label">${t('hostvault.layout')}</div>
+                <div class="vault-view-toggle no-drag" role="group" aria-label="${t('hostvault.layout')}"><button type="button" class="no-drag vault-view-btn ui-button ui-button--choice" data-view-mode="grid" aria-pressed="${state.viewMode === 'grid'}"><i class="ti ti-layout-grid" aria-hidden="true"></i><span>${t('hostvault.gridView')}</span></button>
+                <button type="button" class="no-drag vault-view-btn ui-button ui-button--choice" data-view-mode="list" aria-pressed="${state.viewMode === 'list'}"><i class="ti ti-list" aria-hidden="true"></i><span>${t('hostvault.listView')}</span></button></div>
+                <div class="vault-menu-divider"></div>
+                <div class="vault-menu-label">${t('hostvault.sort')}</div>
                 ${sortItemsHtml}
               </div>
             </div>
-            <div class="vault-view-toggle no-drag">
-              <button type="button" class="no-drag vault-view-btn" data-view-mode="grid" title="Grid view" aria-label="Grid view" aria-pressed="${state.viewMode === 'grid'}" style="background: ${state.viewMode === 'grid' ? 'var(--color-primary)' : 'transparent'}; color: ${state.viewMode === 'grid' ? '#fff' : 'var(--color-primary)'};">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-              </button>
-              <button type="button" class="no-drag vault-view-btn" data-view-mode="list" title="List view" aria-label="List view" aria-pressed="${state.viewMode === 'list'}" style="border-left: 1px solid var(--color-primary); background: ${state.viewMode === 'list' ? 'var(--color-primary)' : 'transparent'}; color: ${state.viewMode === 'list' ? '#fff' : 'var(--color-primary)'};">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-              </button>
-            </div>
+              <button type="button" id="reloadKubernetesBtn" class="vault-action vault-action-icon ui-button--icon no-drag kubernetes-secondary-btn ui-button ui-button--quiet" ${state.isLoading ? 'disabled' : ''} title="${t('k8s.page.reload')}" aria-label="${t('k8s.page.reload')}"><i class="ti ti-rotate-2" aria-hidden="true"></i></button>
             </div>
           </div>
           ${loadError ? `<div class="kubernetes-load-error" role="alert"><strong>${t('k8s.page.loadFailed')}</strong><span>${escapeHtml(loadError)}</span></div>` : ''}
@@ -420,21 +414,7 @@ export class KubernetesPage extends HTMLElement {
       kubernetesStore.getState().openCreateDrawer();
     });
 
-    // 排序下拉：trigger 開合 + 點擊外部關閉 + 選項套用
-    const sortTrigger = this.querySelector('#kubernetesSortBtn');
-    if (sortTrigger) {
-      sortTrigger.addEventListener('click', (event) => {
-        event.stopPropagation();
-        const menu = sortTrigger.nextElementSibling;
-        menu?.classList.toggle('show');
-      });
-    }
-    if (!this._k8sDropdownDocHandler) {
-      this._k8sDropdownDocHandler = () => {
-        this.querySelectorAll('.termix-dropdown-menu').forEach(menu => menu.classList.remove('show'));
-      };
-      document.addEventListener('click', this._k8sDropdownDocHandler);
-    }
+    setupDropdowns(this);
     this.querySelectorAll('[data-sort-by]').forEach(item => {
       item.addEventListener('click', () => {
         kubernetesStore.getState().setClusterSort(item.getAttribute('data-sort-by'), item.getAttribute('data-sort-dir'));

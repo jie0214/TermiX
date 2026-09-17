@@ -1,6 +1,7 @@
 import '@xterm/xterm/css/xterm.css';
 
 import '../style.css';
+import '../components/controls/button-system.css';
 import { installBrowserWailsMock } from '../platform/wails';
 import { installGlobalErrorHandlers } from './globalErrorOverlay';
 import { installInteractionInterception } from './interactionInterception';

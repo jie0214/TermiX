@@ -1,46 +1,12 @@
-// 全域 Storage Quota 自我修復 Monkey Patch 防護機制 (相容 WebKit 唯讀屬性限制)
-(function() {
-  const originalSetItem = Storage.prototype.setItem;
-  Storage.prototype.setItem = function(key, value) {
-    try {
-      originalSetItem.call(this, key, value);
-    } catch (e) {
-      if (e.name === 'QuotaExceededError' || e.code === 22 || e.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
-        console.warn('localStorage quota exceeded. Auto-recovering storage space...');
-
-        if (key !== 'termix-session-logs') {
-          throw e;
-        }
-
-        try {
-          const logs = JSON.parse(value);
-          if (!Array.isArray(logs)) throw e;
-          const compactLogs = logs.slice(0, 15).map(log => ({
-            ...log,
-            outputHtml: log.outputHtml && log.outputHtml.length > 5000
-              ? log.outputHtml.slice(log.outputHtml.length - 5000)
-              : (log.outputHtml || '')
-          }));
-          originalSetItem.call(this, key, JSON.stringify(compactLogs));
-        } catch (finalErr) {
-          console.error('localStorage quota exceeded after log compaction:', finalErr);
-          throw finalErr;
-        }
-      } else {
-        throw e;
-      }
-    }
-  };
-})();
-
 import { terminalStore } from './modules/terminal/TerminalStore';
 import { TerminalAPI } from './modules/terminal/TerminalAPI';
 import { cleanupFrontendSession, markSessionUserClosed, consumeUserClosed } from './modules/terminal/TerminalLifecycle';
+import { compactStoredSessionLogs } from './modules/terminal/SessionLogStore';
 import { isReconnectableSession, beginReconnect } from './modules/terminal/TerminalReconnect';
 import { executeFunctionBox } from './modules/controlpanel/ControlPanelRuntime';
 import { showToast } from './components/feedback/toast';
 import { confirmDialog } from './components/feedback/confirmDialog';
-import { getControlPanelDropPosition, getControlPanelThemeStyle, reorderControlPanelComponents } from './modules/controlpanel/ControlPanelLayout';
+import { getControlPanelDropPosition, getControlPanelThemeStyle, reorderControlPanelComponents, sanitizeComponentColor } from './modules/controlpanel/ControlPanelLayout';
 import { themeStore, UI_SCALE_OPTIONS } from './stores/ThemeStore';
 import { t } from './i18n/index.ts';
 import { matchShortcut, resolveShortcuts, detectPlatform, isWindows, eventToBinding, bindingToTokens, SHORTCUT_ACTIONS, TAB_INDEX_ACTION_ID } from './domain/shortcuts.ts';
@@ -51,7 +17,15 @@ import { pasteSnippetToSession, runSnippetInSession } from './modules/snippets/S
 import { kubernetesSessionStore, KUBERNETES_SESSION_ID } from './modules/kubernetes/KubernetesSessionStore';
 import { defaultKubeconfigPath } from './modules/kubernetes/KubernetesPath.js';
 import { getAppBinding } from './platform/wails/bindings.ts';
-import { onWailsEvent, getClipboardText, setClipboardText } from './platform/wails/events.ts';
+import {
+  getClipboardText,
+  hasWailsWindowControls,
+  minimiseWailsWindow,
+  onWailsEvent,
+  quitWailsApplication,
+  setClipboardText,
+  toggleWailsWindowMaximise,
+} from './platform/wails/events.ts';
 import { mountLegacyRouter } from './routing/legacyRouter.js';
 import './modules/hostvault/HostListPage';
 import './modules/terminal/TerminalPage';
@@ -69,6 +43,10 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+function safeDomToken(value) {
+  return String(value || '').replace(/[^a-zA-Z0-9_-]/g, '_');
 }
 
 // 快捷鍵派發用：這些動作僅在終端聚焦時才攔截（其餘情境放行原生行為）。
@@ -143,18 +121,20 @@ function renderSwitchBoxControl(comp, stateValue = 'loading') {
   const isUnknown = stateValue === 'unknown';
   const stateText = isA ? stateA.label : isB ? stateB.label : isUnknown ? 'Unknown State' : 'Loading';
   const disabled = stateValue === 'loading' || isUnknown;
+  const componentId = escapeHtml(comp.id);
+  const componentColor = sanitizeComponentColor(comp.color);
 
   return `
     <div class="switch-box-body" style="display: flex; flex-direction: column; gap: 10px;">
-      <div class="switch-box-status" data-id="${comp.id}" style="font-size: 11.5px; color: ${isUnknown ? '#f59e0b' : 'var(--color-text-muted)'}; font-weight: 700;">
-        ${isUnknown ? 'Unknown: ' : ''}${stateText}
+      <div class="switch-box-status" data-id="${componentId}" style="font-size: 11.5px; color: ${isUnknown ? '#f59e0b' : 'var(--color-text-muted)'}; font-weight: 700;">
+        ${isUnknown ? 'Unknown: ' : ''}${escapeHtml(stateText)}
       </div>
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
-        <button type="button" class="no-drag switch-box-target-btn" data-id="${comp.id}" data-target="A" ${disabled || isA ? 'disabled' : ''} style="min-height: 28px; border: 1px solid ${isA ? (comp.color || 'var(--color-primary)') : 'var(--color-border)'}; background: ${isA ? (comp.color || 'var(--color-primary)') : 'transparent'}; color: ${isA ? '#fff' : 'var(--color-text)'}; border-radius: 4px; font-size: 11px; font-weight: 700; cursor: ${disabled || isA ? 'default' : 'pointer'};">
-          ${stateA.label || 'State A'}
+        <button type="button" class="no-drag switch-box-target-btn ui-button ui-button--state" data-id="${componentId}" data-target="A" ${disabled || isA ? 'disabled' : ''} style="min-height: 28px; border: 1px solid ${isA ? componentColor : 'var(--color-border)'}; background: ${isA ? componentColor : 'transparent'}; color: ${isA ? '#fff' : 'var(--color-text)'}; border-radius: 4px; font-size: 11px; font-weight: 700; cursor: ${disabled || isA ? 'default' : 'pointer'};">
+          ${escapeHtml(stateA.label || 'State A')}
         </button>
-        <button type="button" class="no-drag switch-box-target-btn" data-id="${comp.id}" data-target="B" ${disabled || isB ? 'disabled' : ''} style="min-height: 28px; border: 1px solid ${isB ? (comp.color || 'var(--color-primary)') : 'var(--color-border)'}; background: ${isB ? (comp.color || 'var(--color-primary)') : 'transparent'}; color: ${isB ? '#fff' : 'var(--color-text)'}; border-radius: 4px; font-size: 11px; font-weight: 700; cursor: ${disabled || isB ? 'default' : 'pointer'};">
-          ${stateB.label || 'State B'}
+        <button type="button" class="no-drag switch-box-target-btn ui-button ui-button--state" data-id="${componentId}" data-target="B" ${disabled || isB ? 'disabled' : ''} style="min-height: 28px; border: 1px solid ${isB ? componentColor : 'var(--color-border)'}; background: ${isB ? componentColor : 'transparent'}; color: ${isB ? '#fff' : 'var(--color-text)'}; border-radius: 4px; font-size: 11px; font-weight: 700; cursor: ${disabled || isB ? 'default' : 'pointer'};">
+          ${escapeHtml(stateB.label || 'State B')}
         </button>
       </div>
     </div>
@@ -207,26 +187,7 @@ export class TermixApp extends HTMLElement {
   }
 
   connectedCallback() {
-    // 檢查 localStorage 佔用，主動修剪過大歷史日誌，預先防範 QuotaExceeded 威脅
-    try {
-      const logsData = localStorage.getItem('termix-session-logs');
-      if (logsData && logsData.length > 500000) { // 超過 500KB 即啟動自動修剪
-        const logs = JSON.parse(logsData);
-        if (Array.isArray(logs)) {
-          // 只保留最近的 15 條，且修剪每條的 outputHtml 長度
-          const truncatedLogs = logs.slice(-15);
-          truncatedLogs.forEach(log => {
-            if (log.outputHtml && log.outputHtml.length > 15000) {
-              log.outputHtml = log.outputHtml.substring(log.outputHtml.length - 15000) + "\n(日誌過長，已自動修剪以確保系統安全)\n";
-            }
-          });
-          localStorage.removeItem('termix-session-logs'); // 先刪除釋放空間，保障寫入安全
-          localStorage.setItem('termix-session-logs', JSON.stringify(truncatedLogs));
-        }
-      }
-    } catch (e) {
-      console.warn('Failed to perform active telemetry on logs storage', e);
-    }
+    compactStoredSessionLogs();
 
     themeStore.getState().loadSettings();
     snippetStore.getState().loadSnippets();
@@ -306,11 +267,11 @@ export class TermixApp extends HTMLElement {
           if (logsContainer) {
             try {
               const logs = JSON.parse(localStorage.getItem('termix-tab-debug') || '[]');
-              logsContainer.innerHTML = logs.map((log, idx) => {
+              logsContainer.textContent = logs.map((log, idx) => {
                 return `[${idx+1}] [${log.time}] val: ${log.value}\n   action: ${log.action}\n   stack: ${log.stack}`;
               }).join('\n\n') || t('app.settings.noDebugLogs');
             } catch (e) {
-              logsContainer.innerHTML = t('app.settings.logReadError', { msg: e.message });
+              logsContainer.textContent = t('app.settings.logReadError', { msg: e.message });
             }
           }
         }
@@ -360,9 +321,9 @@ export class TermixApp extends HTMLElement {
       const key = data && data.key;
       if (!key) return;
 
-      // 判斷此次關閉是否為使用者主動發起（closeWorkspace / closePane 會預先標記）。
-      // 若非使用者主動關閉，視為遠端斷線（SSH 連線中斷）。
-      const wasUserClosed = consumeUserClosed(key);
+      // 原生選單由後端傳回主動關閉原因；前端標記仍需消耗，避免殘留。
+      const frontendClosed = consumeUserClosed(key);
+      const wasUserClosed = data.reason === "user" || frontendClosed;
 
       // A. 使用者主動關閉 → 維持原本移除流程完全不變。
       if (wasUserClosed) {
@@ -451,6 +412,7 @@ export class TermixApp extends HTMLElement {
   }
 
   disconnectedCallback() {
+    this.dismissWorkspaceMenu?.();
     if (this.unsubscribeTerminal) this.unsubscribeTerminal();
     if (this.unsubscribeTheme) this.unsubscribeTheme();
     if (this.unsubscribeKubernetesSession) this.unsubscribeKubernetesSession();
@@ -467,7 +429,7 @@ export class TermixApp extends HTMLElement {
     const sidebarEditMode = this.controlSidebarTab === 'snippets' ? this.snippetPanelEditMode : this.controlPanelEditMode;
     const sidebarEditTitle = sidebarEditMode ? t('app.sidebar.finishArrange') : t('app.sidebar.editArrange');
     const useCustomMacWindowControls = detectPlatform() === 'mac'
-      && typeof window.runtime?.WindowMinimise === 'function';
+      && hasWailsWindowControls();
     this.innerHTML = `
       <main class="shell" style="display: flex; flex-direction: column; height: calc(100vh / var(--ui-scale, 1)); width: calc(100vw / var(--ui-scale, 1)); overflow: hidden; background: var(--bg-main);">
         <!-- 頂部 TOPBAR -->
@@ -486,7 +448,7 @@ export class TermixApp extends HTMLElement {
             <!-- 加大拖曳視窗的範圍：右側自適應空白拖曳區 -->
             <div class="topbar-drag-handle" style="flex: 1 1 auto; height: 100%; min-width: 20px; --wails-draggable: drag; cursor: default;"></div>
           </div>
-          <button type="button" id="toggleControlSidebar" class="no-drag session-bar-control-btn" title="${t('app.topbar.toggleControlPanel')}" style="background: transparent; border: none; color: var(--color-subtext); cursor: pointer; padding: 6px; display: flex; align-items: center; justify-content: center; margin: 0; --wails-draggable: no-drag;">
+          <button type="button" id="toggleControlSidebar" class="no-drag session-bar-control-btn ui-button ui-button--quiet ui-button--icon" title="${t('app.topbar.toggleControlPanel')}" style="cursor: pointer; padding: 6px; display: flex; align-items: center; justify-content: center; margin: 0; --wails-draggable: no-drag;">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="3" y="3" width="18" height="18" rx="2" />
               <line x1="15" y1="3" x2="15" y2="21" />
@@ -503,7 +465,7 @@ export class TermixApp extends HTMLElement {
           <section id="controlSidebar" class="panel control-panel collapsed" style="display: flex; flex-direction: column;">
             <div class="control-sidebar-header" style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; border-bottom: 1px solid var(--color-border); margin-bottom: 10px; flex: 0 0 auto;">
               <h2 style="font-size: 13px; font-weight: 700; color: var(--color-text); margin: 0;">${t('app.sidebar.console')}</h2>
-              <button type="button" id="toggleControlPanelEditMode" class="no-drag control-panel-edit-btn ${sidebarEditMode ? 'active' : ''}" title="${sidebarEditTitle}" aria-pressed="${sidebarEditMode ? 'true' : 'false'}" style="background: transparent; border: none; padding: 6px; border-radius: 4px; color: ${sidebarEditMode ? 'var(--color-primary)' : 'var(--color-subtext)'}; display: inline-flex; align-items: center; justify-content: center; cursor: pointer;">
+              <button type="button" id="toggleControlPanelEditMode" class="no-drag control-panel-edit-btn ${sidebarEditMode ? 'active' : ''} ui-button ui-button--quiet ui-button--icon" title="${sidebarEditTitle}" aria-pressed="${sidebarEditMode ? 'true' : 'false'}" style="padding: 6px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer;">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                   <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
@@ -511,8 +473,8 @@ export class TermixApp extends HTMLElement {
               </button>
             </div>
             <div class="control-sidebar-tabs" style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 14px; flex: 0 0 auto;">
-              <button type="button" class="no-drag control-sidebar-tab-btn" data-tab="control-panel" aria-pressed="${this.controlSidebarTab === 'control-panel' ? 'true' : 'false'}" style="min-height: 30px; border: 1px solid ${this.controlSidebarTab === 'control-panel' ? 'var(--color-primary)' : 'var(--color-border)'}; background: ${this.controlSidebarTab === 'control-panel' ? 'color-mix(in srgb, var(--color-primary) 18%, transparent)' : 'transparent'}; color: ${this.controlSidebarTab === 'control-panel' ? 'var(--color-primary)' : 'var(--color-text-muted)'}; border-radius: 5px; font-size: 11px; font-weight: 800; cursor: pointer;">CONTROL PANEL</button>
-              <button type="button" class="no-drag control-sidebar-tab-btn" data-tab="snippets" aria-pressed="${this.controlSidebarTab === 'snippets' ? 'true' : 'false'}" style="min-height: 30px; border: 1px solid ${this.controlSidebarTab === 'snippets' ? 'var(--color-primary)' : 'var(--color-border)'}; background: ${this.controlSidebarTab === 'snippets' ? 'color-mix(in srgb, var(--color-primary) 18%, transparent)' : 'transparent'}; color: ${this.controlSidebarTab === 'snippets' ? 'var(--color-primary)' : 'var(--color-text-muted)'}; border-radius: 5px; font-size: 11px; font-weight: 800; cursor: pointer;">SNIPPETS</button>
+              <button type="button" class="no-drag control-sidebar-tab-btn ui-button ui-button--tab" data-tab="control-panel" aria-pressed="${this.controlSidebarTab === 'control-panel' ? 'true' : 'false'}" style="min-height: 30px; cursor: pointer;">CONTROL PANEL</button>
+              <button type="button" class="no-drag control-sidebar-tab-btn ui-button ui-button--tab" data-tab="snippets" aria-pressed="${this.controlSidebarTab === 'snippets' ? 'true' : 'false'}" style="min-height: 30px; cursor: pointer;">SNIPPETS</button>
             </div>
             <!-- 主機自訂資訊卡 -->
             <div id="hostCustomInfoContainer" class="hidden" style="border: 1px solid var(--color-border); border-radius: 6px; padding: 12px 14px; background: color-mix(in srgb, var(--color-primary) 5%, transparent); margin-bottom: 14px; flex: 0 0 auto;">
@@ -533,16 +495,16 @@ export class TermixApp extends HTMLElement {
         <div class="settings-dialog settings-dialog--tabbed" style="width: min(660px, 100%); height: min(600px, 86vh); background: var(--dialog-bg); border: 1px solid var(--color-border); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column;">
           <div class="settings-header" style="padding: 16px 20px; border-bottom: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center;">
             <h2 style="font-weight: 700; font-size: 14px; color: var(--color-text); margin: 0;">${t('app.settings.title')}</h2>
-            <button type="button" id="closeGlobalSettings" class="no-drag btn-xs" style="background: transparent; border: none; cursor: pointer; color: var(--color-subtext); font-size: 16px;">&times;</button>
+            <button type="button" id="closeGlobalSettings" class="no-drag btn-xs ui-button ui-button--quiet ui-button--icon" style="cursor: pointer;">&times;</button>
           </div>
           <div class="settings-main" style="display: flex; min-height: 0; flex: 1;">
             <nav class="settings-rail no-drag" aria-label="${t('app.settings.title')}" role="tablist">
-              <button type="button" class="settings-tab active no-drag" data-settings-tab="appearance" role="tab" aria-selected="true"><i class="ti ti-palette" aria-hidden="true"></i><span>${t('app.settings.tab.appearance')}</span></button>
-              <button type="button" class="settings-tab no-drag" data-settings-tab="terminal" role="tab" aria-selected="false"><i class="ti ti-terminal-2" aria-hidden="true"></i><span>${t('app.settings.tab.terminal')}</span></button>
-              <button type="button" class="settings-tab no-drag" data-settings-tab="shortcuts" role="tab" aria-selected="false"><i class="ti ti-keyboard" aria-hidden="true"></i><span>${t('app.settings.tab.shortcuts')}</span></button>
-              <button type="button" class="settings-tab no-drag" data-settings-tab="kubernetes" role="tab" aria-selected="false"><i class="ti ti-cloud" aria-hidden="true"></i><span>${t('app.settings.tab.kubernetes')}</span></button>
-              <button type="button" class="settings-tab no-drag" data-settings-tab="general" role="tab" aria-selected="false"><i class="ti ti-settings" aria-hidden="true"></i><span>${t('app.settings.tab.general')}</span></button>
-              <button type="button" class="settings-tab no-drag" data-settings-tab="advanced" role="tab" aria-selected="false"><i class="ti ti-tool" aria-hidden="true"></i><span>${t('app.settings.tab.advanced')}</span></button>
+              <button type="button" class="settings-tab active no-drag ui-button ui-button--tab" data-settings-tab="appearance" role="tab" aria-selected="true"><i class="ti ti-palette" aria-hidden="true"></i><span>${t('app.settings.tab.appearance')}</span></button>
+              <button type="button" class="settings-tab no-drag ui-button ui-button--tab" data-settings-tab="terminal" role="tab" aria-selected="false"><i class="ti ti-terminal-2" aria-hidden="true"></i><span>${t('app.settings.tab.terminal')}</span></button>
+              <button type="button" class="settings-tab no-drag ui-button ui-button--tab" data-settings-tab="shortcuts" role="tab" aria-selected="false"><i class="ti ti-keyboard" aria-hidden="true"></i><span>${t('app.settings.tab.shortcuts')}</span></button>
+              <button type="button" class="settings-tab no-drag ui-button ui-button--tab" data-settings-tab="kubernetes" role="tab" aria-selected="false"><i class="ti ti-cloud" aria-hidden="true"></i><span>${t('app.settings.tab.kubernetes')}</span></button>
+              <button type="button" class="settings-tab no-drag ui-button ui-button--tab" data-settings-tab="general" role="tab" aria-selected="false"><i class="ti ti-settings" aria-hidden="true"></i><span>${t('app.settings.tab.general')}</span></button>
+              <button type="button" class="settings-tab no-drag ui-button ui-button--tab" data-settings-tab="advanced" role="tab" aria-selected="false"><i class="ti ti-tool" aria-hidden="true"></i><span>${t('app.settings.tab.advanced')}</span></button>
             </nav>
             <div class="settings-content">
               <section data-settings-panel="appearance" role="tabpanel">
@@ -553,9 +515,9 @@ export class TermixApp extends HTMLElement {
                   <div style="display: flex; flex-direction: column; text-align: left; gap: 8px; font-size: 12px; color: var(--color-subtext);">
                     <span>${t('app.settings.textSize')}</span>
                     <div style="display: grid; grid-template-columns: 34px 1fr 34px; gap: 8px; align-items: center;">
-                      <button type="button" id="terminalTextSizeMinus" class="no-drag" style="height: 34px; border: 1px solid var(--color-border); background: transparent; color: var(--color-text); border-radius: 6px; font-weight: 700; cursor: pointer;">-</button>
+                      <button type="button" id="terminalTextSizeMinus" class="no-drag ui-button ui-button--quiet ui-button--icon" style="height: 34px; cursor: pointer;">-</button>
                       <input type="number" id="terminalTextSizeInput" class="no-drag" min="9" max="24" step="0.5" value="${themeStore.getState().terminalTextSize}" style="height: 34px; box-sizing: border-box; background: var(--input-bg); border: 1px solid var(--input-border, var(--color-border)); padding: 8px 12px; border-radius: 6px; color: var(--color-text); text-align: center; font-weight: 700;">
-                      <button type="button" id="terminalTextSizePlus" class="no-drag" style="height: 34px; border: 1px solid var(--color-border); background: transparent; color: var(--color-text); border-radius: 6px; font-weight: 700; cursor: pointer;">+</button>
+                      <button type="button" id="terminalTextSizePlus" class="no-drag ui-button ui-button--quiet ui-button--icon" style="height: 34px; cursor: pointer;">+</button>
                     </div>
                   </div>
                   <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
@@ -574,7 +536,7 @@ export class TermixApp extends HTMLElement {
                     ${t('app.settings.k8s.kubeconfigPath')}
                     <div style="display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center;">
                       <input type="text" id="kubeconfigPathInput" class="no-drag" value="${escapeHtml(themeStore.getState().kubeconfigPath || defaultKubeconfigPath())}" placeholder="${escapeHtml(defaultKubeconfigPath())}" autocomplete="off" spellcheck="false" style="height: 34px; box-sizing: border-box; background: var(--input-bg); border: 1px solid var(--input-border, var(--color-border)); padding: 8px 12px; border-radius: 6px; color: var(--color-text); font-family: monospace;">
-                      <button type="button" id="kubeconfigBrowseBtn" class="no-drag" style="height: 34px; padding: 0 14px; border: 1px solid var(--color-border); background: transparent; color: var(--color-text); border-radius: 6px; cursor: pointer; font-size: 12px;">${t('app.settings.k8s.browse')}</button>
+                      <button type="button" id="kubeconfigBrowseBtn" class="no-drag ui-button ui-button--secondary" style="height: 34px; padding: 0 14px; cursor: pointer;">${t('app.settings.k8s.browse')}</button>
                     </div>
                     <small style="color: var(--color-text-muted);">${t('app.settings.k8s.kubeconfigHint', { path: defaultKubeconfigPath() })}</small>
                   </label>
@@ -615,8 +577,8 @@ export class TermixApp extends HTMLElement {
             </div>
           </div>
           <div class="settings-footer" style="padding: 16px 20px; border-top: 1px solid var(--color-border); display: flex; justify-content: flex-end; gap: 10px;">
-            <button type="button" id="cancelGlobalSettings" class="no-drag" style="padding: 6px 14px; background: transparent; border: 1px solid var(--color-border); color: var(--color-text); border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 12px;">${t('common.cancel')}</button>
-            <button type="button" id="saveGlobalSettings" class="no-drag primary" style="padding: 6px 14px; background: var(--color-primary); border: none; color: #fff; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 12px;">${t('app.settings.save')}</button>
+            <button type="button" id="cancelGlobalSettings" class="no-drag ui-button ui-button--secondary" style="padding: 6px 14px; cursor: pointer;">${t('common.cancel')}</button>
+            <button type="button" id="saveGlobalSettings" class="no-drag primary ui-button ui-button--primary" style="padding: 6px 14px; cursor: pointer;">${t('app.settings.save')}</button>
           </div>
         </div>
       </div>
@@ -630,25 +592,25 @@ export class TermixApp extends HTMLElement {
 
     // 無邊框視窗沒有原生標題列，於 Session 列右側空白拖曳區提供與 macOS 一致的
     // 雙擊縮放行為。僅綁定空白區，避免干擾 Session Tab 與其操作按鈕。
-    if (dragHandle && typeof window.runtime?.WindowToggleMaximise === 'function') {
+    if (dragHandle && hasWailsWindowControls()) {
       dragHandle.addEventListener('dblclick', (event) => {
         event.preventDefault();
-        window.runtime.WindowToggleMaximise();
+        toggleWailsWindowMaximise();
       });
     }
 
-    if (!controls || !window.runtime) return;
+    if (!controls || !hasWailsWindowControls()) return;
 
     document.documentElement.classList.add('frameless-macos');
 
     controls.querySelector('[data-window-control="close"]')?.addEventListener('click', () => {
-      window.runtime.Quit();
+      quitWailsApplication();
     });
     controls.querySelector('[data-window-control="minimise"]')?.addEventListener('click', () => {
-      window.runtime.WindowMinimise();
+      minimiseWailsWindow();
     });
     controls.querySelector('[data-window-control="zoom"]')?.addEventListener('click', () => {
-      window.runtime.WindowToggleMaximise();
+      toggleWailsWindowMaximise();
     });
   }
 
@@ -675,7 +637,7 @@ export class TermixApp extends HTMLElement {
 
     // 1. Vaults 固定的最左側標籤
     let tabsHtml = `
-      <div class="session-tab no-drag ${isVaultsActive ? 'active' : ''}" data-workspace-id="host-tab" style="font-weight: 700;">
+      <div class="session-tab ui-button ui-button--tab no-drag ${isVaultsActive ? 'active' : ''}" data-workspace-id="host-tab" style="font-weight: 700;">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>
           <rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
@@ -690,12 +652,12 @@ export class TermixApp extends HTMLElement {
     if (isKubernetesOpen) {
       const clusterLabel = kubernetesState.connectedCluster?.displayName || kubernetesState.connectedCluster?.contextName || 'Kubernetes';
       tabsHtml += `
-        <div class="session-tab kubernetes-session-tab no-drag ${isKubernetesActive ? 'active' : ''}" data-workspace-id="${KUBERNETES_SESSION_ID}" title="Kubernetes：${escapeHtml(clusterLabel)}">
+        <div class="session-tab kubernetes-session-tab ui-button ui-button--tab no-drag ${isKubernetesActive ? 'active' : ''}" data-workspace-id="${KUBERNETES_SESSION_ID}" title="Kubernetes：${escapeHtml(clusterLabel)}">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M12 2.5 20 7v10l-8 4.5L4 17V7l8-4.5z"/><circle cx="12" cy="12" r="2.5"/>
           </svg>
           <span>${escapeHtml(clusterLabel)}</span>
-          <button type="button" class="no-drag close-tab kubernetes-close-tab" data-workspace-id="${KUBERNETES_SESSION_ID}" title="${t('app.tab.closeKubernetes')}">&times;</button>
+          <button type="button" class="no-drag close-tab kubernetes-close-tab ui-button ui-button--quiet ui-button--icon ui-button--compact" data-workspace-id="${KUBERNETES_SESSION_ID}" title="${t('app.tab.closeKubernetes')}">&times;</button>
         </div>
       `;
     }
@@ -703,17 +665,18 @@ export class TermixApp extends HTMLElement {
     // 所有 Terminal 工作區一律排列在 Kubernetes 右方。
     workspaces.forEach((ws) => {
       const isActive = ws.id === activeWorkspaceId;
+      const workspaceId = escapeHtml(ws.id);
       tabsHtml += `
-        <div class="session-tab no-drag ${isActive ? 'active' : ''}" data-workspace-id="${ws.id}" title="${t('app.tab.title', { label: ws.label })}" draggable="true">
-          <span>${ws.label}</span>
-          <button type="button" class="no-drag close-tab" data-workspace-id="${ws.id}" title="${t('app.tab.closeWorkspace')}">&times;</button>
+        <div class="session-tab ui-button ui-button--tab no-drag ${isActive ? 'active' : ''}" data-workspace-id="${workspaceId}" title="${escapeHtml(t('app.tab.title', { label: ws.label }))}" draggable="true" tabindex="0">
+          <span class="session-tab-label">${escapeHtml(ws.label)}</span>
+          <button type="button" class="no-drag close-tab ui-button ui-button--quiet ui-button--icon ui-button--compact" data-workspace-id="${workspaceId}" title="${t('app.tab.closeWorkspace')}">&times;</button>
         </div>
       `;
     });
 
     // 3. 新增 Local Terminal 的 '+' 按鈕 (移除 inline樣式覆蓋，套用 style.css 經典 dashed邊框)
     tabsHtml += `
-      <button type="button" id="addLocalTerminalTab" class="no-drag session-tab session-tab-add" title="${t('app.tab.addLocalTerminal')}" aria-label="${t('app.tab.addLocalTerminal')}">
+      <button type="button" id="addLocalTerminalTab" class="no-drag session-tab session-tab-add ui-button ui-button--quiet ui-button--icon" title="${t('app.tab.addLocalTerminal')}" aria-label="${t('app.tab.addLocalTerminal')}">
         <span>+</span>
       </button>
     `;
@@ -734,7 +697,8 @@ export class TermixApp extends HTMLElement {
       const wsId = tab.getAttribute('data-workspace-id');
 
       // 1. 點擊切換活動分頁
-      tab.addEventListener('click', () => {
+      tab.addEventListener('click', (event) => {
+        if (event.target.closest('.session-tab-name-input')) return;
         if (wsId === 'host-tab') {
           terminalStore.getState().setActiveWorkspaceId('host-tab');
           if (hostStore && hostStore.getState) {
@@ -758,6 +722,17 @@ export class TermixApp extends HTMLElement {
 
       // 2. 終端機連線分頁拖曳合併 (Drag & Drop) 邏輯
       if (wsId !== 'host-tab' && wsId !== KUBERNETES_SESSION_ID) {
+        tab.addEventListener('contextmenu', (event) => {
+          if (event.target.closest('.session-tab-name-input')) return;
+          event.preventDefault();
+          event.stopPropagation();
+          this.showWorkspaceContextMenu(tab, wsId, event);
+        });
+        tab.addEventListener('dblclick', (event) => {
+          if (event.target.closest('button, input')) return;
+          event.stopPropagation();
+          this.startWorkspaceRename(tab, wsId);
+        });
         tab.addEventListener('dragstart', (e) => {
           tab.classList.add('tab-dragging');
           e.dataTransfer.setData('text/plain', wsId);
@@ -821,6 +796,90 @@ export class TermixApp extends HTMLElement {
         this.createLocalTerminal();
       });
     }
+  }
+
+  showWorkspaceContextMenu(tab, wsId, event) {
+    this.dismissWorkspaceMenu?.();
+    const menu = document.createElement('div');
+    menu.className = 'context-menu workspace-context-menu no-drag';
+    menu.setAttribute('role', 'menu');
+    const rename = document.createElement('button');
+    rename.type = 'button';
+    rename.className = 'context-menu-item';
+    rename.setAttribute('role', 'menuitem');
+    rename.textContent = t('app.tab.rename');
+    menu.appendChild(rename);
+    const dismiss = () => {
+      document.removeEventListener('pointerdown', outside, true);
+      window.removeEventListener('blur', dismiss);
+      menu.remove();
+      this.dismissWorkspaceMenu = null;
+    };
+    const outside = (event) => { if (!menu.contains(event.target)) dismiss(); };
+    this.dismissWorkspaceMenu = dismiss;
+    rename.addEventListener('click', () => {
+      dismiss();
+      const currentTab = Array.from(this.querySelectorAll('.session-tab'))
+        .find(item => item.dataset.workspaceId === wsId);
+      if (currentTab) this.startWorkspaceRename(currentTab, wsId);
+    });
+    menu.addEventListener('keydown', (event) => {
+      event.stopPropagation();
+      if (event.key === 'Escape' || event.key === 'Tab') {
+        event.preventDefault();
+        dismiss();
+        tab.focus();
+      }
+    });
+    document.body.appendChild(menu);
+    const bounds = tab.getBoundingClientRect();
+    const x = event.clientX || bounds.left;
+    const y = event.clientY || bounds.bottom;
+    menu.style.left = `${Math.max(4, Math.min(x, window.innerWidth - menu.offsetWidth - 4))}px`;
+    menu.style.top = `${Math.max(4, Math.min(y, window.innerHeight - menu.offsetHeight - 4))}px`;
+    document.addEventListener('pointerdown', outside, true);
+    window.addEventListener('blur', dismiss);
+    rename.focus();
+  }
+
+  startWorkspaceRename(tab, wsId) {
+    this.dismissWorkspaceMenu?.();
+    const workspace = terminalStore.getState().workspaces.find(ws => ws.id === wsId);
+    const label = tab.querySelector('.session-tab-label');
+    if (!workspace || !label) return;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'no-drag session-tab-name-input';
+    input.value = workspace.label;
+    input.maxLength = 80;
+    input.setAttribute('aria-label', t('app.tab.rename'));
+    input.title = t('app.tab.renameHint');
+    tab.draggable = false;
+    label.replaceWith(input);
+    let finished = false;
+    const finish = (save, restoreFocus = false) => {
+      if (finished) return;
+      finished = true;
+      input.replaceWith(label);
+      tab.draggable = true;
+      if (save) terminalStore.getState().renameWorkspace(wsId, input.value);
+      if (restoreFocus) {
+        // 更新名稱會重建分頁，需重新取得分頁才能恢復鍵盤焦點。
+        Array.from(this.querySelectorAll('.session-tab')).find(item => item.dataset.workspaceId === wsId)
+          ?.focus();
+      }
+    };
+    input.addEventListener('keydown', (event) => {
+      event.stopPropagation();
+      if (event.isComposing) return;
+      if (event.key === 'Enter' || event.key === 'Escape') {
+        event.preventDefault();
+        finish(event.key === 'Enter', true);
+      }
+    });
+    input.addEventListener('blur', () => finish(true));
+    input.focus();
+    input.select();
   }
 
   collapseControlSidebar() {
@@ -1061,9 +1120,6 @@ export class TermixApp extends HTMLElement {
     this.querySelectorAll('.control-sidebar-tab-btn').forEach(btn => {
       const active = btn.getAttribute('data-tab') === this.controlSidebarTab;
       btn.setAttribute('aria-pressed', active ? 'true' : 'false');
-      btn.style.borderColor = active ? 'var(--color-primary)' : 'var(--color-border)';
-      btn.style.background = active ? 'color-mix(in srgb, var(--color-primary) 18%, transparent)' : 'transparent';
-      btn.style.color = active ? 'var(--color-primary)' : 'var(--color-text-muted)';
     });
     const editBtn = this.querySelector('#toggleControlPanelEditMode');
     if (editBtn) {
@@ -1252,7 +1308,7 @@ export class TermixApp extends HTMLElement {
     return `
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
         <small style="color:var(--color-text-muted);">${t('shortcut.recordHint')}</small>
-        <button type="button" id="shortcutsResetAll" class="no-drag" style="padding:4px 10px; background:transparent; border:1px solid var(--color-border); color:var(--color-subtext); border-radius:4px; cursor:pointer; font-size:11px; font-weight:700;">${t('shortcut.resetAll')}</button>
+        <button type="button" id="shortcutsResetAll" class="no-drag ui-button ui-button--secondary" style="padding:4px 10px; cursor:pointer;">${t('shortcut.resetAll')}</button>
       </div>
       <div id="shortcutsList">${this.renderShortcutRowsHtml()}</div>
     `;
@@ -1271,8 +1327,8 @@ export class TermixApp extends HTMLElement {
         <div style="border:1px solid var(--color-primary); background:color-mix(in srgb, var(--color-primary) 12%, transparent); border-radius:6px; padding:10px 12px; margin-bottom:6px;">
           <div style="font-size:12px; color:var(--color-text); white-space:pre-line; margin-bottom:8px;">${escapeHtml(t('shortcut.conflictMessage', { other: labelOf(conflictId), current: labelOf(actionId) }))}</div>
           <div style="display:flex; gap:8px; justify-content:flex-end;">
-            <button type="button" data-shortcut-conflict="cancel" class="no-drag" style="padding:4px 12px; background:transparent; border:1px solid var(--color-border); color:var(--color-text); border-radius:4px; cursor:pointer; font-size:11px; font-weight:700;">${t('common.cancel')}</button>
-            <button type="button" data-shortcut-conflict="reassign" class="no-drag" style="padding:4px 12px; background:var(--color-primary); border:none; color:#fff; border-radius:4px; cursor:pointer; font-size:11px; font-weight:700;">${t('common.confirm')}</button>
+            <button type="button" data-shortcut-conflict="cancel" class="no-drag ui-button ui-button--secondary" style="padding:4px 12px; cursor:pointer;">${t('common.cancel')}</button>
+            <button type="button" data-shortcut-conflict="reassign" class="no-drag ui-button ui-button--secondary" style="padding:4px 12px; cursor:pointer;">${t('common.confirm')}</button>
           </div>
         </div>`;
     }
@@ -1300,15 +1356,15 @@ export class TermixApp extends HTMLElement {
       right = `${fixedTokens.map((tk) => `<kbd style="${KEYCAP_STYLE}">${escapeHtml(tk)}</kbd>`).join('<span style="opacity:.5;margin:0 1px;"></span>')}
         <span style="margin-left:8px; font-size:10px; color:var(--color-text-muted);">${t('shortcut.fixedHint')}</span>`;
     } else if (recording) {
-      right = `<button type="button" data-shortcut-record="${actionId}" class="no-drag" style="padding:3px 10px; border:1px solid var(--color-primary); background:color-mix(in srgb, var(--color-primary) 14%, transparent); color:var(--color-primary); border-radius:5px; cursor:pointer; font-size:11px; font-weight:700;">${t('shortcut.recording')}</button>
+      right = `<button type="button" data-shortcut-record="${actionId}" class="no-drag ui-button ui-button--quiet" style="padding:3px 10px; cursor:pointer;">${t('shortcut.recording')}</button>
         ${this._recordingNeedModifier ? `<span style="margin-left:8px; font-size:10px; color:var(--color-danger, #f87171);">${t('shortcut.needModifier')}</span>` : ''}`;
     } else {
       const tokens = bindingToTokens(binding, detectPlatform());
       const caps = tokens.length
         ? tokens.map((tk) => `<kbd style="${KEYCAP_STYLE}">${escapeHtml(tk)}</kbd>`).join('<span style="opacity:.5;margin:0 1px;"></span>')
         : `<span style="font-size:11px; color:var(--color-text-muted);">${t('shortcut.disabled')}</span>`;
-      right = `<button type="button" data-shortcut-record="${actionId}" class="no-drag" title="${escapeHtml(label)}" style="display:inline-flex; align-items:center; gap:3px; padding:3px 8px; border:1px solid transparent; background:transparent; border-radius:5px; cursor:pointer;">${caps}</button>
-        ${overridden ? `<button type="button" data-shortcut-reset="${actionId}" class="no-drag" title="${t('shortcut.resetTitle')}" style="margin-left:4px; width:22px; height:22px; border:none; background:transparent; color:var(--color-subtext); cursor:pointer;"><i class="ti ti-rotate-2" aria-hidden="true"></i></button>` : ''}`;
+      right = `<button type="button" data-shortcut-record="${actionId}" class="no-drag ui-button ui-button--quiet" title="${escapeHtml(label)}" style="display:inline-flex; align-items:center; gap:3px; padding:3px 8px; cursor:pointer;">${caps}</button>
+        ${overridden ? `<button type="button" data-shortcut-reset="${actionId}" class="no-drag ui-button ui-button--quiet ui-button--icon ui-button--compact" title="${t('shortcut.resetTitle')}" style="margin-left:4px; width:22px; height:22px; cursor:pointer;"><i class="ti ti-rotate-2" aria-hidden="true"></i></button>` : ''}`;
     }
     return `
       <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; padding:6px 0; border-bottom:1px solid color-mix(in srgb, var(--color-border) 45%, transparent);">
@@ -1442,12 +1498,12 @@ export class TermixApp extends HTMLElement {
       ]]
     ];
     const modeRow = modes.map(([id, icon, labelKey]) =>
-      `<button type="button" class="theme-mode-btn no-drag" data-theme-opt="${id}" role="radio" aria-checked="false"><i class="ti ${icon}" aria-hidden="true"></i><span>${t(labelKey)}</span></button>`
+      `<button type="button" class="theme-mode-btn no-drag ui-button ui-button--choice" data-theme-opt="${id}" role="radio" aria-checked="false"><i class="ti ${icon}" aria-hidden="true"></i><span>${t(labelKey)}</span></button>`
     ).join('');
     const groupsHtml = groups.map(([titleKey, items]) => {
       const cards = items.map(([id, bg, ac, labelKey]) => {
         const label = t(labelKey);
-        return `<button type="button" class="theme-swatch no-drag" data-theme-opt="${id}" role="radio" aria-checked="false" title="${escapeHtml(label)}">${this.themeSwatchDot(bg, ac)}<span>${escapeHtml(label)}</span><i class="ti ti-check theme-swatch-check" aria-hidden="true"></i></button>`;
+        return `<button type="button" class="theme-swatch no-drag ui-button ui-button--choice" data-theme-opt="${id}" role="radio" aria-checked="false" title="${escapeHtml(label)}">${this.themeSwatchDot(bg, ac)}<span>${escapeHtml(label)}</span><i class="ti ti-check theme-swatch-check" aria-hidden="true"></i></button>`;
       }).join('');
       return `<div class="theme-swatch-group"><div class="theme-swatch-group-title">${t(titleKey)}</div><div class="theme-swatch-grid">${cards}</div></div>`;
     }).join('');
@@ -1479,7 +1535,7 @@ export class TermixApp extends HTMLElement {
       <div class="theme-swatch-group">
         <div class="theme-swatch-group-title">${t('app.settings.uiScale')}</div>
         <div class="ui-scale-row">
-          ${UI_SCALE_OPTIONS.map((s) => `<button type="button" class="ui-scale-btn no-drag" data-ui-scale="${s}">${Math.round(s * 100)}%</button>`).join('')}
+          ${UI_SCALE_OPTIONS.map((s) => `<button type="button" class="ui-scale-btn no-drag ui-button ui-button--choice" data-ui-scale="${s}">${Math.round(s * 100)}%</button>`).join('')}
         </div>
         <small style="display: block; margin-top: 8px; color: var(--color-text-muted); font-size: 11px;">${t('app.settings.uiScaleHint')}</small>
       </div>
@@ -1568,19 +1624,22 @@ export class TermixApp extends HTMLElement {
 
     container.innerHTML = activeComponents.map(comp => {
       const theme = getControlPanelThemeStyle(comp.color);
+      const componentId = escapeHtml(comp.id);
+      const componentClass = safeDomToken(comp.id);
+      const componentName = escapeHtml(comp.name);
       if (comp.type === 'info') {
         session.infoBoxOutputs = session.infoBoxOutputs || {};
         const outputs = session.infoBoxOutputs[comp.id] || {};
 
         const itemsHtml = (comp.items || []).map(item => {
           const val = outputs[item.key];
-          const safeKey = item.key.replace(/[^a-zA-Z0-9_-]/g, '_');
+          const safeKey = safeDomToken(item.key);
           const valHtml = val === undefined 
-            ? `<span class="info-val-${comp.id}-${safeKey}"><div class="spinner-mini" style="width: 10px; height: 10px; border-width: 1.5px;"></div></span>`
-            : `<span class="info-val-${comp.id}-${safeKey}">${val}</span>`;
+            ? `<span class="info-val-${componentClass}-${safeKey}"><div class="spinner-mini" style="width: 10px; height: 10px; border-width: 1.5px;"></div></span>`
+            : `<span class="info-val-${componentClass}-${safeKey}">${escapeHtml(val)}</span>`;
 
           return `
-            <div style="font-weight: 700; color: ${theme.color}; min-width: 80px; text-align: left;">${item.key}</div>
+            <div style="font-weight: 700; color: ${theme.color}; min-width: 80px; text-align: left;">${escapeHtml(item.key)}</div>
             <div style="color: var(--color-text); text-align: left; word-break: break-all; font-weight: 600;">${valHtml}</div>
           `;
         }).join('');
@@ -1592,12 +1651,12 @@ export class TermixApp extends HTMLElement {
         }
 
         return `
-          <div class="control-group-panel themed-control-panel ${this.controlPanelEditMode ? 'editing-mode' : ''}" data-id="${comp.id}" draggable="${this.controlPanelEditMode ? 'true' : 'false'}" style="${theme.panelStyle}">
+          <div class="control-group-panel themed-control-panel ${this.controlPanelEditMode ? 'editing-mode' : ''}" data-id="${componentId}" draggable="${this.controlPanelEditMode ? 'true' : 'false'}" style="${theme.panelStyle}">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; width: 100%;">
               <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
-                <h3 style="font-size: 12px; font-weight: 700; ${theme.titleStyle}; margin: 0; text-transform: uppercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${comp.name}</h3>
+                <h3 style="font-size: 12px; font-weight: 700; ${theme.titleStyle}; margin: 0; text-transform: uppercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${componentName}</h3>
               </div>
-              <button type="button" class="no-drag info-box-refresh-btn" data-id="${comp.id}" style="${theme.iconButtonStyle}; cursor: pointer; display: flex; padding: 3px;">
+              <button type="button" class="no-drag info-box-refresh-btn ui-button ui-button--quiet ui-button--icon ui-button--compact" data-id="${componentId}" style="${theme.iconButtonStyle}; cursor: pointer; display: flex; padding: 3px;">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
                 </svg>
@@ -1616,12 +1675,12 @@ export class TermixApp extends HTMLElement {
           this.refreshSwitchBoxState(activeKey, comp);
         }
         return `
-          <div class="control-group-panel themed-control-panel ${this.controlPanelEditMode ? 'editing-mode' : ''}" data-id="${comp.id}" draggable="${this.controlPanelEditMode ? 'true' : 'false'}" style="${theme.panelStyle}">
+          <div class="control-group-panel themed-control-panel ${this.controlPanelEditMode ? 'editing-mode' : ''}" data-id="${componentId}" draggable="${this.controlPanelEditMode ? 'true' : 'false'}" style="${theme.panelStyle}">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
               <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
-                <h3 style="font-size: 12px; font-weight: 700; ${theme.titleStyle}; margin: 0; text-transform: uppercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${comp.name}</h3>
+                <h3 style="font-size: 12px; font-weight: 700; ${theme.titleStyle}; margin: 0; text-transform: uppercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${componentName}</h3>
               </div>
-              <button type="button" class="no-drag switch-box-refresh-btn" data-id="${comp.id}" style="${theme.iconButtonStyle}; cursor: pointer; display: flex; padding: 3px;">
+              <button type="button" class="no-drag switch-box-refresh-btn ui-button ui-button--quiet ui-button--icon ui-button--compact" data-id="${componentId}" style="${theme.iconButtonStyle}; cursor: pointer; display: flex; padding: 3px;">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
                 </svg>
@@ -1633,14 +1692,14 @@ export class TermixApp extends HTMLElement {
       } else {
         // FunctionBox
         return `
-          <div class="control-group-panel themed-control-panel ${this.controlPanelEditMode ? 'editing-mode' : ''}" data-id="${comp.id}" draggable="${this.controlPanelEditMode ? 'true' : 'false'}" style="${theme.panelStyle}; display: flex; align-items: center; justify-content: space-between;">
+          <div class="control-group-panel themed-control-panel ${this.controlPanelEditMode ? 'editing-mode' : ''}" data-id="${componentId}" draggable="${this.controlPanelEditMode ? 'true' : 'false'}" style="${theme.panelStyle}; display: flex; align-items: center; justify-content: space-between;">
             <div style="display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1;">
               <div style="text-align: left; min-width: 0; flex: 1;">
-              <h3 style="font-size: 12px; font-weight: 700; ${theme.titleStyle}; margin: 0; text-transform: uppercase;">${comp.name}</h3>
-              <span style="font-size: 10.5px; color: var(--color-text-muted); display: block; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${comp.localCommand || comp.remoteCommand || ''}</span>
+              <h3 style="font-size: 12px; font-weight: 700; ${theme.titleStyle}; margin: 0; text-transform: uppercase;">${componentName}</h3>
+              <span style="font-size: 10.5px; color: var(--color-text-muted); display: block; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(comp.localCommand || comp.remoteCommand || '')}</span>
               </div>
             </div>
-            <button type="button" class="no-drag run-function-btn" data-id="${comp.id}" style="${theme.actionButtonStyle}; padding: 4px 12px; border-radius: 4px; font-size: 11px; font-weight: 700; cursor: pointer; margin-left: 10px;">${t('app.sidebar.run')}</button>
+            <button type="button" class="no-drag run-function-btn ui-button ui-button--primary" data-id="${componentId}" style="${theme.actionButtonStyle}; padding: 4px 12px; cursor: pointer; margin-left: 10px;">${t('app.sidebar.run')}</button>
           </div>
         `;
       }
@@ -1651,17 +1710,20 @@ export class TermixApp extends HTMLElement {
 
   renderSidebarSnippetsHtml() {
     const snippets = snippetStore.getState().snippets || [];
-    const listHtml = snippets.map(snippet => `
-      <div class="sidebar-snippet-item control-group-panel ${this.snippetPanelEditMode ? 'editing-mode' : ''}" data-snippet-id="${snippet.id}" draggable="${this.snippetPanelEditMode ? 'true' : 'false'}" style="border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent); background: color-mix(in srgb, var(--color-primary) 6%, transparent); border-radius: 6px; padding: 10px; display: grid; gap: 8px; cursor: ${this.snippetPanelEditMode ? 'grab' : 'default'};">
+    const listHtml = snippets.map(snippet => {
+      const snippetId = escapeHtml(snippet.id);
+      return `
+      <div class="sidebar-snippet-item control-group-panel ${this.snippetPanelEditMode ? 'editing-mode' : ''}" data-snippet-id="${snippetId}" draggable="${this.snippetPanelEditMode ? 'true' : 'false'}" style="border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent); background: color-mix(in srgb, var(--color-primary) 6%, transparent); border-radius: 6px; padding: 10px; display: grid; gap: 8px; cursor: ${this.snippetPanelEditMode ? 'grab' : 'default'};">
         <div style="display: flex; justify-content: space-between; gap: 8px; align-items: center;">
           <div style="font-size: 12px; font-weight: 800; color: var(--color-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left;">${escapeHtml(snippet.name)}</div>
         </div>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
-          <button type="button" class="no-drag sidebar-snippet-paste-btn" data-snippet-id="${snippet.id}" style="min-height: 28px; border: 1px solid var(--color-primary); background: transparent; color: var(--color-primary); border-radius: 4px; font-size: 11px; font-weight: 800; cursor: pointer;">PASTE</button>
-          <button type="button" class="no-drag sidebar-snippet-run-btn" data-snippet-id="${snippet.id}" style="min-height: 28px; border: none; background: var(--color-primary); color: #fff; border-radius: 4px; font-size: 11px; font-weight: 800; cursor: pointer;">RUN</button>
+          <button type="button" class="no-drag sidebar-snippet-paste-btn ui-button ui-button--secondary" data-snippet-id="${snippetId}" style="min-height: 28px; cursor: pointer;">PASTE</button>
+          <button type="button" class="no-drag sidebar-snippet-run-btn ui-button ui-button--primary" data-snippet-id="${snippetId}" style="min-height: 28px; cursor: pointer;">RUN</button>
         </div>
       </div>
-    `).join('');
+    `;
+    }).join('');
 
     return `
       <section id="sidebarSnippetsSection" style="display: flex; flex-direction: column; gap: 10px; border-bottom: 1px solid color-mix(in srgb, var(--color-primary) 15%, transparent); padding-bottom: 14px;">
@@ -1697,8 +1759,8 @@ export class TermixApp extends HTMLElement {
       } else {
         fieldsContainer.innerHTML = keys.map(key => {
           return `
-            <div style="font-weight: 700; color: var(--color-primary); min-width: 90px; text-align: left;">${key}</div>
-            <div style="color: var(--color-text); text-align: left; word-break: break-all; font-weight: 600;">${session.customInfo[key]}</div>
+            <div style="font-weight: 700; color: var(--color-primary); min-width: 90px; text-align: left;">${escapeHtml(key)}</div>
+            <div style="color: var(--color-text); text-align: left; word-break: break-all; font-weight: 600;">${escapeHtml(session.customInfo[key])}</div>
           `;
         }).join('');
       }
@@ -1776,8 +1838,8 @@ export class TermixApp extends HTMLElement {
   }
 
   updateInfoBoxFieldUI(compId, itemKey, value) {
-    const safeKey = itemKey.replace(/[^a-zA-Z0-9_-]/g, '_');
-    const el = this.querySelector(`.info-val-${compId}-${safeKey}`);
+    const safeKey = safeDomToken(itemKey);
+    const el = this.querySelector(`.info-val-${safeDomToken(compId)}-${safeKey}`);
     if (!el) return;
 
     if (value === null) {

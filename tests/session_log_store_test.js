@@ -8,14 +8,28 @@ const vm = require('vm');
 const storePath = path.join(__dirname, '..', 'frontend', 'src', 'modules', 'terminal', 'SessionLogStore.js');
 const lifecyclePath = path.join(__dirname, '..', 'frontend', 'src', 'modules', 'terminal', 'TerminalLifecycle.js');
 const terminalPagePath = path.join(__dirname, '..', 'frontend', 'src', 'modules', 'terminal', 'TerminalPage.js');
+const appPath = path.join(__dirname, '..', 'frontend', 'src', 'App.js');
 
 const localStorageMock = (() => {
   const data = new Map();
+  let maxWriteLength = Number.POSITIVE_INFINITY;
   return {
     getItem: (key) => data.has(key) ? data.get(key) : null,
-    setItem: (key, value) => data.set(key, String(value)),
+    setItem: (key, value) => {
+      const serialized = String(value);
+      if (serialized.length > maxWriteLength) {
+        const error = new Error('quota exceeded');
+        error.name = 'QuotaExceededError';
+        throw error;
+      }
+      data.set(key, serialized);
+    },
     removeItem: (key) => data.delete(key),
-    clear: () => data.clear()
+    clear: () => data.clear(),
+    seed: (key, value) => data.set(key, String(value)),
+    setMaxWriteLength: (length) => {
+      maxWriteLength = length;
+    }
   };
 })();
 
@@ -128,10 +142,34 @@ assertEqual(logs[0].outputHtml.includes('whoami'), true, '保存的歷史紀錄�
 sandbox.deleteSessionLogs([logs[0].id]);
 assertEqual(sandbox.readSessionLogs().length, 0, '可以刪除指定歷史日誌');
 
+const oversizedLogs = Array.from({ length: 20 }, (_, index) => ({
+  id: `oversized-${index}`,
+  timestamp: 10000 - index,
+  outputHtml: `output-${index}-` + 'x'.repeat(50000)
+}));
+localStorageMock.seed('termix-session-logs', JSON.stringify(oversizedLogs));
+localStorageMock.setMaxWriteLength(100000);
+sandbox.writeSessionLog({
+  id: 'newest',
+  timestamp: 20000,
+  outputHtml: 'new-' + 'y'.repeat(50000)
+});
+const recoveredLogs = sandbox.readSessionLogs();
+assertEqual(recoveredLogs.length, 15, 'Session Logs 超過配額時只保留最新 15 筆');
+assertEqual(recoveredLogs[0].id, 'newest', 'Session Logs 配額復原會保留最新紀錄');
+assertEqual(
+  recoveredLogs.every((log) => log.outputHtml.length <= 5000),
+  true,
+  'Session Logs 配額復原會限制每筆輸出長度'
+);
+localStorageMock.setMaxWriteLength(Number.POSITIVE_INFINITY);
+localStorageMock.clear();
+
 sandbox.cleanupFrontendSession('s1');
 assertEqual(!!sandbox.terminalState.sessions.s1, false, '清理前端 session 後移除 session 狀態');
 
 const terminalPageSource = fs.readFileSync(terminalPagePath, 'utf8');
+const appSource = fs.readFileSync(appPath, 'utf8');
 assertEqual(
   terminalPageSource.includes("session.isLogView ? '' : 'hidden'"),
   true,
@@ -141,6 +179,27 @@ assertEqual(
   terminalPageSource.includes("if (session?.isLogView) return;"),
   true,
   'Log View 不建立 live xterm 實例'
+);
+assertEqual(
+  terminalPageSource.includes('const safeSessionKey = escapeHtml(pane.sessionKey);') &&
+    terminalPageSource.includes('${escapeHtml(session.label)}') &&
+    appSource.includes('${escapeHtml(ws.label)}') &&
+    appSource.includes('const snippetId = escapeHtml(snippet.id);'),
+  true,
+  'Terminal 工作階段、工作區與 Snippet 的持久化鍵值及標籤寫入 HTML 前會跳脫'
+);
+assertEqual(
+  terminalPageSource.includes('Number.isFinite(paneHeightValue)') &&
+    terminalPageSource.includes('Number.isFinite(columnWidthValue)'),
+  true,
+  'Terminal 持久化版面尺寸只接受有限數值'
+);
+assertEqual(
+  appSource.includes("import { compactStoredSessionLogs } from './modules/terminal/SessionLogStore';") &&
+    appSource.includes('compactStoredSessionLogs();') &&
+    !appSource.includes('Storage.prototype.setItem'),
+  true,
+  'Session Logs 配額復原集中於 Store，不修改全域 Storage prototype'
 );
 
 console.log('=== Session Log 沙盒測試通過 ===');

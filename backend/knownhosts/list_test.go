@@ -4,6 +4,8 @@ import (
 	"crypto/ed25519"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	"golang.org/x/crypto/ssh"
@@ -92,5 +94,22 @@ func TestListKnownHostsSkipsRevoked(t *testing.T) {
 	}
 	if len(entries) != 1 || entries[0].Host != "good.example.com" {
 		t.Fatalf("預期僅保留未撤銷條目，得到：%+v", entries)
+	}
+}
+
+func TestRemoveHostReportsSSHKeygenFailure(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("此測試以 POSIX shell 模擬 ssh-keygen")
+	}
+	binDir := t.TempDir()
+	commandPath := filepath.Join(binDir, "ssh-keygen")
+	if err := os.WriteFile(commandPath, []byte("#!/bin/sh\necho simulated failure >&2\nexit 7\n"), 0o755); err != nil {
+		t.Fatalf("建立假的 ssh-keygen 失敗：%v", err)
+	}
+	t.Setenv("PATH", binDir)
+
+	err := NewValidator().RemoveHost("example.test", 22)
+	if err == nil || !strings.Contains(err.Error(), "simulated failure") {
+		t.Fatalf("預期回報 ssh-keygen 錯誤，實際：%v", err)
 	}
 }

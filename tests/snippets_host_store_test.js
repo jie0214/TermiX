@@ -9,6 +9,7 @@ const modelPath = path.join(__dirname, '..', 'frontend', 'src', 'modules', 'host
 const storePath = path.join(__dirname, '..', 'frontend', 'src', 'modules', 'hostvault', 'HostStore.js');
 
 const modelSource = fs.readFileSync(modelPath, 'utf8')
+  .replace(/^import(?:[\s\S]*?from\s+)?['"][^'"]+['"];\s*$/gm, '')
   .replace(/\bexport\s+const\s+([A-Z0-9_]+)\s*=/g, 'const $1 =')
   .replace(/\bexport\s+(?=function\s+)/g, '')
   + `
@@ -21,7 +22,7 @@ this.normalizeVaultData = normalizeVaultData;
 `;
 
 const storeSource = fs.readFileSync(storePath, 'utf8')
-  .replace(/import[\s\S]*?from\s+['"][^'"]+['"];\n/g, '')
+  .replace(/^import(?:[\s\S]*?from\s+)?['"][^'"]+['"];\s*$/gm, '')
   .replace(/\bexport\s+const\s+hostStore\s*=/, 'const hostStore =')
   + '\nthis.hostStore = hostStore;';
 
@@ -73,12 +74,15 @@ const savedSecrets = [];
 
 const sandbox = {
   console,
+  t: (key) => key,
   createStore,
   localStorage: localStorageMock,
   window: {
     confirm: () => true
   },
   HostAPI: {
+    listAWSIntegrations: async () => [],
+    listGCPIntegrations: async () => [],
     loadHostVault: async () => backendVault,
     getAppSettings: async () => appSettings,
     saveAppSettings: async (settings) => {

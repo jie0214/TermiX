@@ -3,9 +3,11 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,6 +23,11 @@ var Version = "dev"
 
 // releaseAPIURL 為 GitHub 最新 Release 查詢端點。
 const releaseAPIURL = "https://api.github.com/repos/jie0214/TermiX/releases/latest"
+
+const (
+	maxReleaseResponseBytes = 2 * 1024 * 1024
+	maxUpdatePackageBytes   = 1024 * 1024 * 1024
+)
 
 // UpdateInfo 為回報給前端的更新檢查結果。
 type UpdateInfo struct {
@@ -61,8 +68,15 @@ func fetchLatestRelease(ctx context.Context) (*releasePayload, error) {
 		return nil, fmt.Errorf("unexpected status %d", resp.StatusCode)
 	}
 
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxReleaseResponseBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(body) > maxReleaseResponseBytes {
+		return nil, fmt.Errorf("release response exceeds %d bytes", maxReleaseResponseBytes)
+	}
 	var payload releasePayload
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+	if err := json.Unmarshal(body, &payload); err != nil {
 		return nil, err
 	}
 	return &payload, nil
@@ -85,7 +99,9 @@ func (a *App) CheckForUpdate() UpdateInfo {
 	}
 
 	info.LatestVersion = strings.TrimPrefix(strings.TrimSpace(release.TagName), "v")
-	info.ReleaseURL = release.HTMLURL
+	if validGitHubReleasePageURL(release.HTMLURL) {
+		info.ReleaseURL = release.HTMLURL
+	}
 	info.HasUpdate = compareVersions(info.LatestVersion, strings.TrimPrefix(Version, "v")) > 0
 	return info
 }
@@ -112,8 +128,15 @@ func (a *App) DownloadUpdate() DownloadResult {
 	if asset == nil {
 		return DownloadResult{Error: "no update package for current platform"}
 	}
+	assetName, err := safeUpdateAssetName(asset.Name)
+	if err != nil {
+		return DownloadResult{Error: err.Error()}
+	}
+	if !validGitHubReleaseAssetURL(asset.URL) {
+		return DownloadResult{Error: "invalid update package URL"}
+	}
 
-	destPath := filepath.Join(downloadsDir(), asset.Name)
+	destPath := filepath.Join(downloadsDir(), assetName)
 	if err := downloadFile(ctx, asset.URL, destPath); err != nil {
 		return DownloadResult{Error: err.Error()}
 	}
@@ -155,15 +178,55 @@ func downloadsDir() string {
 	return os.TempDir()
 }
 
-// downloadFile 以串流方式將 url 下載至 destPath。
+func safeUpdateAssetName(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" || name == "." || name == ".." || filepath.Base(name) != name {
+		return "", fmt.Errorf("invalid update package name")
+	}
+	if strings.IndexFunc(name, func(character rune) bool {
+		return !((character >= 'a' && character <= 'z') ||
+			(character >= 'A' && character <= 'Z') ||
+			(character >= '0' && character <= '9') ||
+			strings.ContainsRune("._-", character))
+	}) >= 0 {
+		return "", fmt.Errorf("invalid update package name")
+	}
+	return name, nil
+}
+
+func validGitHubReleasePageURL(rawURL string) bool {
+	return validGitHubReleaseURL(rawURL, "/jie0214/TermiX/releases/tag/")
+}
+
+func validGitHubReleaseAssetURL(rawURL string) bool {
+	return validGitHubReleaseURL(rawURL, "/jie0214/TermiX/releases/download/")
+}
+
+func validGitHubReleaseURL(rawURL, pathPrefix string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return false
+	}
+	return parsed.Scheme == "https" &&
+		strings.EqualFold(parsed.Hostname(), "github.com") &&
+		parsed.Port() == "" &&
+		parsed.User == nil &&
+		strings.HasPrefix(parsed.EscapedPath(), pathPrefix)
+}
+
+// downloadFile 以串流方式寫入同目錄暫存檔，完成後才置換目標檔案。
 func downloadFile(ctx context.Context, url, destPath string) error {
+	return downloadFileWithClient(ctx, http.DefaultClient, url, destPath)
+}
+
+func downloadFileWithClient(ctx context.Context, client *http.Client, url, destPath string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("User-Agent", "TermiX-update-check")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -171,15 +234,66 @@ func downloadFile(ctx context.Context, url, destPath string) error {
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("download failed with status %d", resp.StatusCode)
 	}
+	if resp.ContentLength > maxUpdatePackageBytes {
+		return fmt.Errorf("update package exceeds %d bytes", maxUpdatePackageBytes)
+	}
 
-	out, err := os.Create(destPath)
+	out, err := os.CreateTemp(filepath.Dir(destPath), ".termix-update-*")
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	tempPath := out.Name()
+	defer os.Remove(tempPath)
 
-	_, err = io.Copy(out, resp.Body)
-	return err
+	written, copyErr := io.Copy(out, io.LimitReader(resp.Body, maxUpdatePackageBytes+1))
+	closeErr := out.Close()
+	if copyErr != nil {
+		return copyErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	if written > maxUpdatePackageBytes {
+		return fmt.Errorf("update package exceeds %d bytes", maxUpdatePackageBytes)
+	}
+	if resp.ContentLength >= 0 && written != resp.ContentLength {
+		return fmt.Errorf("incomplete update package: expected %d bytes, received %d", resp.ContentLength, written)
+	}
+	if err := replaceDownloadedFile(tempPath, destPath); err != nil {
+		return err
+	}
+	return nil
+}
+
+func replaceDownloadedFile(tempPath, destPath string) error {
+	if err := os.Rename(tempPath, destPath); err == nil {
+		return nil
+	}
+
+	// Windows 無法直接以 Rename 置換既有檔案，先搬移舊檔並在失敗時還原。
+	backup, err := os.CreateTemp(filepath.Dir(destPath), ".termix-update-backup-*")
+	if err != nil {
+		return err
+	}
+	backupPath := backup.Name()
+	if err := backup.Close(); err != nil {
+		_ = os.Remove(backupPath)
+		return err
+	}
+	if err := os.Remove(backupPath); err != nil {
+		return err
+	}
+	if err := os.Rename(destPath, backupPath); err != nil {
+		return err
+	}
+	if err := os.Rename(tempPath, destPath); err != nil {
+		if rollbackErr := os.Rename(backupPath, destPath); rollbackErr != nil {
+			return errors.Join(err, fmt.Errorf("還原既有更新檔失敗：%w", rollbackErr))
+		}
+		return err
+	}
+	_ = os.Remove(backupPath)
+	return nil
 }
 
 // revealInFileManager 在系統檔案管理員中選取剛下載的檔案（best-effort，失敗不影響流程）。

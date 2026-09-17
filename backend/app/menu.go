@@ -2,6 +2,7 @@ package app
 
 import (
 	"github.com/jie0214/TermiX/shared/events"
+	goruntime "runtime"
 
 	"github.com/wailsapp/wails/v2/pkg/menu"
 	"github.com/wailsapp/wails/v2/pkg/menu/keys"
@@ -20,6 +21,9 @@ func NewMenu(app *App) *menu.Menu {
 	appSubMenu.AddText("Check for Updates", nil, func(cd *menu.CallbackData) {
 		runtime.EventsEmit(app.ctx, events.EventCheckForUpdate)
 	})
+	if goruntime.GOOS == "darwin" {
+		appSubMenu.AddText("更新設定…", nil, func(cd *menu.CallbackData) { app.ShowNativeUpdateSettings() })
+	}
 	appSubMenu.AddSeparator()
 	appSubMenu.AddText("隱藏 TermiX", keys.CmdOrCtrl("h"), func(cd *menu.CallbackData) {})
 	appSubMenu.AddText("結束", keys.CmdOrCtrl("q"), func(cd *menu.CallbackData) {

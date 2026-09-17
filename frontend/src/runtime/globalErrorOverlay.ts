@@ -37,6 +37,7 @@ export function showGlobalErrorOverlay(
   const stackTitle = createTextElement('div', t('misc.globalError.stackTitle'));
   const stack = createTextElement('pre', valueToText(error));
   const closeButton = document.createElement('button');
+  closeButton.className = 'ui-button ui-button--secondary';
   closeButton.textContent = t('misc.globalError.close');
   closeButton.type = 'button';
   closeButton.addEventListener('click', () => container.remove());

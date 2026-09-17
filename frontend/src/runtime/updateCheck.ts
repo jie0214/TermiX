@@ -11,6 +11,8 @@ const MENU_CHECK_EVENT = 'check-for-update';
 // 設計為靜默失敗：任何錯誤都不影響 App 正常使用。
 async function runUpdateCheck(manual: boolean): Promise<void> {
   try {
+    const nativeCheck = getAppBinding('HandleNativeUpdateCheck');
+    if (nativeCheck && await nativeCheck(manual)) return;
     const checkForUpdate = getAppBinding('CheckForUpdate');
     if (!checkForUpdate) return;
 

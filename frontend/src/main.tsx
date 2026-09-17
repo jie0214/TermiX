@@ -1,7 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import '@tabler/icons-webfont/dist/tabler-icons.min.css';
+import './assets/tabler-icons.css';
 import './app.css';
 import { App } from './ReactApp';
 import { initializeApplication } from './runtime/initializeApplication';

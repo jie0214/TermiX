@@ -64,8 +64,6 @@ export function confirmDialog(message, options = {}) {
 
     // \n 轉成 <br>（在跳脫之後處理，避免 XSS）
     const messageHtml = escapeHtml(message).replace(/\n/g, '<br>');
-    const confirmBg = danger ? 'var(--color-danger)' : 'var(--color-primary)';
-    const confirmBorder = danger ? 'var(--color-danger)' : 'var(--color-primary)';
 
     // requireText 模式：訊息與按鈕之間插入說明 + 輸入框，確認鈕預設 disabled。
     const requireBlock = needsText ? `
@@ -77,8 +75,8 @@ export function confirmDialog(message, options = {}) {
       <p style="font-size: 12.5px; color: var(--color-subtext); line-height: 1.6; margin: 0 0 ${needsText ? '12px' : '20px'}; text-align: left;">${messageHtml}</p>
       ${requireBlock}
       <div style="display: flex; justify-content: flex-end; gap: 8px;">
-        <button type="button" data-action="cancel" class="no-drag" style="min-height: 32px; padding: 6px 14px; border: 1px solid var(--color-border); background: transparent; color: var(--color-text); border-radius: 4px; cursor: pointer;">${escapeHtml(cancelText)}</button>
-        <button type="button" data-action="confirm" class="no-drag"${needsText ? ' disabled' : ''} style="min-height: 32px; padding: 6px 14px; background: ${confirmBg}; border: 1px solid ${confirmBorder}; color: #fff; border-radius: 4px; cursor: pointer;${needsText ? ' opacity: 0.5;' : ''}">${escapeHtml(confirmText)}</button>
+        <button type="button" data-action="cancel" class="no-drag ui-button ui-button--secondary" style="min-height: 32px; padding: 6px 14px; cursor: pointer;">${escapeHtml(cancelText)}</button>
+        <button type="button" data-action="confirm" class="no-drag ui-button ${danger ? 'ui-button--danger' : 'ui-button--primary'}"${needsText ? ' disabled' : ''} style="min-height: 32px; padding: 6px 14px; cursor: pointer;${needsText ? ' opacity: 0.5;' : ''}">${escapeHtml(confirmText)}</button>
       </div>
     `;
 

@@ -7,8 +7,7 @@ import {
 } from './SessionLogStore';
 
 // 記錄「使用者主動關閉」的 session keys。
-// 後端的 terminal-closed 事件僅帶 key、無法區分使用者主動關閉 vs 遠端斷線，
-// 故在前端發起關閉前先標記，收到 terminal-closed 時即可判斷是否為非預期的遠端斷線。
+// 後端會提供關閉原因；前端仍預先標記，以涵蓋請求送出前就收到斷線事件的競態。
 const userClosedSessionKeys = new Set();
 
 export function markSessionUserClosed(sessionKey) {

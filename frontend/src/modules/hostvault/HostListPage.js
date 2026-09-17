@@ -1,3 +1,4 @@
+import { setupDropdowns } from '../../components/controls/dropdown.js';
 import { hostStore } from './HostStore';
 import { themeStore } from '../../stores/ThemeStore';
 import { HostAPI } from './HostAPI';
@@ -228,8 +229,8 @@ function renderSecretInput(field, drawerHost, extraAttrs = '') {
   const hostId = drawerHost?.id || '';
   return `
     <div style="display: flex; align-items: center; background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); border-radius: 6px; overflow: hidden;">
-      <input class="no-drag" id="${field.inputId}" name="${field.inputId}" type="password" data-host-id="${hostId}" data-secret-field="${field.key}" ${renderSecretInputState(field, drawerHost)} ${extraAttrs} style="flex: 1; min-width: 0; background: transparent; border: none; padding: 8px 10px 8px 12px; color: var(--color-text); outline: none;">
-      <button type="button" class="no-drag secret-visibility-toggle" data-target="${field.inputId}" title="${t('hostvault.showPassword')}" aria-label="${t('hostvault.showPassword')}" style="width: 34px; align-self: stretch; border: none; border-left: 1px solid rgba(23,107,135,0.18); background: transparent; color: var(--color-subtext); cursor: pointer; display: inline-flex; align-items: center; justify-content: center;">
+      <input class="no-drag" id="${field.inputId}" name="${field.inputId}" type="password" data-host-id="${escapeHtml(hostId)}" data-secret-field="${field.key}" ${renderSecretInputState(field, drawerHost)} ${extraAttrs} style="flex: 1; min-width: 0; background: transparent; border: none; padding: 8px 10px 8px 12px; color: var(--color-text); outline: none;">
+      <button type="button" class="no-drag secret-visibility-toggle ui-button ui-button--quiet ui-button--icon" data-target="${field.inputId}" title="${t('hostvault.showPassword')}" aria-label="${t('hostvault.showPassword')}" style="width: 34px; align-self: stretch; border-left: 1px solid rgba(23,107,135,0.18); cursor: pointer; display: inline-flex; align-items: center; justify-content: center;">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"/>
           <circle cx="12" cy="12" r="3"/>
@@ -378,11 +379,11 @@ function showChoiceDialog({ title, options }) {
       <div class="settings-dialog no-drag" style="width: min(360px, calc(100vw - 32px)); background: var(--glass-bg-strong); border: 1px solid var(--glass-border); border-radius: 8px; box-shadow: var(--glass-shadow);">
         <div class="settings-header" style="padding: 16px 18px; border-bottom: 1px solid rgba(23,107,135,0.15); display: flex; align-items: center; justify-content: space-between;">
           <h2 style="font-size: 14px; font-weight: 800; color: var(--color-text); margin: 0;">${escapeHtml(title)}</h2>
-          <button type="button" aria-label="${t('common.close')}" class="no-drag choice-cancel-btn icon-btn" style="font-size: 18px; line-height: 1;">&times;</button>
+          <button type="button" aria-label="${t('common.close')}" class="no-drag choice-cancel-btn icon-btn ui-button ui-button--quiet ui-button--icon" style="line-height: 1;">&times;</button>
         </div>
         <div style="padding: 14px; display: grid; gap: 8px;">
           ${options.map(option => `
-            <button type="button" class="no-drag choice-option-btn" data-value="${escapeHtml(option.value)}" style="min-height: 36px; border: 1px solid rgba(23,107,135,0.22); border-radius: 6px; background: rgba(255,255,255,0.04); color: var(--color-text); font-weight: 700; cursor: pointer; text-align: left; padding: 0 12px;">
+            <button type="button" class="no-drag choice-option-btn ui-button ui-button--secondary" data-value="${escapeHtml(option.value)}" style="min-height: 36px; cursor: pointer; text-align: left; padding: 0 12px;">
               ${escapeHtml(option.label)}
             </button>
           `).join('')}
@@ -411,12 +412,13 @@ function showChoiceDialog({ title, options }) {
 }
 
 // 產生 / 匯入 SSH 金鑰的對話框；resolve 表單資料，取消則 resolve(null)。
-function openKeychainKeyDialog(mode) {
+function openKeychainKeyDialog(mode, owner) {
   const isImport = mode === 'import';
   return new Promise((resolve) => {
     const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay no-drag';
-    overlay.style.cssText = 'position: fixed; inset: 0; background: rgba(12, 18, 31, 0.72); display: flex; align-items: center; justify-content: center; z-index: 100000; backdrop-filter: blur(4px);';
+    owner.closeKeychainDrawer?.();
+    overlay.className = 'vault-drawer open keychain-drawer no-drag';
+    overlay.setAttribute('role', 'region');
 
     const fieldStyle = 'width: 100%; min-height: 34px; box-sizing: border-box; padding: 0 10px; background: rgba(12,18,31,0.6); border: 1px solid rgba(23,107,135,0.3); border-radius: 6px; color: var(--color-text); font-size: 13px;';
     const labelStyle = 'display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--color-text-muted); margin-bottom: 5px;';
@@ -458,22 +460,34 @@ function openKeychainKeyDialog(mode) {
     const submitLabel = isImport ? t('hostvault.keychainImport') : t('hostvault.keychainGenerate');
 
     overlay.innerHTML = `
-      <div class="settings-dialog no-drag" style="width: min(440px, calc(100vw - 32px)); background: var(--glass-bg-strong); border: 1px solid var(--glass-border); border-radius: 8px; box-shadow: var(--glass-shadow);">
+      <div class="settings-dialog no-drag">
         <div class="settings-header" style="padding: 16px 18px; border-bottom: 1px solid rgba(23,107,135,0.15); display: flex; align-items: center; justify-content: space-between;">
           <h2 style="font-size: 14px; font-weight: 800; color: var(--color-text); margin: 0;">${escapeHtml(title)}</h2>
-          <button type="button" aria-label="${t('common.close')}" class="no-drag kc-cancel-btn icon-btn" style="font-size: 18px; line-height: 1;">&times;</button>
+          <button type="button" aria-label="${t('common.close')}" class="no-drag kc-cancel-btn icon-btn ui-button ui-button--quiet ui-button--icon" style="line-height: 1;">&times;</button>
         </div>
-        <div style="padding: 16px 18px; max-height: 70vh; overflow-y: auto;">
+        <div class="settings-body" style="flex: 1; min-height: 0;">
           ${bodyHtml}
         </div>
         <div class="settings-footer" style="padding: 14px 18px; border-top: 1px solid rgba(23,107,135,0.15); display: flex; gap: 8px; justify-content: flex-end;">
-          <button type="button" class="no-drag kc-cancel-btn" style="min-height: 34px; padding: 0 14px; border: 1px solid rgba(23,107,135,0.3); background: transparent; color: var(--color-text); border-radius: 6px; font-size: 12px; font-weight: 700; cursor: pointer;">${escapeHtml(t('common.cancel'))}</button>
-          <button type="button" class="no-drag primary kc-submit-btn" style="min-height: 34px; padding: 0 16px; border: none; background: var(--color-primary); color: #fff; border-radius: 6px; font-size: 12px; font-weight: 800; cursor: pointer;">${escapeHtml(submitLabel)}</button>
+          <button type="button" class="no-drag kc-cancel-btn ui-button ui-button--secondary" style="min-height: 34px; padding: 0 14px; cursor: pointer;">${escapeHtml(t('common.cancel'))}</button>
+          <button type="button" class="no-drag primary kc-submit-btn ui-button ui-button--primary" style="min-height: 34px; padding: 0 16px; cursor: pointer;">${escapeHtml(submitLabel)}</button>
         </div>
       </div>
     `;
 
-    const close = (value) => { overlay.remove(); resolve(value); };
+    overlay.setAttribute('aria-label', title);
+    const close = (value) => {
+      owner.closeKeychainDrawer = null;
+      owner.keychainDrawer = null;
+      overlay.remove();
+      owner.querySelector('#newKeyMenuBtn')?.focus();
+      resolve(value);
+    };
+    owner.keychainDrawer = overlay;
+    owner.closeKeychainDrawer = () => close(null);
+    overlay.addEventListener('keydown', event => {
+      if (event.key === 'Escape') close(null);
+    });
 
     if (!isImport) {
       const typeSel = overlay.querySelector('#kcType');
@@ -516,7 +530,7 @@ function openKeychainKeyDialog(mode) {
       }
     });
 
-    document.body.appendChild(overlay);
+    owner.querySelector('#hostVaultPanel').appendChild(overlay);
     setTimeout(() => overlay.querySelector('#kcLabel')?.focus(), 0);
   });
 }
@@ -539,6 +553,7 @@ export class HostListPage extends HTMLElement {
     // Keychain 分頁資料由後端載入（私鑰存 OS Keychain，中繼資料存 SQLite）。
     this.keychainKeys = [];
     this.keychainLoaded = false;
+    this.keychainLoadError = "";
     this.keychainLoading = false;
     // Known Hosts 分頁資料由後端讀取 ~/.ssh/known_hosts 取得。
     this.knownHosts = [];
@@ -638,12 +653,14 @@ export class HostListPage extends HTMLElement {
     if (this.keychainLoading) return;
     if (this.keychainLoaded && !force) return;
     this.keychainLoading = true;
+    this.keychainLoadError = "";
     try {
       const keys = await KeychainAPI.list();
       this.keychainKeys = Array.isArray(keys) ? keys : [];
       this.keychainLoaded = true;
     } catch (err) {
-      showToast(t('hostvault.keychainLoadFailed', { error: err.message || err }), { type: 'error' });
+      this.keychainLoadError = t('hostvault.keychainLoadFailed', { error: err.message || err });
+      showToast(this.keychainLoadError, { type: 'error' });
     } finally {
       this.keychainLoading = false;
     }
@@ -676,7 +693,7 @@ export class HostListPage extends HTMLElement {
 
   // 開啟產生 / 匯入對話框並呼叫後端建立金鑰。
   async handleKeychainCreate(mode) {
-    const form = await openKeychainKeyDialog(mode);
+    const form = await openKeychainKeyDialog(mode, this);
     if (!form) return;
     try {
       if (form.mode === 'import') {
@@ -704,6 +721,8 @@ export class HostListPage extends HTMLElement {
   }
 
   disconnectedCallback() {
+    this.closeKeychainDrawer?.();
+    this.dropdownAbortController?.abort();
     if (this.unsubscribe) this.unsubscribe();
     if (this.unsubscribeSnippet) this.unsubscribeSnippet();
     if (this.unsubscribeTerminal) this.unsubscribeTerminal();
@@ -755,12 +774,12 @@ export class HostListPage extends HTMLElement {
         <td style="padding: 12px 14px; font-family: monospace;">${escapeHtml(forward.namespace || 'default')}/${escapeHtml(target || '-')}</td>
         <td style="padding: 12px 14px; font-family: monospace;">${escapeHtml(forward.address || '127.0.0.1')}:${escapeHtml(forward.localPort)}</td>
         <td style="padding: 12px 14px; font-family: monospace;">${escapeHtml(forward.remotePort)}</td>
-        <td style="padding: 12px 14px; text-align: right;"><button type="button" class="no-drag stop-kubernetes-vault-forward" data-forward-id="${escapeHtml(forward.id)}" style="min-height: 30px; padding: 0 10px; border: none; border-radius: 4px; background: #991b1b; color: #fff; cursor: pointer;">${t('hostvault.forward.stop')}</button></td>
+        <td style="padding: 12px 14px; text-align: right;"><button type="button" class="no-drag stop-kubernetes-vault-forward ui-button ui-button--secondary" data-forward-id="${escapeHtml(forward.id)}" style="min-height: 30px; padding: 0 10px; cursor: pointer;">${t('hostvault.forward.stop')}</button></td>
       </tr>`;
     }).join('');
-    return `<div class="vault-toolbar" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    return `<div class="vault-commandbar vault-commandbar-split">
         <div><h2 style="margin: 0; font-size: 18px;">${t('hostvault.forward.title')}</h2></div>
-        <button type="button" id="refreshKubernetesVaultForwards" class="no-drag" ${this.kubernetesForwardsLoading ? 'disabled' : ''} style="min-height: 32px; padding: 0 12px; border: 1px solid var(--color-primary); border-radius: 4px; color: var(--color-primary); background: transparent; cursor: pointer;">${t('hostvault.forward.refresh')}</button>
+        <button type="button" id="refreshKubernetesVaultForwards" class="no-drag ui-button ui-button--secondary" ${this.kubernetesForwardsLoading ? 'disabled' : ''} style="min-height: 32px; padding: 0 12px; cursor: pointer;">${t('hostvault.forward.refresh')}</button>
       </div>
       ${this.kubernetesForwardsError ? `<div role="alert" style="margin-bottom: 12px; color: #fca5a5; font-size: 12px;">${escapeHtml(this.kubernetesForwardsError)}</div>` : ''}
       <div style="overflow: auto; border: 1px solid rgba(23, 107, 135, 0.2); border-radius: 8px; background: rgba(12, 18, 31, 0.5);">
@@ -787,7 +806,7 @@ export class HostListPage extends HTMLElement {
         html += `
           <div class="batch-host-row" style="display: flex; align-items: center; border-bottom: 1px solid rgba(23, 107, 135, 0.1); padding: 8px 12px; margin-bottom: 4px; border-radius: 4px; transition: background 0.2s;">
             <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--color-text); cursor: pointer; width: 100%; user-select: none;">
-              <input type="checkbox" class="no-drag snippet-target-checkbox" data-host-id="${host.id}" ${isChecked ? 'checked' : ''} style="width: 14px; height: 14px; accent-color: var(--color-primary); flex-shrink: 0;">
+              <input type="checkbox" class="no-drag snippet-target-checkbox" data-host-id="${escapeHtml(host.id)}" ${isChecked ? 'checked' : ''} style="width: 14px; height: 14px; accent-color: var(--color-primary); flex-shrink: 0;">
               <span style="font-weight: 700; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; max-width: 150px;">${escapeHtml(host.alias || host.label || 'Host')}</span>
               <span style="color: var(--color-text-muted); font-family: monospace; font-size: 11.5px; margin-left: auto;">(${escapeHtml(host.config?.host || '')})</span>
             </label>
@@ -809,9 +828,9 @@ export class HostListPage extends HTMLElement {
         const partialChecked = hasHosts && !allChecked && groupHosts.some(h => selectedTargetIds.has(h.id));
 
         html += `
-          <div class="batch-group-row" data-group-id="${group.id}" style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(23, 107, 135, 0.12); padding: 8px 12px; margin-bottom: 4px; border-radius: 4px; cursor: pointer; transition: background 0.2s; user-select: none;">
+          <div class="batch-group-row" data-group-id="${escapeHtml(group.id)}" style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(23, 107, 135, 0.12); padding: 8px 12px; margin-bottom: 4px; border-radius: 4px; cursor: pointer; transition: background 0.2s; user-select: none;">
             <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--color-text); cursor: pointer; flex: 1; min-width: 0; user-select: none;">
-              <input type="checkbox" class="no-drag snippet-group-checkbox" data-group-id="${group.id}" ${allChecked ? 'checked' : ''} ${partialChecked ? 'data-indeterminate="true"' : ''} style="width: 14px; height: 14px; accent-color: var(--color-primary);">
+              <input type="checkbox" class="no-drag snippet-group-checkbox" data-group-id="${escapeHtml(group.id)}" ${allChecked ? 'checked' : ''} ${partialChecked ? 'data-indeterminate="true"' : ''} style="width: 14px; height: 14px; accent-color: var(--color-primary);">
               <span style="font-weight: 700; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${escapeHtml(group.name)}</span>
               <span style="color: var(--color-text-muted); font-size: 11px;">(${groupHosts.length} hosts)</span>
             </label>
@@ -860,7 +879,7 @@ export class HostListPage extends HTMLElement {
         hostsHtml += `
           <div class="batch-host-row" style="display: flex; align-items: center; border-bottom: 1px solid rgba(23, 107, 135, 0.1); padding: 8px 12px; margin-bottom: 4px; border-radius: 4px; transition: background 0.2s;">
             <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--color-text); cursor: pointer; width: 100%; user-select: none;">
-              <input type="checkbox" class="no-drag snippet-target-checkbox" data-host-id="${host.id}" ${isChecked ? 'checked' : ''} style="width: 14px; height: 14px; accent-color: var(--color-primary); flex-shrink: 0;">
+              <input type="checkbox" class="no-drag snippet-target-checkbox" data-host-id="${escapeHtml(host.id)}" ${isChecked ? 'checked' : ''} style="width: 14px; height: 14px; accent-color: var(--color-primary); flex-shrink: 0;">
               <span style="font-weight: 700; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; max-width: 150px;">${escapeHtml(host.alias || host.label || 'Host')}</span>
               <span style="color: var(--color-text-muted); font-family: monospace; font-size: 11.5px; margin-left: auto;">(${escapeHtml(host.config?.host || '')})</span>
             </label>
@@ -872,7 +891,7 @@ export class HostListPage extends HTMLElement {
     return `
       <div style="display: flex; flex-direction: column; height: 100%; min-height: 0;">
         <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; border-bottom: 1px solid rgba(23,107,135,0.15); padding-bottom: 8px; flex-shrink: 0;">
-          <button type="button" id="backToGroupListBtn" class="no-drag" style="background: transparent; border: 1px solid rgba(23,107,135,0.25); border-radius: 4px; padding: 6px 12px; color: var(--color-text); cursor: pointer; font-size: 11px; font-weight: 800; transition: all 0.2s;">&lt; Back</button>
+          <button type="button" id="backToGroupListBtn" class="no-drag ui-button ui-button--secondary" style="padding: 6px 12px; cursor: pointer; transition: all 0.2s;">&lt; Back</button>
           <span style="font-size: 12.5px; font-weight: 700; color: var(--color-text); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${escapeHtml(groupName)}</span>
         </div>
         <div style="flex: 1; overflow-y: auto;">
@@ -1039,7 +1058,7 @@ export class HostListPage extends HTMLElement {
           : 'Public / Private IP';
 
       return `
-        <div class="vault-card integration-card no-drag" data-integration-provider="aws" data-integration-group-id="${integration.groupId}" title="${t('hostvault.editIntegrationTitle', { name: escapeHtml(integrationName) })}">
+        <div class="vault-card integration-card no-drag" data-integration-provider="aws" data-integration-group-id="${escapeHtml(integration.groupId)}" title="${t('hostvault.editIntegrationTitle', { name: escapeHtml(integrationName) })}">
           <div class="vault-card-icon" style="background: linear-gradient(135deg, #ff9900, #f97316); border-radius: 8px;">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
               <polygon points="12 2 2 7 12 12 22 7 12 2"/>
@@ -1052,7 +1071,7 @@ export class HostListPage extends HTMLElement {
             <div class="vault-card-details">${escapeHtml(groupName)}，${escapeHtml(integration.region || t('hostvault.integrationNoRegion'))}</div>
             <div class="vault-card-details" style="margin-top: 4px; color: var(--color-text-muted);">AWS · ${escapeHtml(sourceLabel)}，${escapeHtml(ipTypeLabel)}</div>
           </div>
-          <button type="button" aria-label="${t('hostvault.editIntegration')}" class="no-drag vault-integration-edit-btn" data-integration-provider="aws" data-integration-group-id="${integration.groupId}" title="${t('hostvault.editIntegration')}" style="background: transparent; border: none; padding: 6px; cursor: pointer; color: var(--color-subtext); display: inline-flex; align-items: center; justify-content: center; margin-left: auto;">
+          <button type="button" aria-label="${t('hostvault.editIntegration')}" class="no-drag vault-integration-edit-btn ui-button ui-button--quiet ui-button--icon" data-integration-provider="aws" data-integration-group-id="${escapeHtml(integration.groupId)}" title="${t('hostvault.editIntegration')}" style="padding: 6px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; margin-left: auto;">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
               <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
@@ -1070,7 +1089,7 @@ export class HostListPage extends HTMLElement {
       const ipTypeLabel = integration.ipAddressType === 'private' ? 'Private IP' : 'Public IP';
 
       return `
-        <div class="vault-card integration-card no-drag" data-integration-provider="gcp" data-integration-group-id="${integration.groupId}" title="${t('hostvault.editIntegrationTitle', { name: escapeHtml(integrationName) })}">
+        <div class="vault-card integration-card no-drag" data-integration-provider="gcp" data-integration-group-id="${escapeHtml(integration.groupId)}" title="${t('hostvault.editIntegrationTitle', { name: escapeHtml(integrationName) })}">
           <div class="vault-card-icon" style="background: linear-gradient(135deg, #4285F4, #34a853); border-radius: 8px;">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
               <polygon points="12 2 2 7 12 12 22 7 12 2"/>
@@ -1083,7 +1102,7 @@ export class HostListPage extends HTMLElement {
             <div class="vault-card-details">${escapeHtml(groupName)}，${escapeHtml(integration.projectId || t('hostvault.gcpNoProject'))}</div>
             <div class="vault-card-details" style="margin-top: 4px; color: var(--color-text-muted);">GCP · Compute Engine，${escapeHtml(ipTypeLabel)}</div>
           </div>
-          <button type="button" aria-label="${t('hostvault.editIntegration')}" class="no-drag vault-integration-edit-btn" data-integration-provider="gcp" data-integration-group-id="${integration.groupId}" title="${t('hostvault.editIntegration')}" style="background: transparent; border: none; padding: 6px; cursor: pointer; color: var(--color-subtext); display: inline-flex; align-items: center; justify-content: center; margin-left: auto;">
+          <button type="button" aria-label="${t('hostvault.editIntegration')}" class="no-drag vault-integration-edit-btn ui-button ui-button--quiet ui-button--icon" data-integration-provider="gcp" data-integration-group-id="${escapeHtml(integration.groupId)}" title="${t('hostvault.editIntegration')}" style="padding: 6px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; margin-left: auto;">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
               <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
@@ -1095,9 +1114,9 @@ export class HostListPage extends HTMLElement {
     const allCardsHtml = integrationCardsHtml + gcpCardsHtml;
 
     return `
-      <div class="vault-toolbar" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; gap: 12px; flex: 0 0 auto;">
-        <div style="display: flex; gap: 8px; align-items: center;">
-          <button type="button" id="newIntegrationBtn" class="no-drag primary" style="min-height: 32px; font-weight: 700; font-size: 12px; padding: 0 14px; background: var(--color-primary); border: none; border-radius: 4px; color: #fff; cursor: pointer;">+ NEW INTEGRATION</button>
+      <div class="vault-commandbar vault-commandbar-actions">
+        <div class="vault-toolbar">
+          <button type="button" id="newIntegrationBtn" class="vault-action no-drag primary ui-button ui-button--primary"><i class="ti ti-plus" aria-hidden="true"></i><span>${t('hostvault.create')}</span></button>
         </div>
       </div>
 
@@ -1130,7 +1149,7 @@ export class HostListPage extends HTMLElement {
       <div class="settings-dialog" style="width: 100% !important; height: 100% !important; max-height: 100% !important; border: none !important; box-shadow: none !important; transform: none !important; display: flex; flex-direction: column;">
         <div class="settings-header" style="padding: 16px 20px; border-bottom: 1px solid rgba(23,107,135,0.15); display: flex; justify-content: space-between; align-items: center;">
           <h2 style="font-size: 15px; font-weight: 700; color: var(--color-text); font-family: inherit;">AWS Integration</h2>
-          <button type="button" aria-label="${t('hostvault.closeSettings')}" id="closeVaultDrawer" class="no-drag btn-icon icon-btn" title="${t('hostvault.closeSettings')}" style="font-size: 18px;">
+          <button type="button" aria-label="${t('hostvault.closeSettings')}" id="closeVaultDrawer" class="no-drag btn-icon icon-btn ui-button ui-button--quiet ui-button--icon" title="${t('hostvault.closeSettings')}">
             &times;
           </button>
         </div>
@@ -1213,7 +1232,7 @@ export class HostListPage extends HTMLElement {
             <div style="border-top: 1px solid rgba(23,107,135,0.15); margin-top: 12px; padding-top: 12px;">
               <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
                 <h4 style="font-size: 12px; font-weight: 700; color: var(--color-text); margin: 0; text-transform: uppercase;">Add protocols</h4>
-                <button type="button" id="toggleAwsSyncSettingsBtn" class="no-drag" style="background: transparent; border: 1px solid var(--color-primary); color: var(--color-primary); border-radius: 4px; padding: 4px 10px; font-size: 11px; font-weight: 700; cursor: pointer;">
+                <button type="button" id="toggleAwsSyncSettingsBtn" class="no-drag ui-button ui-button--secondary" style="padding: 4px 10px; cursor: pointer;">
                   ${t('hostvault.cloudSyncSettings')} ${isExpanded ? '▲' : '▼'}
                 </button>
               </div>
@@ -1222,7 +1241,7 @@ export class HostListPage extends HTMLElement {
               <div id="awsSyncSettingsContent" style="${expandedStyle}">
                 <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
                   Port
-                  <input class="no-drag" id="awsDefaultPort" name="awsDefaultPort" type="number" min="1" max="65535" value="${currentIntegration?.defaultPort || 22}" required style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
+                  <input class="no-drag" id="awsDefaultPort" name="awsDefaultPort" type="number" min="1" max="65535" value="${escapeHtml(currentIntegration?.defaultPort || 22)}" required style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
                 </label>
                 <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
                   Username
@@ -1256,8 +1275,8 @@ export class HostListPage extends HTMLElement {
           </div>
 
           <div class="settings-footer" style="padding: 16px 20px; border-top: 1px solid rgba(23,107,135,0.15); display: flex; gap: 10px;">
-            ${currentIntegration ? `<button type="button" id="awsDeleteBtn" data-integration-group-id="${escapeHtml(currentIntegration.groupId)}" class="no-drag" style="min-height: 38px; font-weight: 700; background: #e74c3c; border: none; border-radius: 6px; color: #fff; padding: 0 16px; cursor: pointer;">Delete</button>` : ''}
-            <button type="submit" id="awsSubmitBtn" class="no-drag primary" style="flex: 1; min-height: 38px; font-weight: 700; background: var(--color-primary); border: none; border-radius: 6px; color: #fff; cursor: pointer;">${currentIntegration ? t('hostvault.saveAndResync') : t('hostvault.saveAndSync')}</button>
+            ${currentIntegration ? `<button type="button" id="awsDeleteBtn" data-integration-group-id="${escapeHtml(currentIntegration.groupId)}" class="no-drag ui-button ui-button--danger" style="min-height: 38px; padding: 0 16px; cursor: pointer;">Delete</button>` : ''}
+            <button type="submit" id="awsSubmitBtn" class="no-drag primary ui-button ui-button--primary" style="flex: 1; min-height: 38px; cursor: pointer;">${currentIntegration ? t('hostvault.saveAndResync') : t('hostvault.saveAndSync')}</button>
           </div>
         </form>
       </div>
@@ -1295,7 +1314,7 @@ export class HostListPage extends HTMLElement {
       <div class="settings-dialog" style="width: 100% !important; height: 100% !important; max-height: 100% !important; border: none !important; box-shadow: none !important; transform: none !important; display: flex; flex-direction: column;">
         <div class="settings-header" style="padding: 16px 20px; border-bottom: 1px solid rgba(23,107,135,0.15); display: flex; justify-content: space-between; align-items: center;">
           <h2 style="font-size: 15px; font-weight: 700; color: var(--color-text); font-family: inherit;">GCP Integration</h2>
-          <button type="button" aria-label="${t('hostvault.closeSettings')}" id="closeVaultDrawer" class="no-drag btn-icon icon-btn" title="${t('hostvault.closeSettings')}" style="font-size: 18px;">
+          <button type="button" aria-label="${t('hostvault.closeSettings')}" id="closeVaultDrawer" class="no-drag btn-icon icon-btn ui-button ui-button--quiet ui-button--icon" title="${t('hostvault.closeSettings')}">
             &times;
           </button>
         </div>
@@ -1348,7 +1367,7 @@ export class HostListPage extends HTMLElement {
             <div style="border-top: 1px solid rgba(23,107,135,0.15); margin-top: 12px; padding-top: 12px;">
               <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
                 <h4 style="font-size: 12px; font-weight: 700; color: var(--color-text); margin: 0; text-transform: uppercase;">Add protocols</h4>
-                <button type="button" id="toggleGcpSyncSettingsBtn" class="no-drag" style="background: transparent; border: 1px solid var(--color-primary); color: var(--color-primary); border-radius: 4px; padding: 4px 10px; font-size: 11px; font-weight: 700; cursor: pointer;">
+                <button type="button" id="toggleGcpSyncSettingsBtn" class="no-drag ui-button ui-button--secondary" style="padding: 4px 10px; cursor: pointer;">
                   ${t('hostvault.cloudSyncSettings')} ${isExpanded ? '▲' : '▼'}
                 </button>
               </div>
@@ -1356,7 +1375,7 @@ export class HostListPage extends HTMLElement {
               <div id="gcpSyncSettingsContent" style="${expandedStyle}">
                 <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
                   Port
-                  <input class="no-drag" id="gcpDefaultPort" name="gcpDefaultPort" type="number" min="1" max="65535" value="${currentIntegration?.defaultPort || 22}" required style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
+                  <input class="no-drag" id="gcpDefaultPort" name="gcpDefaultPort" type="number" min="1" max="65535" value="${escapeHtml(currentIntegration?.defaultPort || 22)}" required style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
                 </label>
                 <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
                   Username
@@ -1390,8 +1409,8 @@ export class HostListPage extends HTMLElement {
           </div>
 
           <div class="settings-footer" style="padding: 16px 20px; border-top: 1px solid rgba(23,107,135,0.15); display: flex; gap: 10px;">
-            ${currentIntegration ? `<button type="button" id="gcpDeleteBtn" data-integration-group-id="${escapeHtml(currentIntegration.groupId)}" class="no-drag" style="min-height: 38px; font-weight: 700; background: #e74c3c; border: none; border-radius: 6px; color: #fff; padding: 0 16px; cursor: pointer;">Delete</button>` : ''}
-            <button type="submit" id="gcpSubmitBtn" class="no-drag primary" style="flex: 1; min-height: 38px; font-weight: 700; background: var(--color-primary); border: none; border-radius: 6px; color: #fff; cursor: pointer;">${currentIntegration ? t('hostvault.saveAndResync') : t('hostvault.saveAndSync')}</button>
+            ${currentIntegration ? `<button type="button" id="gcpDeleteBtn" data-integration-group-id="${escapeHtml(currentIntegration.groupId)}" class="no-drag ui-button ui-button--danger" style="min-height: 38px; padding: 0 16px; cursor: pointer;">Delete</button>` : ''}
+            <button type="submit" id="gcpSubmitBtn" class="no-drag primary ui-button ui-button--primary" style="flex: 1; min-height: 38px; cursor: pointer;">${currentIntegration ? t('hostvault.saveAndResync') : t('hostvault.saveAndSync')}</button>
           </div>
         </form>
       </div>
@@ -1426,7 +1445,7 @@ export class HostListPage extends HTMLElement {
       <div class="settings-dialog" style="width: 100% !important; height: 100% !important; max-height: 100% !important; border: none !important; box-shadow: none !important; transform: none !important; display: flex; flex-direction: column;">
         <div class="settings-header" style="padding: 16px 20px; border-bottom: 1px solid rgba(23,107,135,0.15); display: flex; justify-content: space-between; align-items: center;">
           <h2 style="font-size: 15px; font-weight: 700; color: var(--color-text); font-family: inherit;">${t('hostvault.editGroup')}</h2>
-          <button type="button" aria-label="${t('hostvault.closeSettings')}" id="closeVaultDrawer" class="no-drag btn-icon icon-btn" title="${t('hostvault.closeSettings')}" style="font-size: 18px;">
+          <button type="button" aria-label="${t('hostvault.closeSettings')}" id="closeVaultDrawer" class="no-drag btn-icon icon-btn ui-button ui-button--quiet ui-button--icon" title="${t('hostvault.closeSettings')}">
             &times;
           </button>
         </div>
@@ -1456,14 +1475,14 @@ export class HostListPage extends HTMLElement {
               <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
                 <span style="font-size: 12px; font-weight: 700; color: var(--color-text);">${t('hostvault.integrationRelationDisplay')}</span>
                 ${(currentAws || currentGcp)
-                  ? `<button type="button" id="manageGroupAwsBtn" class="no-drag" style="min-height: 30px; font-weight: 700; font-size: 11px; border: 1px solid var(--color-primary); color: var(--color-primary); background: transparent; padding: 0 12px; border-radius: 4px; cursor: pointer;">${t('hostvault.goManage')}</button>`
+                  ? `<button type="button" id="manageGroupAwsBtn" class="no-drag ui-button ui-button--secondary" style="min-height: 30px; padding: 0 12px; cursor: pointer;">${t('hostvault.goManage')}</button>`
                   : ''}
               </div>
               ${relationHtml}
               ${(currentAws || currentGcp) ? '' : `
                 <div style="display: flex; flex-wrap: wrap; gap: 8px;">
                   ${this.getIntegrationProviders().map(p => `
-                    <button type="button" class="no-drag group-associate-provider-btn" data-provider="${p.id}" style="min-height: 30px; font-weight: 700; font-size: 11px; border: 1px solid var(--color-primary); color: var(--color-primary); background: transparent; padding: 0 12px; border-radius: 4px; cursor: pointer;">${t('hostvault.associateProvider', { provider: p.label })}</button>
+                    <button type="button" class="no-drag group-associate-provider-btn ui-button ui-button--secondary" data-provider="${p.id}" style="min-height: 30px; padding: 0 12px; cursor: pointer;">${t('hostvault.associateProvider', { provider: p.label })}</button>
                   `).join('')}
                 </div>
               `}
@@ -1471,8 +1490,8 @@ export class HostListPage extends HTMLElement {
           </div>
 
           <div class="settings-footer" style="padding: 16px 20px; border-top: 1px solid rgba(23,107,135,0.15); display: flex; gap: 10px;">
-            <button type="button" id="vaultGroupDeleteBtn" class="no-drag" style="min-height: 38px; font-weight: 700; background: #e74c3c; border: none; border-radius: 6px; color: #fff; padding: 0 16px; cursor: pointer;">Delete</button>
-            <button type="submit" id="saveGroupDrawerBtn" class="no-drag primary" style="flex: 1; min-height: 38px; font-weight: 700; background: var(--color-primary); border: none; border-radius: 6px; color: #fff; cursor: pointer; margin-left: auto;">Save</button>
+            <button type="button" id="vaultGroupDeleteBtn" class="no-drag ui-button ui-button--danger" style="min-height: 38px; padding: 0 16px; cursor: pointer;">Delete</button>
+            <button type="submit" id="saveGroupDrawerBtn" class="no-drag primary ui-button ui-button--primary" style="flex: 1; min-height: 38px; cursor: pointer; margin-left: auto;">Save</button>
           </div>
         </form>
       </div>
@@ -1524,6 +1543,7 @@ export class HostListPage extends HTMLElement {
   }
 
   render() {
+    if (hostStore.getState().selectedTab !== 'keychain') this.closeKeychainDrawer?.();
     const activeElementId = document.activeElement ? document.activeElement.id : null;
     let selectionStart = null;
     let selectionEnd = null;
@@ -1603,7 +1623,7 @@ export class HostListPage extends HTMLElement {
     const sidebarHtml = menuTabs.map(tab => {
       const activeClass = selectedTab === tab.id ? 'active' : '';
       return `
-        <div class="vault-menu-item no-drag ${activeClass}" data-tab="${tab.id}" role="button" tabindex="0">
+        <div class="vault-menu-item ui-button ui-button--tab no-drag ${activeClass}" data-tab="${tab.id}" role="button" tabindex="0">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             ${tab.icon}
           </svg>
@@ -1623,17 +1643,17 @@ export class HostListPage extends HTMLElement {
           ? t('hostvault.groupFolderCounts', { hosts: count, folders: subCount })
           : t('hostvault.groupHostCount', { count });
         return `
-          <div class="vault-card group-folder" data-group-id="${group.id}" title="${t('hostvault.enterGroup', { name: group.name })}" role="button" tabindex="0" aria-label="${t('hostvault.enterGroup', { name: group.name })}">
+          <div class="vault-card group-folder" data-group-id="${escapeHtml(group.id)}" title="${escapeHtml(t('hostvault.enterGroup', { name: group.name }))}" role="button" tabindex="0" aria-label="${escapeHtml(t('hostvault.enterGroup', { name: group.name }))}">
             <div class="vault-card-icon" style="background: var(--color-primary); border-radius: 8px;">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
               </svg>
             </div>
             <div class="vault-card-info">
-              <div class="vault-card-title">${group.name}</div>
-              <div class="vault-card-details">${details}</div>
+              <div class="vault-card-title">${escapeHtml(group.name)}</div>
+              <div class="vault-card-details">${escapeHtml(details)}</div>
             </div>
-            <button type="button" aria-label="${t('hostvault.editGroupTitle')}" class="no-drag vault-group-edit-btn" data-group-id="${group.id}" title="${t('hostvault.editGroupTitle')}" style="margin-left: auto;">
+            <button type="button" aria-label="${t('hostvault.editGroupTitle')}" class="no-drag vault-group-edit-btn ui-button ui-button--quiet ui-button--icon" data-group-id="${escapeHtml(group.id)}" title="${t('hostvault.editGroupTitle')}" style="margin-left: auto;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                 <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
@@ -1711,7 +1731,7 @@ export class HostListPage extends HTMLElement {
         const metaHtml = chips.length ? `<div class="vault-card-meta">${chips.join('')}</div>` : '';
 
         return `
-          <div class="vault-card history-item" data-id="${item.id}" draggable="true" title="${t('hostvault.hostCardTitle', { label: item.label })}" role="button" tabindex="0" aria-label="${t('hostvault.connectTo', { name: item.alias || item.label })}">
+          <div class="vault-card history-item" data-id="${escapeHtml(item.id)}" draggable="true" title="${escapeHtml(t('hostvault.hostCardTitle', { label: item.label }))}" role="button" tabindex="0" aria-label="${escapeHtml(t('hostvault.connectTo', { name: item.alias || item.label }))}">
             <span class="vault-card-status ${isOnline ? 'online' : 'idle'}" title="${statusLabel}" aria-label="${statusLabel}"></span>
             <div class="vault-card-icon" style="background: ${iconBg};">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -1719,11 +1739,11 @@ export class HostListPage extends HTMLElement {
               </svg>
             </div>
             <div class="vault-card-info">
-              <div class="vault-card-title">${item.alias || item.label}</div>
-              <div class="vault-card-details">ssh, ${item.config?.username}@${item.config?.host}</div>
+              <div class="vault-card-title">${escapeHtml(item.alias || item.label)}</div>
+              <div class="vault-card-details">ssh, ${escapeHtml(item.config?.username)}@${escapeHtml(item.config?.host)}</div>
               ${metaHtml}
             </div>
-            <button type="button" aria-label="${t('hostvault.editHostSettings')}" class="no-drag vault-card-edit-btn" data-id="${item.id}" title="${t('hostvault.editHostSettings')}" style="background: transparent; border: none; padding: 6px; cursor: pointer; color: var(--color-subtext); display: inline-flex; align-items: center; justify-content: center; margin-left: auto;">
+            <button type="button" aria-label="${t('hostvault.editHostSettings')}" class="no-drag vault-card-edit-btn ui-button ui-button--quiet ui-button--icon" data-id="${escapeHtml(item.id)}" title="${t('hostvault.editHostSettings')}" style="padding: 6px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; margin-left: auto;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                 <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
@@ -1760,73 +1780,63 @@ export class HostListPage extends HTMLElement {
 
     // Hosts 排序選項與檢視切換（工具列右側）
     const SORT_OPTIONS = [
-      { by: 'name', dir: 'asc', label: 'Name A–Z' },
-      { by: 'name', dir: 'desc', label: 'Name Z–A' },
-      { by: 'host', dir: 'asc', label: 'Address A–Z' },
-      { by: 'host', dir: 'desc', label: 'Address Z–A' },
-      { by: 'updated', dir: 'desc', label: 'Recently updated' },
-      { by: 'created', dir: 'desc', label: 'Recently created' }
+      { by: 'name', dir: 'asc', label: t('hostvault.sortNameAsc') },
+      { by: 'name', dir: 'desc', label: t('hostvault.sortNameDesc') },
+      { by: 'host', dir: 'asc', label: t('hostvault.sortAddressAsc') },
+      { by: 'host', dir: 'desc', label: t('hostvault.sortAddressDesc') },
+      { by: 'updated', dir: 'desc', label: t('hostvault.sortUpdated') },
+      { by: 'created', dir: 'desc', label: t('hostvault.sortCreated') }
     ];
     const activeSort = SORT_OPTIONS.find(o => o.by === state.sortBy && o.dir === state.sortDir) || SORT_OPTIONS[0];
     const sortItemsHtml = SORT_OPTIONS.map(o =>
-      `<button type="button" class="no-drag termix-dropdown-item${o === activeSort ? ' active' : ''}" data-sort-by="${o.by}" data-sort-dir="${o.dir}">${o.label}</button>`
+      `<button type="button" class="no-drag termix-dropdown-item${o === activeSort ? ' active' : ''} ui-button ui-button--menu" data-sort-by="${o.by}" data-sort-dir="${o.dir}" aria-pressed="${o === activeSort}"><span>${o.label}</span><i class="ti ti-check menu-check" aria-hidden="true"></i></button>`
     ).join('');
 
     let mainBoardHtml = "";
     if (selectedTab === 'hosts') {
       mainBoardHtml = `
-          <div class="vault-search-bar" style="display: flex; gap: 10px; margin-bottom: 20px; align-items: center; flex: 0 0 auto;">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="search-icon"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input class="no-drag" id="vaultSearchInput" placeholder="Find a host or ssh user@hostname..." autocomplete="off" value="${state.searchQuery}" style="flex: 1; background: transparent; border: none; padding: 8px 12px; color: var(--color-text);">
-            <button type="button" id="vaultSearchConnectBtn" class="no-drag primary" style="padding: 8px 18px; font-weight: 700; background: var(--color-primary); border: none; border-radius: 999px; color: #fff; cursor: pointer;">CONNECT</button>
-          </div>
-
-          <div class="vault-toolbar" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex: 0 0 auto;">
-            <div style="display: flex; gap: 8px; align-items: center;">
-              <div class="termix-dropdown no-drag" style="display: inline-flex; vertical-align: middle; position: relative;">
-                <div style="display: inline-flex; background: var(--color-primary); border-radius: 4px;">
-                  <button type="button" id="addConnection" class="no-drag primary" style="min-height: 32px; font-weight: 700; font-size: 12px; padding: 0 14px; background: var(--color-primary); border: none; color: #fff; cursor: pointer; border-right: 1px solid rgba(255, 255, 255, 0.2); border-top-left-radius: 4px; border-bottom-left-radius: 4px;">+ NEW HOST</button>
-                  <button type="button" class="no-drag termix-dropdown-trigger" style="min-height: 32px; width: 24px; padding: 0; background: var(--color-primary); border: none; color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 11px; border-top-right-radius: 4px; border-bottom-right-radius: 4px;">▼</button>
-                  <div class="termix-dropdown-menu" style="top: 100%; right: 0; left: auto;">
-                    <button type="button" class="no-drag termix-dropdown-item" id="awsIntegrationBtn">AWS Integration</button>
-                    <button type="button" class="no-drag termix-dropdown-item" id="gcpIntegrationBtn">GCP Integration</button>
-                  </div>
-                </div>
-              </div>
-              <button class="no-drag" type="button" id="addGroupBtn" style="min-height: 32px; font-weight: 700; font-size: 12px; border: 1px solid var(--color-primary); color: var(--color-primary); background: transparent; padding: 0 14px; border-radius: 4px; cursor: pointer;">+ NEW GROUP</button>
-              <div class="termix-dropdown no-drag">
-                <button class="no-drag termix-dropdown-trigger" type="button" id="exportDropdownBtn" style="min-height: 32px; font-weight: 700; font-size: 12px; border: 1px solid var(--color-primary); color: var(--color-primary); background: transparent; padding: 0 14px; border-radius: 4px; cursor: pointer;" title="${t('hostvault.exportTooltip')}">Export ▼</button>
-                <div class="termix-dropdown-menu">
-                  <button type="button" class="no-drag termix-dropdown-item" id="exportHostsJsonBtn">Export JSON</button>
-                  <button type="button" class="no-drag termix-dropdown-item" id="exportHostsYamlBtn">Export YAML</button>
-                </div>
-              </div>
-              <div class="termix-dropdown no-drag">
-                <button class="no-drag termix-dropdown-trigger" type="button" id="importDropdownBtn" style="min-height: 32px; font-weight: 700; font-size: 12px; border: 1px solid var(--color-primary); color: var(--color-primary); background: transparent; padding: 0 14px; border-radius: 4px; cursor: pointer;" title="${t('hostvault.importTooltip')}">Import ▼</button>
-                <div class="termix-dropdown-menu">
-                  <button type="button" class="no-drag termix-dropdown-item" id="importHostsJsonBtn">Import JSON</button>
-                  <button type="button" class="no-drag termix-dropdown-item" id="importHostsYamlBtn">Import YAML</button>
-                </div>
-              </div>
+          <div class="vault-commandbar">
+            <div class="vault-search-bar">
+              <i class="ti ti-search search-icon" aria-hidden="true"></i>
+              <input class="no-drag" id="vaultSearchInput" aria-label="${t('hostvault.searchHosts')}" placeholder="${t('hostvault.searchHosts')}" autocomplete="off" value="${escapeHtml(state.searchQuery)}">
+              <button type="button" id="vaultSearchConnectBtn" class="no-drag vault-connect-action ui-button ui-button--quiet ui-button--icon" title="${t('common.connect')}" aria-label="${t('common.connect')}"><i class="ti ti-arrow-right" aria-hidden="true"></i></button>
             </div>
-
-            <div style="display: flex; gap: 8px; align-items: center;">
+            <div class="vault-toolbar">
               <div class="termix-dropdown no-drag">
-                <button class="no-drag termix-dropdown-trigger" type="button" id="hostSortDropdownBtn" style="min-height: 32px; font-weight: 700; font-size: 12px; border: 1px solid var(--color-primary); color: var(--color-primary); background: transparent; padding: 0 12px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;" title="Sort hosts">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M6 12h12M10 18h4"/></svg>
-                  ${activeSort.label} ▼
-                </button>
-                <div class="termix-dropdown-menu" style="right: 0; left: auto;">
+                <button type="button" class="no-drag termix-dropdown-trigger vault-action vault-action-primary ui-button ui-button--primary" id="vaultCreateTrigger" aria-expanded="false" aria-controls="vaultCreateMenu"><i class="ti ti-plus" aria-hidden="true"></i><span>${t('hostvault.create')}</span><i class="ti ti-chevron-down action-chevron" aria-hidden="true"></i></button>
+                <div class="termix-dropdown-menu vault-action-menu" id="vaultCreateMenu">
+                  <button type="button" id="addConnection" class="no-drag termix-dropdown-item ui-button ui-button--menu"><i class="ti ti-server" aria-hidden="true"></i><span>${t('hostvault.createHost')}</span></button>
+                  <button type="button" id="addGroupBtn" class="no-drag termix-dropdown-item ui-button ui-button--menu"><i class="ti ti-folder-plus" aria-hidden="true"></i><span>${t('hostvault.newGroup')}</span></button>
+                  <div class="vault-menu-divider" role="separator"></div>
+                  <div class="vault-menu-label">${t('hostvault.cloudImport')}</div>
+                  <button type="button" class="no-drag termix-dropdown-item ui-button ui-button--menu" id="awsIntegrationBtn"><i class="ti ti-brand-aws" aria-hidden="true"></i><span>AWS</span></button>
+                  <button type="button" class="no-drag termix-dropdown-item ui-button ui-button--menu" id="gcpIntegrationBtn"><i class="ti ti-brand-google" aria-hidden="true"></i><span>Google Cloud</span></button>
+                </div>
+              </div>
+              <div class="termix-dropdown no-drag">
+                <button class="no-drag termix-dropdown-trigger vault-action vault-action-quiet ui-button ui-button--quiet" type="button" id="hostSortDropdownBtn" aria-expanded="false" aria-controls="vaultViewMenu" title="${t('hostvault.view')}: ${activeSort.label}"><i class="ti ti-adjustments-horizontal" aria-hidden="true"></i><span>${t('hostvault.view')}</span><i class="ti ti-chevron-down action-chevron" aria-hidden="true"></i></button>
+                <div class="termix-dropdown-menu vault-action-menu" id="vaultViewMenu">
+                  <div class="vault-menu-label">${t('hostvault.layout')}</div>
+                  <div class="vault-view-toggle no-drag" role="group" aria-label="${t('hostvault.layout')}">
+                    <button type="button" class="no-drag vault-view-btn ui-button ui-button--choice" data-view-mode="grid" aria-pressed="${state.viewMode === 'grid'}"><i class="ti ti-layout-grid" aria-hidden="true"></i><span>${t('hostvault.gridView')}</span></button>
+                    <button type="button" class="no-drag vault-view-btn ui-button ui-button--choice" data-view-mode="list" aria-pressed="${state.viewMode === 'list'}"><i class="ti ti-list" aria-hidden="true"></i><span>${t('hostvault.listView')}</span></button>
+                  </div>
+                  <div class="vault-menu-divider" role="separator"></div>
+                  <div class="vault-menu-label">${t('hostvault.sort')}</div>
                   ${sortItemsHtml}
                 </div>
               </div>
-              <div class="vault-view-toggle no-drag" style="display: inline-flex; border: 1px solid var(--color-primary); border-radius: 4px; overflow: hidden;">
-                <button type="button" class="no-drag vault-view-btn" data-view-mode="grid" title="Grid view" aria-label="Grid view" aria-pressed="${state.viewMode === 'grid'}" style="min-height: 32px; width: 34px; display: inline-flex; align-items: center; justify-content: center; border: none; cursor: pointer; background: ${state.viewMode === 'grid' ? 'var(--color-primary)' : 'transparent'}; color: ${state.viewMode === 'grid' ? '#fff' : 'var(--color-primary)'};">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-                </button>
-                <button type="button" class="no-drag vault-view-btn" data-view-mode="list" title="List view" aria-label="List view" aria-pressed="${state.viewMode === 'list'}" style="min-height: 32px; width: 34px; display: inline-flex; align-items: center; justify-content: center; border: none; border-left: 1px solid var(--color-primary); cursor: pointer; background: ${state.viewMode === 'list' ? 'var(--color-primary)' : 'transparent'}; color: ${state.viewMode === 'list' ? '#fff' : 'var(--color-primary)'};">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-                </button>
+              <div class="termix-dropdown no-drag">
+                <button type="button" class="no-drag termix-dropdown-trigger vault-action vault-action-icon vault-action-quiet ui-button ui-button--quiet ui-button--icon" id="vaultMoreTrigger" aria-label="${t('hostvault.moreActions')}" title="${t('hostvault.moreActions')}" aria-expanded="false" aria-controls="vaultMoreMenu"><i class="ti ti-dots" aria-hidden="true"></i></button>
+                <div class="termix-dropdown-menu vault-action-menu" id="vaultMoreMenu">
+                  <div class="vault-menu-label">${t('hostvault.importBackup')}</div>
+                  <button type="button" class="no-drag termix-dropdown-item ui-button ui-button--menu" id="importHostsJsonBtn" aria-label="${t('hostvault.importBackup')} JSON"><i class="ti ti-upload" aria-hidden="true"></i><span>JSON</span></button>
+                  <button type="button" class="no-drag termix-dropdown-item ui-button ui-button--menu" id="importHostsYamlBtn" aria-label="${t('hostvault.importBackup')} YAML"><i class="ti ti-upload" aria-hidden="true"></i><span>YAML</span></button>
+                  <div class="vault-menu-divider" role="separator"></div>
+                  <div class="vault-menu-label">${t('hostvault.exportBackup')}</div>
+                  <button type="button" class="no-drag termix-dropdown-item ui-button ui-button--menu" id="exportHostsJsonBtn" aria-label="${t('hostvault.exportBackup')} JSON"><i class="ti ti-download" aria-hidden="true"></i><span>JSON</span></button>
+                  <button type="button" class="no-drag termix-dropdown-item ui-button ui-button--menu" id="exportHostsYamlBtn" aria-label="${t('hostvault.exportBackup')} YAML"><i class="ti ti-download" aria-hidden="true"></i><span>YAML</span></button>
+                </div>
               </div>
             </div>
           </div>
@@ -1834,7 +1844,7 @@ export class HostListPage extends HTMLElement {
           <div class="vault-scroll-content" style="flex: 1; min-height: 0; overflow-y: auto;">
             <!-- 麵包屑路徑（移至內容區左上獨立列，含 home 圖示與返回箭頭） -->
             <div id="vaultBreadcrumbs" class="vault-breadcrumbs ${currentGroup ? '' : 'hidden'}" style="font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; margin-bottom: 16px;">
-              <button type="button" class="vault-breadcrumb-back no-drag" title="${t('hostvault.backToVaults')}" aria-label="${t('hostvault.backToVaults')}" style="display: inline-flex; align-items: center; gap: 5px; background: transparent; border: none; color: var(--color-primary); cursor: pointer; padding: 4px 6px; border-radius: 6px; font-size: 13px; font-weight: 700;">
+              <button type="button" class="vault-breadcrumb-back no-drag ui-button ui-button--quiet" title="${t('hostvault.backToVaults')}" aria-label="${t('hostvault.backToVaults')}" style="display: inline-flex; align-items: center; gap: 5px; cursor: pointer; padding: 4px 6px;">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5"/><path d="M5 10v10h14V10"/></svg>
                 <span>Vaults</span>
@@ -1860,13 +1870,13 @@ export class HostListPage extends HTMLElement {
         ` : (log.protocol === 'local' ? `
           <div class="log-avatar" style="background: linear-gradient(135deg, #8b5cf6, #ec4899); display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 50%; color: #fff; font-weight: 700; font-size: 13px;">L</div>
         ` : `
-          <div class="log-avatar" style="background: linear-gradient(135deg, #176b87, #2ecc71); display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 50%; color: #fff; font-weight: 700; font-size: 13px;">${initial}</div>
+          <div class="log-avatar" style="background: linear-gradient(135deg, #176b87, #2ecc71); display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 50%; color: #fff; font-weight: 700; font-size: 13px;">${escapeHtml(initial)}</div>
         `);
 
         return `
-          <tr class="log-record-row no-drag" data-log-id="${log.id}" style="border-bottom: 1px solid rgba(23, 107, 135, 0.15); cursor: pointer; transition: background 0.2s;">
+          <tr class="log-record-row no-drag" data-log-id="${escapeHtml(log.id)}" style="border-bottom: 1px solid rgba(23, 107, 135, 0.15); cursor: pointer; transition: background 0.2s;">
             <td style="padding: 14px 0 14px 16px; width: 36px;">
-              <input type="checkbox" class="no-drag log-select-checkbox" data-log-id="${log.id}" aria-label="${t('hostvault.selectLog')}" style="width: 14px; height: 14px; cursor: pointer;">
+              <input type="checkbox" class="no-drag log-select-checkbox" data-log-id="${escapeHtml(log.id)}" aria-label="${t('hostvault.selectLog')}" style="width: 14px; height: 14px; cursor: pointer;">
             </td>
             <td style="padding: 14px 16px; white-space: pre-line; line-height: 1.4; font-weight: 500; text-align: left;">
               <span style="color: var(--color-text); font-size: 13px;">${escapeHtml(log.dateStr)}</span>
@@ -1889,7 +1899,7 @@ export class HostListPage extends HTMLElement {
               </div>
             </td>
             <td style="padding: 14px 16px; text-align: right;">
-              <button type="button" class="no-drag" style="background: transparent; border: none; padding: 4px; color: var(--color-primary); cursor: pointer;">
+              <button type="button" class="no-drag ui-button ui-button--secondary" style="padding: 4px; cursor: pointer;">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
                 </svg>
@@ -1900,11 +1910,16 @@ export class HostListPage extends HTMLElement {
       }).join('');
 
       mainBoardHtml = `
-          <div class="vault-toolbar" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex: 0 0 auto;">
-            <div style="display: flex; gap: 8px;">
-              <button type="button" id="selectAllLogsBtn" class="no-drag" style="min-height: 32px; font-weight: 700; font-size: 12px; padding: 0 14px; background: transparent; border: 1px solid var(--color-primary); border-radius: 4px; color: var(--color-primary); cursor: pointer;">${t('hostvault.selectAll')}</button>
-              <button type="button" id="deleteSelectedLogsBtn" class="no-drag" style="min-height: 32px; font-weight: 700; font-size: 12px; padding: 0 14px; background: #ef4444; border: none; border-radius: 4px; color: #fff; cursor: pointer;">${t('hostvault.deleteSelected')}</button>
-              <button type="button" id="clearGlobalLogsBtn" class="no-drag" style="min-height: 32px; font-weight: 700; font-size: 12px; padding: 0 14px; background: #7f1d1d; border: none; border-radius: 4px; color: #fff; cursor: pointer;">${t('hostvault.clearAll')}</button>
+          <div class="vault-commandbar vault-commandbar-actions">
+            <div class="vault-toolbar">
+              <button type="button" id="selectAllLogsBtn" class="no-drag ui-button ui-button--secondary" style="min-height: 32px; padding: 0 14px; cursor: pointer;">${t('hostvault.selectAll')}</button>
+            <div class="termix-dropdown no-drag">
+              <button type="button" id="logsActionsBtn" class="no-drag termix-dropdown-trigger vault-action vault-action-icon vault-action-quiet ui-button ui-button--quiet ui-button--icon" aria-expanded="false" aria-label="${t('hostvault.moreActions')}" title="${t('hostvault.moreActions')}"><i class="ti ti-dots" aria-hidden="true"></i></button>
+              <div class="termix-dropdown-menu vault-action-menu">
+                <button type="button" id="deleteSelectedLogsBtn" class="no-drag termix-dropdown-item ui-button ui-button--menu ui-button--danger">${t('hostvault.deleteSelected')}</button>
+                <button type="button" id="clearGlobalLogsBtn" class="no-drag termix-dropdown-item ui-button ui-button--menu ui-button--danger">${t('hostvault.clearAll')}</button>
+              </div>
+            </div>
             </div>
           </div>
 
@@ -1947,7 +1962,7 @@ export class HostListPage extends HTMLElement {
       };
       const selectedTargetIds = new Set(selectedSnippet.targetHostIds || []);
       const packageOptions = packages.map(pkg => `
-        <option value="${pkg.id}" ${selectedSnippet.packageId === pkg.id ? 'selected' : ''}>${escapeHtml(pkg.name)}</option>
+        <option value="${escapeHtml(pkg.id)}" ${selectedSnippet.packageId === pkg.id ? 'selected' : ''}>${escapeHtml(pkg.name)}</option>
       `).join('');
 
       // 依據 activePackageId 與 searchQuery 過濾 Snippet
@@ -1972,7 +1987,7 @@ export class HostListPage extends HTMLElement {
       }
 
       const snippetCards = filteredSnippets.map(snippet => `
-        <div class="vault-card snippet-card" data-snippet-id="${snippet.id}" draggable="true" title="${t('hostvault.snippetDoubleClickRun', { name: escapeHtml(snippet.name) })}">
+        <div class="vault-card snippet-card" data-snippet-id="${escapeHtml(snippet.id)}" draggable="true" title="${t('hostvault.snippetDoubleClickRun', { name: escapeHtml(snippet.name) })}">
           <div class="vault-card-icon" style="background: var(--color-primary);">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
@@ -1983,8 +1998,8 @@ export class HostListPage extends HTMLElement {
             <div class="vault-card-details">${escapeHtml(formatSnippetPackageName(snippet.packageId, packages))}</div>
           </div>
           <div style="display: flex; gap: 4px; margin-left: auto;">
-            <button type="button" class="no-drag snippet-paste-btn" data-snippet-id="${snippet.id}" title="${t('hostvault.pasteToTerminal')}" style="background: transparent; border: none; padding: 6px; cursor: pointer; color: var(--color-subtext); font-size: 11px; font-weight: 800;">PASTE</button>
-            <button type="button" class="no-drag snippet-run-btn" data-snippet-id="${snippet.id}" title="${t('hostvault.runInTerminal')}" style="background: var(--color-primary); border: none; padding: 6px 9px; cursor: pointer; color: #fff; border-radius: 4px; font-size: 11px; font-weight: 800;">RUN</button>
+            <button type="button" class="no-drag snippet-paste-btn ui-button ui-button--secondary" data-snippet-id="${escapeHtml(snippet.id)}" title="${t('hostvault.pasteToTerminal')}" style="padding: 6px; cursor: pointer;">PASTE</button>
+            <button type="button" class="no-drag snippet-run-btn ui-button ui-button--primary" data-snippet-id="${escapeHtml(snippet.id)}" title="${t('hostvault.runInTerminal')}" style="padding: 6px 9px; cursor: pointer;">RUN</button>
           </div>
         </div>
       `).join('');
@@ -1995,7 +2010,7 @@ export class HostListPage extends HTMLElement {
         const packagesHtml = packages.map(pkg => {
           const count = snippets.filter(s => s.packageId === pkg.id).length;
           return `
-            <div class="vault-card package-folder" data-package-id="${pkg.id}" title="${t('hostvault.enterCategory', { name: escapeHtml(pkg.name) })}">
+            <div class="vault-card package-folder" data-package-id="${escapeHtml(pkg.id)}" title="${t('hostvault.enterCategory', { name: escapeHtml(pkg.name) })}">
               <div class="vault-card-icon" style="background: var(--color-primary); border-radius: 8px;">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
@@ -2005,7 +2020,7 @@ export class HostListPage extends HTMLElement {
                 <div class="vault-card-title">${escapeHtml(pkg.name)}</div>
                 <div class="vault-card-details">${count} Snippets</div>
               </div>
-              <button type="button" aria-label="${t('hostvault.editCategory')}" class="no-drag snippet-package-edit-btn" data-package-id="${pkg.id}" title="${t('hostvault.editCategory')}" style="background: transparent; border: none; padding: 6px; cursor: pointer; color: var(--color-subtext); display: inline-flex; align-items: center; justify-content: center; margin-left: auto;">
+              <button type="button" aria-label="${t('hostvault.editCategory')}" class="no-drag snippet-package-edit-btn ui-button ui-button--quiet ui-button--icon" data-package-id="${escapeHtml(pkg.id)}" title="${t('hostvault.editCategory')}" style="padding: 6px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; margin-left: auto;">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                   <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
@@ -2029,11 +2044,7 @@ export class HostListPage extends HTMLElement {
         <div id="vaultSnippetsSection" class="vault-section" style="margin-top: ${packagesGridHtml ? '24px' : '0'};">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
             <h3 style="font-size: 14px; font-weight: 700; color: var(--color-text-muted); margin: 0; letter-spacing: 0.5px; text-transform: uppercase;">Snippets</h3>
-            ${isTopLevelNoSearch ? `
-              <button type="button" id="toggleShowAllSnippetsBtn" class="no-drag" style="background: transparent; border: 1px solid var(--color-primary); color: var(--color-primary); padding: 4px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: 700;">
-                ${showAll ? t('hostvault.showUncategorized') : t('hostvault.showAll')}
-              </button>
-            ` : ''}
+
           </div>
           <div id="vaultSnippetsGrid" class="vault-grid">${snippetCards || `<div style="color: var(--color-text-muted); font-size: 13px;">${t('hostvault.noSnippets')}</div>`}</div>
         </div>
@@ -2042,10 +2053,24 @@ export class HostListPage extends HTMLElement {
       const targetRows = this.buildBatchTargetsHtml(state, selectedTargetIds);
 
       mainBoardHtml = `
-        <div class="vault-toolbar" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex: 0 0 auto;">
-          <div style="display: flex; gap: 8px; align-items: center;">
-            <button type="button" id="newSnippetBtn" class="no-drag primary" style="min-height: 32px; font-weight: 700; font-size: 12px; padding: 0 14px; background: var(--color-primary); border: none; border-radius: 4px; color: #fff; cursor: pointer;">+ NEW SNIPPET</button>
-            <button type="button" id="newSnippetPackageBtn" class="no-drag" style="min-height: 32px; font-weight: 700; font-size: 12px; border: 1px solid var(--color-primary); color: var(--color-primary); background: transparent; padding: 0 14px; border-radius: 4px; cursor: pointer;">+ NEW PACKAGE</button>
+        <div class="vault-commandbar vault-commandbar-actions">
+          <div class="vault-toolbar">
+            <div class="termix-dropdown no-drag">
+              <button type="button" id="newSnippetMenuBtn" class="vault-action termix-dropdown-trigger ui-button ui-button--primary" aria-expanded="false"><i class="ti ti-plus" aria-hidden="true"></i><span>${t('hostvault.create')}</span><i class="ti ti-chevron-down action-chevron" aria-hidden="true"></i></button>
+              <div class="termix-dropdown-menu vault-action-menu">
+                <button type="button" id="newSnippetBtn" class="no-drag termix-dropdown-item ui-button ui-button--menu"><i class="ti ti-terminal-2" aria-hidden="true"></i><span>Snippet</span></button>
+                <button type="button" id="newSnippetPackageBtn" class="no-drag termix-dropdown-item ui-button ui-button--menu"><i class="ti ti-folder-plus" aria-hidden="true"></i><span>Package</span></button>
+              </div>
+            </div>
+
+            ${isTopLevelNoSearch ? `
+              <div class="termix-dropdown no-drag">
+                <button type="button" id="snippetViewMenuBtn" class="no-drag termix-dropdown-trigger vault-action ui-button ui-button--quiet" aria-expanded="false"><i class="ti ti-adjustments-horizontal" aria-hidden="true"></i><span>${t('hostvault.view')}</span><i class="ti ti-chevron-down action-chevron" aria-hidden="true"></i></button>
+                <div class="termix-dropdown-menu vault-action-menu">
+                  <button type="button" id="toggleShowAllSnippetsBtn" class="no-drag termix-dropdown-item ui-button ui-button--menu"><i class="ti ti-list" aria-hidden="true"></i><span>${showAll ? t('hostvault.showUncategorized') : t('hostvault.showAll')}</span></button>
+                </div>
+              </div>
+            ` : ''}
 
             <!-- 腳本麵包屑 -->
             <div id="snippetBreadcrumbs" class="vault-breadcrumbs ${activePackageId !== 'all' ? '' : 'hidden'}" style="font-size: 13px; font-weight: 600; color: var(--color-primary); cursor: pointer; display: flex; align-items: center; gap: 4px; margin-left: 16px;">
@@ -2066,7 +2091,7 @@ export class HostListPage extends HTMLElement {
         <div class="settings-dialog" style="width: 100% !important; height: 100% !important; max-height: 100% !important; border: none !important; box-shadow: none !important; transform: none !important; display: flex; flex-direction: column;">
           <div class="settings-header" style="padding: 16px 20px; border-bottom: 1px solid rgba(23,107,135,0.15); display: flex; justify-content: space-between; align-items: center;">
             <h2 id="modalTitle" style="font-size: 15px; font-weight: 700; color: var(--color-text);">${selectedSnippet.id ? 'Edit Snippet' : 'New Snippet'}</h2>
-            <button type="button" aria-label="${t('hostvault.closeSettings')}" id="closeVaultDrawer" class="no-drag btn-icon icon-btn" title="${t('hostvault.closeSettings')}" style="font-size: 18px;">
+            <button type="button" aria-label="${t('hostvault.closeSettings')}" id="closeVaultDrawer" class="no-drag btn-icon icon-btn ui-button ui-button--quiet ui-button--icon" title="${t('hostvault.closeSettings')}">
               &times;
             </button>
           </div>
@@ -2112,9 +2137,9 @@ export class HostListPage extends HTMLElement {
               </div>
             </div>
             <div class="settings-footer" style="padding: 16px 20px; border-top: 1px solid rgba(23,107,135,0.15); display: flex; gap: 8px; justify-content: flex-end; align-items: center;">
-              ${selectedSnippet.id ? `<button type="button" id="deleteSnippetBtn" class="no-drag" style="background: #7f1d1d; color: #fff; border: none; border-radius: 5px; padding: 0 12px; min-height: 34px; font-size: 12px; font-weight: 800; cursor: pointer; margin-right: auto;">Delete</button>` : ''}
-              <button type="button" id="runSnippetTargetsBtn" class="no-drag" ${selectedSnippet.id ? '' : 'disabled'} style="min-height: 34px; padding: 0 12px; border: 1px solid var(--color-primary); background: transparent; color: var(--color-primary); border-radius: 5px; font-size: 12px; font-weight: 800; cursor: ${selectedSnippet.id ? 'pointer' : 'default'};">Run</button>
-              <button type="button" id="saveSnippetBtn" class="no-drag primary" style="min-height: 34px; padding: 0 14px; border: none; background: var(--color-primary); color: #fff; border-radius: 5px; font-size: 12px; font-weight: 800; cursor: pointer;">Save</button>
+              ${selectedSnippet.id ? `<button type="button" id="deleteSnippetBtn" class="no-drag ui-button ui-button--danger" style="padding: 0 12px; min-height: 34px; cursor: pointer; margin-right: auto;">Delete</button>` : ''}
+              <button type="button" id="runSnippetTargetsBtn" class="no-drag ui-button ui-button--primary" ${selectedSnippet.id ? '' : 'disabled'} style="min-height: 34px; padding: 0 12px; cursor: ${selectedSnippet.id ? 'pointer' : 'default'};">Run</button>
+              <button type="button" id="saveSnippetBtn" class="no-drag primary ui-button ui-button--primary" style="min-height: 34px; padding: 0 14px; cursor: pointer;">Save</button>
             </div>
           </form>
         </div>
@@ -2125,7 +2150,7 @@ export class HostListPage extends HTMLElement {
         <div class="settings-dialog" style="width: 100% !important; height: 100% !important; max-height: 100% !important; border: none !important; box-shadow: none !important; transform: none !important; display: flex; flex-direction: column;">
           <div class="settings-header" style="padding: 16px 20px; border-bottom: 1px solid rgba(23,107,135,0.15); display: flex; justify-content: space-between; align-items: center;">
             <h2 style="font-size: 15px; font-weight: 700; color: var(--color-text);">${selectedPackage.id ? 'Edit Package' : 'New Package'}</h2>
-            <button type="button" aria-label="${t('hostvault.closeSettings')}" id="closeVaultDrawer" class="no-drag btn-icon icon-btn" title="${t('hostvault.closeSettings')}" style="font-size: 18px;">
+            <button type="button" aria-label="${t('hostvault.closeSettings')}" id="closeVaultDrawer" class="no-drag btn-icon icon-btn ui-button ui-button--quiet ui-button--icon" title="${t('hostvault.closeSettings')}">
               &times;
             </button>
           </div>
@@ -2140,8 +2165,8 @@ export class HostListPage extends HTMLElement {
               </label>
             </div>
             <div class="settings-footer" style="padding: 16px 20px; border-top: 1px solid rgba(23,107,135,0.15); display: flex; gap: 8px; justify-content: flex-end; align-items: center;">
-              ${selectedPackage.id ? `<button type="button" id="deleteSnippetPackageBtn" class="no-drag" style="background: #7f1d1d; color: #fff; border: none; border-radius: 5px; padding: 0 12px; min-height: 34px; font-size: 12px; font-weight: 800; cursor: pointer; margin-right: auto;">Delete</button>` : ''}
-              <button type="submit" id="saveSnippetPackageBtn" class="no-drag primary" style="min-height: 34px; padding: 0 14px; border: none; background: var(--color-primary); color: #fff; border-radius: 5px; font-size: 12px; font-weight: 800; cursor: pointer;">Save</button>
+              ${selectedPackage.id ? `<button type="button" id="deleteSnippetPackageBtn" class="no-drag ui-button ui-button--danger" style="padding: 0 12px; min-height: 34px; cursor: pointer; margin-right: auto;">Delete</button>` : ''}
+              <button type="submit" id="saveSnippetPackageBtn" class="no-drag primary ui-button ui-button--primary" style="min-height: 34px; padding: 0 14px; cursor: pointer;">Save</button>
             </div>
           </form>
         </div>
@@ -2155,22 +2180,28 @@ export class HostListPage extends HTMLElement {
           <td style="padding: 14px 16px; text-align: left; font-size: 11px; color: var(--color-text-muted); font-family: monospace;">${escapeHtml(k.fingerprint)}</td>
           <td style="padding: 14px 16px; text-align: left; font-size: 12.5px; color: var(--color-text-muted);">${escapeHtml(k.comment)}</td>
           <td style="padding: 14px 16px; text-align: right; white-space: nowrap;">
-            <button type="button" aria-label="${t('hostvault.keychainCopyPublic')}" class="no-drag copy-pubkey-btn icon-btn" data-id="${k.id}" style="font-size: 15px; display: inline-flex; margin-right: 4px;" title="${t('hostvault.keychainCopyPublic')}">⧉</button>
-            <button type="button" aria-label="${t('hostvault.removeKey')}" class="no-drag delete-key-btn icon-btn danger" data-id="${k.id}" style="font-size: 18px; display: inline-flex;" title="${t('hostvault.removeKey')}">&times;</button>
+            <button type="button" aria-label="${t('hostvault.keychainCopyPublic')}" class="no-drag copy-pubkey-btn icon-btn ui-button ui-button--quiet ui-button--icon" data-id="${escapeHtml(k.id)}" style="display: inline-flex; margin-right: 4px;" title="${t('hostvault.keychainCopyPublic')}">⧉</button>
+            <button type="button" aria-label="${t('hostvault.removeKey')}" class="no-drag delete-key-btn icon-btn danger ui-button ui-button--danger ui-button--icon" data-id="${escapeHtml(k.id)}" style="display: inline-flex;" title="${t('hostvault.removeKey')}">&times;</button>
           </td>
         </tr>
       `).join('');
 
       mainBoardHtml = `
-          <div class="vault-toolbar" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex: 0 0 auto;">
-            <div style="display: flex; gap: 8px;">
-              <button type="button" id="generateKeyBtn" class="no-drag primary" style="min-height: 32px; font-weight: 700; font-size: 12px; padding: 0 14px; background: var(--color-primary); border: none; border-radius: 4px; color: #fff; cursor: pointer;">${t('hostvault.keychainGenerate')}</button>
-              <button type="button" id="importKeyBtn" class="no-drag" style="min-height: 32px; font-weight: 700; font-size: 12px; padding: 0 14px; background: transparent; border: 1px solid rgba(23,107,135,0.35); border-radius: 4px; color: var(--color-text); cursor: pointer;">${t('hostvault.keychainImport')}</button>
+          <div class="vault-commandbar vault-commandbar-actions">
+            <div class="vault-toolbar">
+            <div class="termix-dropdown no-drag">
+              <button type="button" id="newKeyMenuBtn" class="vault-action termix-dropdown-trigger ui-button ui-button--primary" aria-expanded="false"><i class="ti ti-plus" aria-hidden="true"></i><span>${t('hostvault.create')}</span><i class="ti ti-chevron-down action-chevron" aria-hidden="true"></i></button>
+              <div class="termix-dropdown-menu vault-action-menu">
+                <button type="button" id="generateKeyBtn" class="no-drag termix-dropdown-item ui-button ui-button--menu"><i class="ti ti-key" aria-hidden="true"></i><span>${t('hostvault.keychainGenerate')}</span></button>
+                <button type="button" id="importKeyBtn" class="no-drag termix-dropdown-item ui-button ui-button--menu"><i class="ti ti-upload" aria-hidden="true"></i><span>${t('hostvault.keychainImport')}</span></button>
+              </div>
+            </div>
+              <button type="button" id="reloadKeychainBtn" class="no-drag vault-action vault-action-icon ui-button ui-button--quiet ui-button--icon" aria-label="${t('hostvault.forward.refresh')}" title="${t('hostvault.forward.refresh')}" ${this.keychainLoading ? 'disabled' : ''}><i class="ti ti-rotate-2" aria-hidden="true"></i></button>
             </div>
           </div>
 
           <div style="flex: 1; overflow-y: auto; background: rgba(12, 18, 31, 0.5); border: 1px solid rgba(23, 107, 135, 0.15); border-radius: 8px; min-height: 250px;">
-            ${!this.keychainLoaded ? `
+            ${this.keychainLoadError ? `<div role="alert" style="padding: 40px; color: var(--color-text-muted);">${escapeHtml(this.keychainLoadError)}</div>` : !this.keychainLoaded ? `
               <div style="padding: 40px; text-align: center; color: var(--color-text-muted); font-size: 14px;">
                 ${t('hostvault.keychainLoading')}
               </div>
@@ -2206,7 +2237,7 @@ export class HostListPage extends HTMLElement {
           <td style="padding: 14px 16px; text-align: left; font-size: 12.5px; color: var(--color-text-muted);">${escapeHtml(h.type)}</td>
           <td style="padding: 14px 16px; text-align: left; font-size: 11px; color: var(--color-text-muted); font-family: monospace;">${escapeHtml(h.fingerprint)}</td>
           <td style="padding: 14px 16px; text-align: right;">
-            <button type="button" aria-label="${t('hostvault.removeFingerprint')}" class="no-drag delete-kh-btn icon-btn danger" data-index="${i}" style="font-size: 18px; display: inline-flex;" title="${t('hostvault.removeFingerprint')}">&times;</button>
+            <button type="button" aria-label="${t('hostvault.removeFingerprint')}" class="no-drag delete-kh-btn icon-btn danger ui-button ui-button--danger ui-button--icon" data-index="${i}" style="display: inline-flex;" title="${t('hostvault.removeFingerprint')}">&times;</button>
           </td>
         </tr>
       `).join('');
@@ -2265,7 +2296,7 @@ export class HostListPage extends HTMLElement {
     const allSnippets = snippetStore.getState().snippets;
     const startupCommandDefaults = getStartupCommandDefaults(drawerHost.config || {});
     const startupSnippetOptions = allSnippets.map(snippet => `
-      <option value="${snippet.id}" ${startupCommandDefaults.startupSnippetId === snippet.id ? 'selected' : ''}>${escapeHtml(snippet.name)}</option>
+      <option value="${escapeHtml(snippet.id)}" ${startupCommandDefaults.startupSnippetId === snippet.id ? 'selected' : ''}>${escapeHtml(snippet.name)}</option>
     `).join('');
 
     this.innerHTML = `
@@ -2273,7 +2304,7 @@ export class HostListPage extends HTMLElement {
         <!-- 第一欄：左側選單 -->
         <div class="vault-sub-sidebar">
           ${sidebarHtml}
-          <div class="vault-menu-item vault-settings-item no-drag" data-action="open-settings" role="button" tabindex="0" title="${t('app.settings.title')}" style="margin-top: auto;">
+          <div class="vault-menu-item ui-button ui-button--tab vault-settings-item no-drag" data-action="open-settings" role="button" tabindex="0" title="${t('app.settings.title')}" style="margin-top: auto;">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="3"/>
               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
@@ -2283,13 +2314,13 @@ export class HostListPage extends HTMLElement {
         </div>
 
         <!-- 第二欄：中央 Vault 主面板 -->
-        <div class="vault-main-board ${selectedTab === 'kubernetes' ? 'kubernetes-host-board' : ''}" style="flex: 1; display: flex; flex-direction: column; min-width: 0; padding: ${selectedTab === 'kubernetes' ? '0' : '20px'}; overflow-y: ${selectedTab === 'kubernetes' ? 'hidden' : 'auto'};">
+        <div class="vault-main-board ${selectedTab === 'kubernetes' ? 'kubernetes-host-board' : ''}" style="flex: 1; display: flex; flex-direction: column; min-width: 0; padding: ${selectedTab === 'kubernetes' ? '0' : '28px'}; overflow-y: ${selectedTab === 'kubernetes' ? 'hidden' : 'auto'};">
           ${hostVaultStatusHtml}
           ${mainBoardHtml}
         </div>
 
         <!-- 第三欄：右側滑出抽屜 -->
-        <div id="vaultDrawer" class="vault-drawer ${(state.drawerOpen && (selectedTab === 'hosts' || selectedTab === 'snippets' || selectedTab === 'integrations')) ? 'open' : ''}" style="width: 380px; background: #0c121f; border-left: 1px solid rgba(23,107,135,0.25); display: flex; flex-direction: column; transition: transform 0.3s ease; transform: ${(state.drawerOpen && (selectedTab === 'hosts' || selectedTab === 'snippets' || selectedTab === 'integrations')) ? 'translateX(0)' : 'translateX(100%)'}; position: relative;">
+        <div id="vaultDrawer" class="vault-drawer ${(state.drawerOpen && (selectedTab === 'hosts' || selectedTab === 'snippets' || selectedTab === 'integrations')) ? 'open' : ''}" ${(state.drawerOpen && ['hosts', 'snippets', 'integrations'].includes(selectedTab)) ? '' : 'inert'}>
           ${selectedTab === 'hosts' ? (
             state.drawerOpen && state.drawerMode === 'aws-integration' ?
               this.renderAWSIntegrationForm()
@@ -2308,7 +2339,7 @@ export class HostListPage extends HTMLElement {
             <div class="settings-dialog" style="width: 100% !important; height: 100% !important; max-height: 100% !important; border: none !important; box-shadow: none !important; transform: none !important; display: flex; flex-direction: column;">
               <div class="settings-header" style="padding: 16px 20px; border-bottom: 1px solid rgba(23,107,135,0.15); display: flex; justify-content: space-between; align-items: center;">
                 <h2 id="modalTitle" style="font-size: 15px; font-weight: 700; color: var(--color-text);">${state.selectedHost?.id ? 'Edit Host' : 'New Host'}</h2>
-                <button type="button" aria-label="${t('hostvault.closeSettings')}" id="closeVaultDrawer" class="no-drag btn-icon icon-btn" title="${t('hostvault.closeSettings')}" style="font-size: 18px;">
+                <button type="button" aria-label="${t('hostvault.closeSettings')}" id="closeVaultDrawer" class="no-drag btn-icon icon-btn ui-button ui-button--quiet ui-button--icon" title="${t('hostvault.closeSettings')}">
                   &times;
                 </button>
               </div>
@@ -2320,7 +2351,7 @@ export class HostListPage extends HTMLElement {
                   </div>
                   <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext); margin-bottom: 14px;">
                     Host
-                    <input class="no-drag" id="host" name="host" value="${drawerHost.config?.host || ''}" required style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text); font-weight: 600;">
+                    <input class="no-drag" id="host" name="host" value="${escapeHtml(drawerHost.config?.host)}" required style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text); font-weight: 600;">
                   </label>
 
                   <div class="section-title" style="margin-top: 20px; margin-bottom: 12px;">
@@ -2328,7 +2359,7 @@ export class HostListPage extends HTMLElement {
                   </div>
                   <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext); margin-bottom: 12px;">
                     ${t('hostvault.connectionAlias')}
-                    <input class="no-drag" id="alias" name="alias" value="${drawerHost.alias || ''}" placeholder="${t('hostvault.aliasPlaceholder')}" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
+                    <input class="no-drag" id="alias" name="alias" value="${escapeHtml(drawerHost.alias)}" placeholder="${t('hostvault.aliasPlaceholder')}" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
                   </label>
 
                   <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext); margin-bottom: 12px;">
@@ -2341,7 +2372,7 @@ export class HostListPage extends HTMLElement {
                   <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px;">
                     <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
                       Port
-                      <input class="no-drag" id="port" name="port" type="number" min="1" max="65535" value="${drawerHost.config?.port || 22}" required style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
+                      <input class="no-drag" id="port" name="port" type="number" min="1" max="65535" value="${escapeHtml(drawerHost.config?.port || 22)}" required style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
                     </label>
                     <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
                       ${t('hostvault.loginMethod')}
@@ -2357,7 +2388,7 @@ export class HostListPage extends HTMLElement {
                   </div>
                   <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext); margin-bottom: 12px;">
                     Username
-                    <input class="no-drag" id="username" name="username" value="${drawerHost.config?.username || ''}" required style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
+                    <input class="no-drag" id="username" name="username" value="${escapeHtml(drawerHost.config?.username)}" required style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
                   </label>
 
                   <div id="passwordAuth" style="display: ${drawerHost.config?.authMode === 'password' ? 'block' : 'none'}; margin-top: 10px;">
@@ -2380,16 +2411,16 @@ export class HostListPage extends HTMLElement {
                     <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
                       Private Key
                       <div style="display: flex; gap: 8px;">
-                        <input class="no-drag" id="privateKeyPath" name="privateKeyPath" value="${drawerHost.config?.privateKeyPath || ''}" style="flex: 1; background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
-                        <button type="button" id="browseKeyBtn" class="no-drag" style="background: transparent; border: 1px solid var(--color-primary); color: var(--color-primary); padding: 0 12px; border-radius: 6px; cursor: pointer;">${t('hostvault.browse')}</button>
+                        <input class="no-drag" id="privateKeyPath" name="privateKeyPath" value="${escapeHtml(drawerHost.config?.privateKeyPath)}" style="flex: 1; background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
+                        <button type="button" id="browseKeyBtn" class="no-drag ui-button ui-button--secondary" style="padding: 0 12px; cursor: pointer;">${t('hostvault.browse')}</button>
                       </div>
                     </label>
                     </div>
                     <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
                       Cert
                       <div style="display: flex; gap: 8px;">
-                        <input class="no-drag" id="certPath" name="certPath" value="${drawerHost.config?.certPath || ''}" style="flex: 1; background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
-                        <button type="button" id="browseCertBtn" class="no-drag" style="background: transparent; border: 1px solid var(--color-primary); color: var(--color-primary); padding: 0 12px; border-radius: 6px; cursor: pointer;">${t('hostvault.browse')}</button>
+                        <input class="no-drag" id="certPath" name="certPath" value="${escapeHtml(drawerHost.config?.certPath)}" style="flex: 1; background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
+                        <button type="button" id="browseCertBtn" class="no-drag ui-button ui-button--secondary" style="padding: 0 12px; cursor: pointer;">${t('hostvault.browse')}</button>
                       </div>
                     </label>
                     <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext); margin-bottom: 12px;">
@@ -2452,8 +2483,8 @@ export class HostListPage extends HTMLElement {
                       const isChecked = enabledCompIds.has(comp.id) ? 'checked' : '';
                       return `
                         <label style="display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--color-text); cursor: pointer; text-align: left; width: 100%; min-width: 0; margin: 0;">
-                          <input type="checkbox" class="no-drag comp-checkbox" data-comp-id="${comp.id}" ${isChecked} style="width: 16px; height: 16px; min-height: auto; min-width: auto; flex-shrink: 0; cursor: pointer; accent-color: var(--color-primary); margin: 0;">
-                          <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; max-width: 260px;">${comp.name}</span>
+                          <input type="checkbox" class="no-drag comp-checkbox" data-comp-id="${escapeHtml(comp.id)}" ${isChecked} style="width: 16px; height: 16px; min-height: auto; min-width: auto; flex-shrink: 0; cursor: pointer; accent-color: var(--color-primary); margin: 0;">
+                          <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; max-width: 260px;">${escapeHtml(comp.name)}</span>
                         </label>
                       `;
                     }).join('')}
@@ -2461,9 +2492,9 @@ export class HostListPage extends HTMLElement {
                 </div>
 
                 <div class="settings-footer" style="padding: 16px 20px; border-top: 1px solid rgba(23,107,135,0.15); display: flex; gap: 10px;">
-                  <button type="submit" id="connectBtn" class="no-drag primary" style="flex: 1; min-height: 38px; font-weight: 700; background: var(--color-primary); border: none; border-radius: 6px; color: #fff; cursor: pointer;">Connect</button>
-                  <button type="button" id="saveHostOnlyBtn" class="no-drag" style="min-height: 38px; font-weight: 700; background: transparent; border: 1px solid var(--color-primary); border-radius: 6px; color: var(--color-primary); padding: 0 16px; cursor: pointer;">Save</button>
-                  ${state.selectedHost?.id ? `<button type="button" id="vaultDeleteBtn" class="no-drag" style="min-height: 38px; font-weight: 700; background: #e74c3c; border: none; border-radius: 6px; color: #fff; padding: 0 16px; cursor: pointer;">Delete</button>` : ''}
+                  <button type="submit" id="connectBtn" class="no-drag primary ui-button ui-button--primary" style="flex: 1; min-height: 38px; cursor: pointer;">Connect</button>
+                  <button type="button" id="saveHostOnlyBtn" class="no-drag ui-button ui-button--secondary" style="min-height: 38px; padding: 0 16px; cursor: pointer;">Save</button>
+                  ${state.selectedHost?.id ? `<button type="button" id="vaultDeleteBtn" class="no-drag ui-button ui-button--danger" style="min-height: 38px; padding: 0 16px; cursor: pointer;">Delete</button>` : ''}
                 </div>
               </form>
             </div>
@@ -2487,8 +2518,8 @@ export class HostListPage extends HTMLElement {
             <input class="no-drag" id="groupNameInput" placeholder="${t('hostvault.groupNameExample')}" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
           </label>
           <div style="display: flex; justify-content: flex-end; gap: 8px;">
-            <button type="button" id="cancelGroupModal" class="no-drag" style="padding: 6px 14px; border: 1px solid rgba(255,255,255,0.2); background: transparent; color: var(--color-text); border-radius: 4px; cursor: pointer;">${t('common.cancel')}</button>
-            <button type="button" id="saveGroupModal" class="no-drag primary" style="padding: 6px 14px; background: var(--color-primary); border: none; color: #fff; border-radius: 4px; cursor: pointer;">${t('common.save')}</button>
+            <button type="button" id="cancelGroupModal" class="no-drag ui-button ui-button--secondary" style="padding: 6px 14px; cursor: pointer;">${t('common.cancel')}</button>
+            <button type="button" id="saveGroupModal" class="no-drag primary ui-button ui-button--primary" style="padding: 6px 14px; cursor: pointer;">${t('common.save')}</button>
           </div>
         </div>
       </div>
@@ -2503,7 +2534,7 @@ export class HostListPage extends HTMLElement {
           <h3 id="progressModalTitle" style="font-size: 14px; font-weight: 700; color: var(--color-text); margin: 0 0 8px 0; text-align: center; letter-spacing: 0.5px;">${t('hostvault.establishingConnection')}</h3>
           <p id="progressModalMessage" style="font-size: 12.5px; color: var(--color-text-muted); margin: 0 0 24px 0; line-height: 1.5; text-align: center;">${t('hostvault.initializingConnection')}</p>
           <div style="display: flex; justify-content: center;">
-            <button type="button" id="cancelConnectionBtn" class="no-drag" style="min-height: 34px; padding: 0 20px; font-weight: 700; font-size: 11px; border: 1px solid #ef4444; color: #ef4444; background: transparent; border-radius: 6px; cursor: pointer; transition: all 0.2s; letter-spacing: 1px;">
+            <button type="button" id="cancelConnectionBtn" class="no-drag ui-button ui-button--danger" style="min-height: 34px; padding: 0 20px; cursor: pointer; transition: all 0.2s; letter-spacing: 1px;">
               CANCEL
             </button>
           </div>
@@ -2516,12 +2547,14 @@ export class HostListPage extends HTMLElement {
           <h2 id="confirmModalTitle" style="font-size: 14px; font-weight: 700; margin-bottom: 12px; text-align: left;">${t('hostvault.confirmAction')}</h2>
           <p id="confirmModalMessage" style="font-size: 12.5px; color: var(--color-subtext); line-height: 1.6; margin-bottom: 20px; text-align: left;"></p>
           <div style="display: flex; justify-content: flex-end; gap: 8px;">
-            <button type="button" id="cancelConfirmModal" class="no-drag" style="padding: 6px 14px; border: 1px solid rgba(255,255,255,0.2); background: transparent; color: var(--color-text); border-radius: 4px; cursor: pointer;">${t('common.cancel')}</button>
-            <button type="button" id="okConfirmModal" class="no-drag" style="padding: 6px 14px; background: #a13d3d; border: none; color: #fff; border-radius: 4px; cursor: pointer;">${t('common.confirm')}</button>
+            <button type="button" id="cancelConfirmModal" class="no-drag ui-button ui-button--secondary" style="padding: 6px 14px; cursor: pointer;">${t('common.cancel')}</button>
+            <button type="button" id="okConfirmModal" class="no-drag ui-button ui-button--secondary" style="padding: 6px 14px; cursor: pointer;">${t('common.confirm')}</button>
           </div>
         </div>
       </div>
     `;
+
+    if (this.keychainDrawer) this.querySelector('#hostVaultPanel').appendChild(this.keychainDrawer);
 
     if (activeElementId) {
       const el = this.querySelector(`#${activeElementId}`);
@@ -4103,9 +4136,11 @@ export class HostListPage extends HTMLElement {
     // 15. Keychain Tab 事件繫結
     if (selectedTab === 'keychain') {
       // 首次進入分頁時載入後端金鑰清單。
-      if (!this.keychainLoaded && !this.keychainLoading) {
+      if (!this.keychainLoaded && !this.keychainLoading && !this.keychainLoadError) {
         this.loadKeychainKeys();
       }
+
+      this.querySelector('#reloadKeychainBtn')?.addEventListener('click', () => this.loadKeychainKeys(true));
 
       const generateBtn = this.querySelector('#generateKeyBtn');
       if (generateBtn) {
@@ -4172,25 +4207,7 @@ export class HostListPage extends HTMLElement {
       });
     }
 
-    // 下拉選單點擊切換邏輯
-    this.querySelectorAll('.termix-dropdown-trigger').forEach(trigger => {
-      trigger.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const menu = trigger.nextElementSibling;
-        this.querySelectorAll('.termix-dropdown-menu').forEach(m => {
-          if (m !== menu) m.classList.remove('show');
-        });
-        menu.classList.toggle('show');
-      });
-    });
-
-    // 點擊外部關閉選單
-    const closeAllDropdowns = () => {
-      this.querySelectorAll('.termix-dropdown-menu').forEach(menu => {
-        menu.classList.remove('show');
-      });
-    };
-    document.addEventListener('click', closeAllDropdowns);
+    setupDropdowns(this);
 
     const serializeHostForExport = (host, mode) => {
       const normalizedHost = createHostProfile(host.id, host, {});
@@ -4760,7 +4777,7 @@ export class HostListPage extends HTMLElement {
               </div>
               <div style="margin-top: 8px; font-family: monospace; font-size: 11px; color: var(--color-text); word-break: break-all; background: rgba(0,0,0,0.25); border-radius: 4px; padding: 6px;">${escapeHtml(fingerprint)}</div>
             </div>
-            <button type="button" id="trustUnknownHostBtn" class="no-drag" style="width: 100%; min-height: 34px; margin-bottom: 12px; background: #eab308; color: #1a1a1a; border: none; border-radius: 6px; font-weight: 700; font-size: 12px; cursor: pointer; transition: background 0.2s;">
+            <button type="button" id="trustUnknownHostBtn" class="no-drag ui-button ui-button--secondary" style="width: 100%; min-height: 34px; margin-bottom: 12px; cursor: pointer; transition: background 0.2s;">
               ${t('hostvault.trustAndConnect')}
             </button>
           `;
@@ -4809,7 +4826,7 @@ export class HostListPage extends HTMLElement {
                 ${t('hostvault.keyMismatchDesc')}
               </div>
             </div>
-            <button type="button" id="fixKnownHostsBtn" class="no-drag" style="width: 100%; min-height: 34px; margin-bottom: 12px; background: #e74c3c; color: #fff; border: none; border-radius: 6px; font-weight: 700; font-size: 12px; cursor: pointer; transition: background 0.2s;">
+            <button type="button" id="fixKnownHostsBtn" class="no-drag ui-button ui-button--danger" style="width: 100%; min-height: 34px; margin-bottom: 12px; cursor: pointer; transition: background 0.2s;">
               ${t('hostvault.resetFingerprint')}
             </button>
           `;

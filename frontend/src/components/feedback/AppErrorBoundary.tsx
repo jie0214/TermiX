@@ -60,10 +60,10 @@ export class AppErrorBoundary extends Component<
             <pre>{error.message || t('misc.errorBoundary.unknownError')}</pre>
           </details>
           <div className="react-error-boundary__actions">
-            <button type="button" onClick={this.reloadApplication}>
+            <button className="ui-button ui-button--primary" type="button" onClick={this.reloadApplication}>
               {t('misc.errorBoundary.reload')}
             </button>
-            <button type="button" onClick={this.returnToHosts}>
+            <button className="ui-button ui-button--secondary" type="button" onClick={this.returnToHosts}>
               {t('misc.errorBoundary.backToHosts')}
             </button>
           </div>

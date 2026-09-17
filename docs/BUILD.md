@@ -1,8 +1,8 @@
 # TermiX 打包指令
 
-TermiX 使用 **Wails v2** 打包（Go 後端 + Vite/前端）。以下指令在本機執行（需已安裝 Go 1.25+ 與 Node.js/npm）。
+TermiX 使用 **Wails v2** 打包（Go 後端 + Vite／前端）。以下指令在本機執行（Go 版本以 `go.mod` 為準，並需安裝 Node.js 24+／npm）。
 
-輸出檔名與版本由 `wails.json` 定義：`outputfilename: TermiX`、`productVersion: 1.0.0`。
+輸出檔名與版本由 `wails.json` 的 `outputfilename` 與 `info.productVersion` 定義。
 
 ---
 
@@ -10,13 +10,13 @@ TermiX 使用 **Wails v2** 打包（Go 後端 + Vite/前端）。以下指令在
 
 ```bash
 # 安裝 Wails CLI
-go install github.com/wailsapp/wails/v2/cmd/wails@latest
+go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
 
 # 檢查環境是否齊全（Go / Node / npm / 平台相依）
 wails doctor
 
 # 安裝前端依賴
-npm install --prefix frontend
+npm ci --ignore-scripts --prefix frontend
 ```
 
 ---
@@ -80,21 +80,26 @@ npm run dev --prefix frontend -- --host 127.0.0.1  # 僅啟動前端開發伺服
 
 ## 打包前建議檢查
 
-1. 後端編譯與測試（本專案後端多為靜態審查，發佈前務必在本機實跑）：
+1. 後端格式、測試與靜態分析：
 
    ```bash
-   go build ./...
+   go fmt ./... && git diff --exit-code
+   go test ./...
+   go test -race ./...
    go vet ./...
-   go test -race ./backend/...
    ```
+
+   macOS 系統鑰匙圈整合測試預設略過，需明確設定 `TERMIX_KEYCHAIN_INTEGRATION=1` 才會寫入實體鑰匙圈。
 
    編譯不過會直接擋住 `wails build`。
 
-2. 前端型別與建置：
+2. 前端測試、型別與建置：
 
    ```bash
+   npm test --prefix frontend
    npm run typecheck --prefix frontend   # tsc --noEmit
    npm run build --prefix frontend       # 確認 vite build 可過
+   npm audit --prefix frontend --audit-level=moderate
    ```
 
 3. `wails build` 使用的是工作目錄現況（含未提交改動）。要正式發佈前，建議先 `git commit` 確保版本可追溯。
@@ -103,5 +108,5 @@ npm run dev --prefix frontend -- --host 127.0.0.1  # 僅啟動前端開發伺服
 
 ## 備註
 
-- 目前專案沒有自動部署管線，標準發佈方式即手動 `wails build`。
-- 若要進一步做簽章、公證或安裝包，需在 `build/bin` 輸出結果外自行接入發佈流程。
+- 推送 `v*` tag 後，`.github/workflows/release.yml` 會驗證原始碼、建置 macOS／Windows／Linux 壓縮檔並建立 GitHub Release。
+- 現行自動發行產物尚未做程式碼簽章、公證或安裝程式；相關指令僅供手動流程參考。

@@ -1,10 +1,18 @@
 package app
 
 func (a *App) ConnectTerminal(config SSHConfig) OperationResult {
+	if !a.beginOperation() {
+		return OperationResult{Error: "正在準備結束或更新，請稍後再試。"}
+	}
+	defer a.endOperation()
 	return a.terminal.Connect(config)
 }
 
 func (a *App) ConnectHostTerminal(request HostConnectionRequest) OperationResult {
+	if !a.beginOperation() {
+		return OperationResult{Error: "正在準備結束或更新，請稍後再試。"}
+	}
+	defer a.endOperation()
 	config, err := a.hostVault.ResolveRuntimeConfig(a.contextOrBackground(), request)
 	if err != nil {
 		return failure(err)
@@ -44,6 +52,10 @@ func (a *App) CancelConnectHostTerminal(request HostConnectionRequest) Operation
 }
 
 func (a *App) StartLocalTerminal(shellPath string) OperationResult {
+	if !a.beginOperation() {
+		return OperationResult{Error: "正在準備結束或更新，請稍後再試。"}
+	}
+	defer a.endOperation()
 	return a.terminal.StartLocal(shellPath)
 }
 
@@ -77,10 +89,18 @@ func (a *App) CancelConnectTerminal(config SSHConfig) {
 }
 
 func (a *App) ExecuteSessionCommand(sessionKey string, command string) OperationResult {
+	if !a.beginOperation() {
+		return OperationResult{Error: "正在準備結束或更新，請稍後再試。"}
+	}
+	defer a.endOperation()
 	return a.terminal.ExecuteCommand(sessionKey, command)
 }
 
 func (a *App) ExecuteSessionCommandIsolated(sessionKey string, command string) OperationResult {
+	if !a.beginOperation() {
+		return OperationResult{Error: "正在準備結束或更新，請稍後再試。"}
+	}
+	defer a.endOperation()
 	return a.terminal.ExecuteIsolated(sessionKey, command)
 }
 
@@ -101,9 +121,17 @@ func (a *App) WriteTerminalInput(sessionKey string, data string) {
 }
 
 func (a *App) ExecuteLocalCommand(command string, env map[string]string) OperationResult {
+	if !a.beginOperation() {
+		return OperationResult{Error: "正在準備結束或更新，請稍後再試。"}
+	}
+	defer a.endOperation()
 	return a.controlPanel.ExecuteLocalCommand(command, env)
 }
 
 func (a *App) ExecuteTerminalCommand(request TerminalCommandRequest) OperationResult {
+	if !a.beginOperation() {
+		return OperationResult{Error: "正在準備結束或更新，請稍後再試。"}
+	}
+	defer a.endOperation()
 	return a.terminal.ExecuteTerminalCommand(request.SSH, request.Command)
 }

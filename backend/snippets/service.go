@@ -6,13 +6,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"github.com/jie0214/TermiX/backend/common"
-	"github.com/jie0214/TermiX/backend/terminal"
-	"github.com/jie0214/TermiX/shared/dto"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/jie0214/TermiX/backend/common"
+	"github.com/jie0214/TermiX/backend/terminal"
+	"github.com/jie0214/TermiX/shared/dto"
 )
 
 var log = common.DomainLogger("snippets")
@@ -66,14 +67,6 @@ func NewService(termMgr *terminal.Manager) *Service {
 		storeErr: err,
 		executor: terminalExecutor{terminal: termMgr},
 		now:      time.Now,
-	}
-}
-
-func newServiceForTest(store string, exec executor, now func() time.Time) *Service {
-	return &Service{
-		store:    store,
-		executor: exec,
-		now:      now,
 	}
 }
 

@@ -3,14 +3,14 @@ package terminal
 import (
 	"fmt"
 	pty "github.com/aymanbagabas/go-pty"
-	"io"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"github.com/jie0214/TermiX/backend/common"
 	termixssh "github.com/jie0214/TermiX/backend/ssh"
 	"github.com/jie0214/TermiX/shared/dto"
 	"github.com/jie0214/TermiX/shared/events"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -209,7 +209,7 @@ func (m *Manager) ExecuteCommand(sessionKey string, command string) dto.Operatio
 	output, err := terminal.execute(command, 2*time.Minute)
 	if err != nil {
 		if isFatalError(err) {
-			m.closeSessionByKey(sessionKey)
+			m.closeSessionByKey(sessionKey, "remote")
 		}
 		return dto.OperationResult{
 			Success: false,
@@ -324,7 +324,7 @@ func (m *Manager) ExecuteTerminalCommand(config dto.SSHConfig, command string) d
 }
 
 func (m *Manager) Close(sessionKey string) {
-	m.closeSessionByKey(sessionKey)
+	m.closeSessionByKey(sessionKey, "user")
 }
 
 func (m *Manager) Resize(sessionKey string, cols int, rows int) dto.OperationResult {
@@ -495,10 +495,10 @@ func (m *Manager) closeSession(terminal *session) {
 	if terminal == nil {
 		return
 	}
-	m.closeSessionByKey(terminal.key)
+	m.closeSessionByKey(terminal.key, "remote")
 }
 
-func (m *Manager) closeSessionByKey(key string) {
+func (m *Manager) closeSessionByKey(key, reason string) {
 	m.mu.Lock()
 	t, exists := m.sessions[key]
 	if exists {
@@ -508,7 +508,7 @@ func (m *Manager) closeSessionByKey(key string) {
 	if exists {
 		go func() {
 			t.close()
-			m.emitClosed(key)
+			m.emitClosed(key, reason)
 		}()
 	}
 }
@@ -523,11 +523,11 @@ func (m *Manager) onSessionExit(key string, terminal *session) {
 
 	if exists && current == terminal {
 		terminal.close()
-		m.emitClosed(key)
+		m.emitClosed(key, "remote")
 	}
 }
 
-func (m *Manager) emitClosed(key string) {
+func (m *Manager) emitClosed(key, reason string) {
 	ctx, frontendReady := m.contextSnapshot()
 	// 前端 context 尚未就緒時不發送事件，維持原語意。
 	if !frontendReady || ctx == nil {
@@ -536,8 +536,9 @@ func (m *Manager) emitClosed(key string) {
 	defer func() {
 		_ = recover()
 	}()
-	wailsruntime.EventsEmit(ctx, events.EventTerminalClosed, map[string]string{
-		"key": key,
+	m.emitEvent(ctx, events.EventTerminalClosed, map[string]string{
+		"key":    key,
+		"reason": reason,
 	})
 }
 

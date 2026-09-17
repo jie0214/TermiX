@@ -1,3 +1,4 @@
+import { setupDropdowns } from '../../components/controls/dropdown.js';
 import { controlPanelStore } from './ControlPanelStore';
 import { ControlPanelAPI } from './ControlPanelAPI';
 import { executeFunctionBox } from './ControlPanelRuntime';
@@ -6,6 +7,16 @@ import { hostStore } from '../hostvault/HostStore';
 import { showToast } from '../../components/feedback/toast';
 import { confirmDialog } from '../../components/feedback/confirmDialog';
 import { t } from '../../i18n/index.ts';
+import { sanitizeComponentColor } from './ControlPanelLayout';
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
 
 export class ControlPanelPage extends HTMLElement {
   constructor() {
@@ -29,6 +40,7 @@ export class ControlPanelPage extends HTMLElement {
   }
 
   disconnectedCallback() {
+    this.dropdownAbortController?.abort();
     if (this.unsubscribe) this.unsubscribe();
   }
 
@@ -52,7 +64,7 @@ export class ControlPanelPage extends HTMLElement {
     const sidebarHtml = menuTabs.map(tab => {
       const activeClass = tab.id === 'control-panel' ? 'active' : '';
       return `
-        <div class="vault-menu-item no-drag ${activeClass}" data-tab="${tab.id}">
+        <div class="vault-menu-item ui-button ui-button--tab no-drag ${activeClass}" data-tab="${tab.id}">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             ${tab.icon}
           </svg>
@@ -73,17 +85,17 @@ export class ControlPanelPage extends HTMLElement {
       }
 
       return `
-        <div class="vault-card edit-component-card text-left" data-id="${comp.id}" style="position: relative; display: flex; align-items: center; padding: 14px 16px; cursor: pointer;">
-          <div class="vault-card-icon" style="background: rgba(23, 107, 135, 0.08); color: ${comp.color || '#176b87'};">
+        <div class="vault-card edit-component-card text-left" data-id="${escapeHtml(comp.id)}" style="position: relative; display: flex; align-items: center; padding: 14px 16px; cursor: pointer;">
+          <div class="vault-card-icon" style="background: rgba(23, 107, 135, 0.08); color: ${sanitizeComponentColor(comp.color)};">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/>
             </svg>
           </div>
           <div class="vault-card-info" style="flex: 1; display: flex; flex-direction: column; justify-content: center; min-width: 0; text-align: left; margin-left: 12px;">
-            <span class="vault-card-title" style="font-size: 13.5px; font-weight: 700; color: var(--color-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${comp.name}</span>
-            <span class="vault-card-details" style="font-size: 11px; color: var(--color-text-muted); margin-top: 2px;">${details}</span>
+            <span class="vault-card-title" style="font-size: 13.5px; font-weight: 700; color: var(--color-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(comp.name)}</span>
+            <span class="vault-card-details" style="font-size: 11px; color: var(--color-text-muted); margin-top: 2px;">${escapeHtml(details)}</span>
           </div>
-          <button type="button" aria-label="${t('cp.editObject')}" class="no-drag edit-component-btn" data-id="${comp.id}" title="${t('cp.editObject')}" style="background: transparent; border: none; padding: 6px; border-radius: 4px; color: var(--color-subtext); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; margin-left: auto; min-width: 32px; min-height: 32px;">
+          <button type="button" aria-label="${t('cp.editObject')}" class="no-drag edit-component-btn ui-button ui-button--secondary" data-id="${escapeHtml(comp.id)}" title="${t('cp.editObject')}" style="padding: 6px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; margin-left: auto; min-width: 32px; min-height: 32px;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
               <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
@@ -108,24 +120,22 @@ export class ControlPanelPage extends HTMLElement {
         <div class="vault-sub-sidebar">${sidebarHtml}</div>
 
         <!-- 第二欄：中央組件列表 -->
-        <div class="vault-main-board" style="flex: 1; display: flex; flex-direction: column; min-width: 0; padding: 20px; overflow-y: auto;">
-          <div class="vault-toolbar" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex: 0 0 auto;">
-            <div style="display: flex; gap: 8px;">
-              <button type="button" id="addComponentBtn" class="no-drag primary" style="min-height: 32px; font-weight: 700; font-size: 12px; padding: 0 14px; background: var(--color-primary); border: none; border-radius: 4px; color: #fff; cursor: pointer;">+ NEW OBJECT</button>
-              <div class="termix-dropdown no-drag">
-                <button class="no-drag termix-dropdown-trigger" type="button" id="exportDropdownBtn" style="min-height: 32px; font-weight: 700; font-size: 12px; border: 1px solid var(--color-primary); color: var(--color-primary); background: transparent; padding: 0 14px; border-radius: 4px; cursor: pointer;" title="${t('cp.export.title')}">Export ▼</button>
-                <div class="termix-dropdown-menu">
-                  <div class="termix-dropdown-item" id="exportCompsJsonBtn">Export JSON</div>
-                  <div class="termix-dropdown-item" id="exportCompsYamlBtn">Export YAML</div>
-                </div>
+        <div class="vault-main-board" style="flex: 1; display: flex; flex-direction: column; min-width: 0; padding: 28px; overflow-y: auto;">
+          <div class="vault-commandbar vault-commandbar-actions">
+            <div class="vault-toolbar">
+              <button type="button" id="addComponentBtn" class="vault-action no-drag primary ui-button ui-button--primary"><i class="ti ti-plus" aria-hidden="true"></i><span>${t('hostvault.create')}</span></button>
+            <div class="termix-dropdown no-drag">
+              <button type="button" id="componentActionsBtn" class="no-drag termix-dropdown-trigger vault-action vault-action-icon vault-action-quiet ui-button ui-button--quiet ui-button--icon" aria-expanded="false" aria-label="${t('hostvault.moreActions')}" title="${t('hostvault.moreActions')}"><i class="ti ti-dots" aria-hidden="true"></i></button>
+              <div class="termix-dropdown-menu vault-action-menu">
+                <div class="vault-menu-label">${t('hostvault.importBackup')}</div>
+                <button type="button" id="importCompsJsonBtn" class="no-drag termix-dropdown-item ui-button ui-button--menu"><i class="ti ti-upload" aria-hidden="true"></i><span>JSON</span></button>
+                <button type="button" id="importCompsYamlBtn" class="no-drag termix-dropdown-item ui-button ui-button--menu"><i class="ti ti-upload" aria-hidden="true"></i><span>YAML</span></button>
+                <div class="vault-menu-divider"></div>
+                <div class="vault-menu-label">${t('hostvault.exportBackup')}</div>
+                <button type="button" id="exportCompsJsonBtn" class="no-drag termix-dropdown-item ui-button ui-button--menu"><i class="ti ti-download" aria-hidden="true"></i><span>JSON</span></button>
+                <button type="button" id="exportCompsYamlBtn" class="no-drag termix-dropdown-item ui-button ui-button--menu"><i class="ti ti-download" aria-hidden="true"></i><span>YAML</span></button>
               </div>
-              <div class="termix-dropdown no-drag">
-                <button class="no-drag termix-dropdown-trigger" type="button" id="importDropdownBtn" style="min-height: 32px; font-weight: 700; font-size: 12px; border: 1px solid var(--color-primary); color: var(--color-primary); background: transparent; padding: 0 14px; border-radius: 4px; cursor: pointer;" title="${t('cp.import.title')}">Import ▼</button>
-                <div class="termix-dropdown-menu">
-                  <div class="termix-dropdown-item" id="importCompsJsonBtn">Import JSON</div>
-                  <div class="termix-dropdown-item" id="importCompsYamlBtn">Import YAML</div>
-                </div>
-              </div>
+            </div>
             </div>
             <!-- <div style="font-size: 13px; font-weight: 600; color: var(--color-text-muted);">控制面板組件管理器</div> -->
           </div>
@@ -158,7 +168,7 @@ export class ControlPanelPage extends HTMLElement {
         </div>
 
         <!-- 第三欄：滑出抽屜 -->
-        <div id="componentDrawer" class="vault-drawer ${state.drawerOpen ? 'open' : ''}" style="width: 380px; background: #0c121f; border-left: 1px solid rgba(23,107,135,0.25); display: flex; flex-direction: column; transition: transform 0.3s ease; transform: ${state.drawerOpen ? 'translateX(0)' : 'translateX(100%)'}; position: relative;">
+        <div id="componentDrawer" class="vault-drawer ${state.drawerOpen ? 'open' : ''}" ${state.drawerOpen ? '' : 'inert'}>
           ${!state.selectedComponent && !state.drawerOpen ? `
             <div style="flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px; color: var(--color-text-muted); text-align: center;">
               <div>
@@ -170,7 +180,7 @@ export class ControlPanelPage extends HTMLElement {
             <div class="settings-dialog" style="width: 100%; height: 100%; display: flex; flex-direction: column;">
               <div class="settings-header" style="padding: 16px 20px; border-bottom: 1px solid rgba(23,107,135,0.15); display: flex; justify-content: space-between; align-items: center;">
                 <h2 id="componentModalTitle" style="font-size: 15px; font-weight: 700; color: var(--color-text);">${state.selectedComponent?.id ? t('cp.drawer.editTitle') : t('cp.drawer.newTitle')}</h2>
-                <button type="button" aria-label="${t('common.close')}" id="closeComponentDrawer" class="no-drag icon-btn" style="font-size: 18px;">
+                <button type="button" aria-label="${t('common.close')}" id="closeComponentDrawer" class="no-drag icon-btn ui-button ui-button--quiet ui-button--icon">
                   &times;
                 </button>
               </div>
@@ -179,7 +189,7 @@ export class ControlPanelPage extends HTMLElement {
                 <div class="settings-body" style="padding: 20px; flex: 1; overflow-y: auto;">
                   <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext); margin-bottom: 14px;">
                     ${t('cp.field.name')}
-                    <input class="no-drag" id="compNameInput" required value="${drawerComp.name || ''}" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text); font-weight: 600;">
+                    <input class="no-drag" id="compNameInput" required value="${escapeHtml(drawerComp.name)}" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text); font-weight: 600;">
                   </label>
 
                   <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px;">
@@ -216,15 +226,15 @@ export class ControlPanelPage extends HTMLElement {
                   <div id="compTypeFunctionBlock" style="display: ${drawerComp.type === 'function' ? 'block' : 'none'};">
                     <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext); margin-bottom: 12px;">
                       ${t('cp.field.remoteCmd')}
-                      <textarea class="no-drag" id="compRemoteCommandInput" placeholder="${t('cp.ph.remoteCmd')}" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text); font-family: monospace; height: 60px; resize: vertical;">${drawerComp.remoteCommand || ''}</textarea>
+                      <textarea class="no-drag" id="compRemoteCommandInput" placeholder="${t('cp.ph.remoteCmd')}" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text); font-family: monospace; height: 60px; resize: vertical;">${escapeHtml(drawerComp.remoteCommand)}</textarea>
                     </label>
                     <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext); margin-bottom: 12px;">
                       ${t('cp.field.localCmd')}
-                      <textarea class="no-drag" id="compLocalCommandInput" placeholder="${t('cp.ph.localCmd')}" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text); font-family: monospace; height: 60px; resize: vertical;">${drawerComp.localCommand || ''}</textarea>
+                      <textarea class="no-drag" id="compLocalCommandInput" placeholder="${t('cp.ph.localCmd')}" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text); font-family: monospace; height: 60px; resize: vertical;">${escapeHtml(drawerComp.localCommand)}</textarea>
                     </label>
                     <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext); margin-bottom: 12px;">
                       ${t('cp.field.exportVars')}
-                      <input class="no-drag" id="compExportVarsInput" value="${drawerComp.exportVars || ''}" placeholder="${t('cp.ph.exportVars')}" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
+                      <input class="no-drag" id="compExportVarsInput" value="${escapeHtml(drawerComp.exportVars)}" placeholder="${t('cp.ph.exportVars')}" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
                     </label>
                   </div>
 
@@ -232,14 +242,14 @@ export class ControlPanelPage extends HTMLElement {
                   <div id="compTypeInfoBlock" style="display: ${drawerComp.type === 'info' ? 'block' : 'none'};">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                       <span style="font-size: 12px; color: var(--color-text);">${t('cp.info.itemsLabel')}</span>
-                      <button type="button" id="addInfoItemBtn" class="no-drag" style="background: transparent; border: 1px solid var(--color-primary); color: var(--color-primary); padding: 2px 8px; border-radius: 4px; cursor: pointer; font-size: 11px;">${t('cp.info.addItem')}</button>
+                      <button type="button" id="addInfoItemBtn" class="no-drag ui-button ui-button--secondary" style="padding: 2px 8px; cursor: pointer;">${t('cp.info.addItem')}</button>
                     </div>
                     <div id="infoItemsContainer" style="display: flex; flex-direction: column; gap: 8px;">
                       ${(drawerComp.items || []).map((item, idx) => `
                         <div class="info-item-row" style="display: flex; gap: 6px; align-items: center;" data-index="${idx}">
-                          <input class="no-drag info-item-key" placeholder="${t('cp.ph.infoKey')}" value="${item.key || ''}" style="width: 80px; background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 6px 10px; border-radius: 6px; color: var(--color-text); font-size: 12px;">
-                          <input class="no-drag info-item-cmd" placeholder="${t('cp.ph.infoCmd')}" value="${item.command || ''}" style="flex: 1; background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 6px 10px; border-radius: 6px; color: var(--color-text); font-size: 12px; font-family: monospace;">
-                          <button type="button" aria-label="${t('cp.info.remove')}" class="no-drag remove-info-item-btn icon-btn danger" style="font-size: 18px;">&times;</button>
+                          <input class="no-drag info-item-key" placeholder="${t('cp.ph.infoKey')}" value="${escapeHtml(item.key)}" style="width: 80px; background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 6px 10px; border-radius: 6px; color: var(--color-text); font-size: 12px;">
+                          <input class="no-drag info-item-cmd" placeholder="${t('cp.ph.infoCmd')}" value="${escapeHtml(item.command)}" style="flex: 1; background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 6px 10px; border-radius: 6px; color: var(--color-text); font-size: 12px; font-family: monospace;">
+                          <button type="button" aria-label="${t('cp.info.remove')}" class="no-drag remove-info-item-btn icon-btn danger ui-button ui-button--danger ui-button--icon">&times;</button>
                         </div>
                       `).join('')}
                     </div>
@@ -249,11 +259,11 @@ export class ControlPanelPage extends HTMLElement {
                   <div id="compTypeSwitchBlock" style="display: ${drawerComp.type === 'switch' ? 'block' : 'none'};">
                     <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext); margin-bottom: 12px;">
                       ${t('cp.field.switchDesc')}
-                      <input class="no-drag" id="compSwitchDescriptionInput" value="${drawerComp.description || ''}" placeholder="${t('cp.ph.switchDesc')}" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
+                      <input class="no-drag" id="compSwitchDescriptionInput" value="${escapeHtml(drawerComp.description)}" placeholder="${t('cp.ph.switchDesc')}" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text);">
                     </label>
                     <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext); margin-bottom: 12px;">
                       ${t('cp.field.queryCmd')}
-                      <textarea class="no-drag" id="compSwitchQueryInput" placeholder="${t('cp.ph.queryCmd')}" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text); font-family: monospace; height: 50px; resize: vertical;">${drawerComp.queryCommand || ''}</textarea>
+                      <textarea class="no-drag" id="compSwitchQueryInput" placeholder="${t('cp.ph.queryCmd')}" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 8px 12px; border-radius: 6px; color: var(--color-text); font-family: monospace; height: 50px; resize: vertical;">${escapeHtml(drawerComp.queryCommand)}</textarea>
                     </label>
                     <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext); margin-bottom: 12px;">
                       ${t('cp.field.displayStyle')}
@@ -272,16 +282,16 @@ export class ControlPanelPage extends HTMLElement {
                       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
                         <label style="display: flex; flex-direction: column; text-align: left; gap: 4px; font-size: 11px; color: var(--color-text-muted);">
                           ${t('cp.field.displayName')}
-                          <input class="no-drag" id="compSwitchStateALabel" value="${drawerComp.stateA?.label || ''}" placeholder="Production" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.15); padding: 6px 10px; border-radius: 4px; color: var(--color-text); font-size: 11.5px;">
+                          <input class="no-drag" id="compSwitchStateALabel" value="${escapeHtml(drawerComp.stateA?.label)}" placeholder="Production" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.15); padding: 6px 10px; border-radius: 4px; color: var(--color-text); font-size: 11.5px;">
                         </label>
                         <label style="display: flex; flex-direction: column; text-align: left; gap: 4px; font-size: 11px; color: var(--color-text-muted);">
                           ${t('cp.field.matchValue')}
-                          <input class="no-drag" id="compSwitchStateAMatch" value="${drawerComp.stateA?.match || ''}" placeholder="rsgwin.com" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.15); padding: 6px 10px; border-radius: 4px; color: var(--color-text); font-size: 11.5px;">
+                          <input class="no-drag" id="compSwitchStateAMatch" value="${escapeHtml(drawerComp.stateA?.match)}" placeholder="rsgwin.com" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.15); padding: 6px 10px; border-radius: 4px; color: var(--color-text); font-size: 11.5px;">
                         </label>
                       </div>
                       <label style="display: flex; flex-direction: column; text-align: left; gap: 4px; font-size: 11px; color: var(--color-text-muted);">
                         ${t('cp.field.stateACmd')}
-                        <textarea class="no-drag" id="compSwitchStateACommand" placeholder="${t('cp.ph.stateACmd')}" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.15); padding: 6px 10px; border-radius: 4px; color: var(--color-text); font-family: monospace; font-size: 11.5px; height: 40px; resize: vertical;">${drawerComp.stateA?.command || ''}</textarea>
+                        <textarea class="no-drag" id="compSwitchStateACommand" placeholder="${t('cp.ph.stateACmd')}" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.15); padding: 6px 10px; border-radius: 4px; color: var(--color-text); font-family: monospace; font-size: 11.5px; height: 40px; resize: vertical;">${escapeHtml(drawerComp.stateA?.command)}</textarea>
                       </label>
                     </div>
 
@@ -291,24 +301,24 @@ export class ControlPanelPage extends HTMLElement {
                       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
                         <label style="display: flex; flex-direction: column; text-align: left; gap: 4px; font-size: 11px; color: var(--color-text-muted);">
                           ${t('cp.field.displayName')}
-                          <input class="no-drag" id="compSwitchStateBLabel" value="${drawerComp.stateB?.label || ''}" placeholder="Testing" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.15); padding: 6px 10px; border-radius: 4px; color: var(--color-text); font-size: 11.5px;">
+                          <input class="no-drag" id="compSwitchStateBLabel" value="${escapeHtml(drawerComp.stateB?.label)}" placeholder="Testing" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.15); padding: 6px 10px; border-radius: 4px; color: var(--color-text); font-size: 11.5px;">
                         </label>
                         <label style="display: flex; flex-direction: column; text-align: left; gap: 4px; font-size: 11px; color: var(--color-text-muted);">
                           ${t('cp.field.matchValue')}
-                          <input class="no-drag" id="compSwitchStateBMatch" value="${drawerComp.stateB?.match || ''}" placeholder="rsg-gamestar.com" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.15); padding: 6px 10px; border-radius: 4px; color: var(--color-text); font-size: 11.5px;">
+                          <input class="no-drag" id="compSwitchStateBMatch" value="${escapeHtml(drawerComp.stateB?.match)}" placeholder="rsg-gamestar.com" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.15); padding: 6px 10px; border-radius: 4px; color: var(--color-text); font-size: 11.5px;">
                         </label>
                       </div>
                       <label style="display: flex; flex-direction: column; text-align: left; gap: 4px; font-size: 11px; color: var(--color-text-muted);">
                         ${t('cp.field.stateBCmd')}
-                        <textarea class="no-drag" id="compSwitchStateBCommand" placeholder="${t('cp.ph.stateBCmd')}" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.15); padding: 6px 10px; border-radius: 4px; color: var(--color-text); font-family: monospace; font-size: 11.5px; height: 40px; resize: vertical;">${drawerComp.stateB?.command || ''}</textarea>
+                        <textarea class="no-drag" id="compSwitchStateBCommand" placeholder="${t('cp.ph.stateBCmd')}" style="background: var(--input-bg); border: 1px solid rgba(23,107,135,0.15); padding: 6px 10px; border-radius: 4px; color: var(--color-text); font-family: monospace; font-size: 11.5px; height: 40px; resize: vertical;">${escapeHtml(drawerComp.stateB?.command)}</textarea>
                       </label>
                     </div>
                   </div>
                 </div>
 
                 <div class="settings-footer" style="padding: 16px 20px; border-top: 1px solid rgba(23,107,135,0.15); display: flex; gap: 10px;">
-                  <button type="submit" class="no-drag primary" style="flex: 1; min-height: 38px; font-weight: 700; background: var(--color-primary); border: none; border-radius: 6px; color: #fff; cursor: pointer;">${t('common.save')}</button>
-                  ${state.selectedComponent?.id ? `<button type="button" id="componentDeleteBtn" class="no-drag" style="min-height: 38px; font-weight: 700; background: #e74c3c; border: none; border-radius: 6px; color: #fff; padding: 0 16px; cursor: pointer;">${t('common.delete')}</button>` : ''}
+                  <button type="submit" class="no-drag primary ui-button ui-button--primary" style="flex: 1; min-height: 38px; cursor: pointer;">${t('common.save')}</button>
+                  ${state.selectedComponent?.id ? `<button type="button" id="componentDeleteBtn" class="no-drag ui-button ui-button--danger" style="min-height: 38px; padding: 0 16px; cursor: pointer;">${t('common.delete')}</button>` : ''}
                 </div>
               </form>
             </div>
@@ -416,7 +426,7 @@ export class ControlPanelPage extends HTMLElement {
           div.innerHTML = `
             <input class="no-drag info-item-key" placeholder="${t('cp.info.keyShort')}" style="width: 80px; background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 6px 10px; border-radius: 6px; color: var(--color-text); font-size: 12px;">
             <input class="no-drag info-item-cmd" placeholder="${t('cp.info.cmdShort')}" style="flex: 1; background: var(--input-bg); border: 1px solid rgba(23,107,135,0.2); padding: 6px 10px; border-radius: 6px; color: var(--color-text); font-size: 12px; font-family: monospace;">
-            <button type="button" aria-label="${t('cp.info.remove')}" class="no-drag remove-info-item-btn icon-btn danger" style="font-size: 18px;">&times;</button>
+            <button type="button" aria-label="${t('cp.info.remove')}" class="no-drag remove-info-item-btn icon-btn danger ui-button ui-button--danger ui-button--icon">&times;</button>
           `;
           container.appendChild(div);
           
@@ -517,25 +527,7 @@ export class ControlPanelPage extends HTMLElement {
       });
     }
 
-    // 下拉選單點擊切換邏輯
-    this.querySelectorAll('.termix-dropdown-trigger').forEach(trigger => {
-      trigger.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const menu = trigger.nextElementSibling;
-        this.querySelectorAll('.termix-dropdown-menu').forEach(m => {
-          if (m !== menu) m.classList.remove('show');
-        });
-        menu.classList.toggle('show');
-      });
-    });
-
-    // 點擊外部關閉選單
-    const closeAllDropdowns = () => {
-      this.querySelectorAll('.termix-dropdown-menu').forEach(menu => {
-        menu.classList.remove('show');
-      });
-    };
-    document.addEventListener('click', closeAllDropdowns);
+    setupDropdowns(this);
 
     const performExport = async (format) => {
       try {

@@ -1,7 +1,7 @@
-// TermiX 前端事件流沙盒仿真測試腳本
-// 旨在模擬 WebKit 的事件傳播模型，100% 驗證 pointerdown 重構為 mousedown 後的事件流正確性。
+// TermiX 前端事件流沙盒模擬測試腳本
+// 模擬 WebKit 的事件傳播模型，驗證 pointerdown 重構為 mousedown 後的事件流。
 
-console.log("=== TermiX 前端事件流沙盒仿真測試開始 ===");
+console.log("=== TermiX 前端事件流沙盒模擬測試開始 ===");
 
 // 1. 模擬極簡 DOM 節點
 class MockElement {
@@ -178,9 +178,9 @@ console.log("\n[測試 4] 模擬 click 事件派發給「儲存主機按鈕」..
 dispatchMockEvent(saveHostBtn, 'click');
 console.log("-> Save 按鈕的 click 監聽器是否正常觸發？", isSaveHostBtnClicked ? "PASS (成功儲存！)" : "FAIL");
 
-console.log("\n=== TermiX 前端事件流沙盒仿真測試結束 ===");
+console.log("\n=== TermiX 前端事件流沙盒模擬測試結束 ===");
 if (mousedownEvent.propagationStopped && isCloseWorkspaceCalled && saveMousedown.propagationStopped && isSaveHostBtnClicked) {
-  console.log("\n【恭喜！所有仿真事件流測試全部高分通過，100% 證實修復方案邏輯完美正確！】\n");
+  console.log("\n【所有事件流模擬測試皆已通過。】\n");
 } else {
   console.error("\n【警告！測試中有項目未通過，請檢查邏輯。】\n");
   process.exit(1);

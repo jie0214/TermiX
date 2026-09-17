@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"sync"
+
 	"github.com/jie0214/TermiX/backend/controlpanel"
 	"github.com/jie0214/TermiX/backend/hostvault"
 	"github.com/jie0214/TermiX/backend/keychain"
@@ -10,22 +12,23 @@ import (
 	termixssh "github.com/jie0214/TermiX/backend/ssh"
 	"github.com/jie0214/TermiX/backend/terminal"
 	"github.com/jie0214/TermiX/shared/dto"
-	"time"
-)
-
-const (
-	defaultTimeout = 45 * time.Second
 )
 
 type App struct {
-	ctx          context.Context
-	terminal     *terminal.Manager
-	controlPanel *controlpanel.Executor
-	sshConnector *termixssh.Connector
-	snippets     *snippets.Service
-	hostVault    *hostvault.Service
-	kubernetes   *kubernetes.Service
-	keychain     *keychain.Service
+	updateMu             sync.Mutex
+	closing              bool
+	pendingOperations    int
+	closeMu              sync.Mutex
+	nativeUpdateCheck    func()
+	nativeUpdateSettings func()
+	ctx                  context.Context
+	terminal             *terminal.Manager
+	controlPanel         *controlpanel.Executor
+	sshConnector         *termixssh.Connector
+	snippets             *snippets.Service
+	hostVault            *hostvault.Service
+	kubernetes           *kubernetes.Service
+	keychain             *keychain.Service
 }
 
 type SSHConfig = dto.SSHConfig

@@ -40,15 +40,6 @@ func NewService(repo *storage.Repository, secretStore secrets.SecretStore, keych
 	}
 }
 
-func newServiceForTest(repo *storage.Repository, secretStore secrets.SecretStore, now func() time.Time) *Service {
-	return &Service{
-		repo:     repo,
-		secrets:  secretStore,
-		keychain: keychain.NewService(repo, secretStore),
-		now:      now,
-	}
-}
-
 func (s *Service) ListHosts(ctx context.Context) ([]dto.HostProfile, error) {
 	return s.repo.ListHosts(ctx)
 }
@@ -346,6 +337,7 @@ func (s *Service) ResolveRuntimeConfig(ctx context.Context, request dto.HostConn
 	}
 
 	config := dto.SSHConfig{
+		Alias:             host.Alias,
 		Host:              host.Config.Host,
 		Port:              host.Config.Port,
 		Username:          host.Config.Username,

@@ -1,7 +1,7 @@
 # Kubernetes 資源詳情 ENV 呈現設計方案
 
 > 將資源詳情抽屜的 ENV 分頁改為「依來源分區」的雙欄 key-value 表格，與 Metadata 表視覺一致。設計已定案並實作，本文件為依據。
-> 相關背景見 [kubernetes-session.md](./kubernetes-session.md)。
+> 其他 Kubernetes 設計文件見 [架構文件索引](./README.md)。
 
 ## 目錄
 

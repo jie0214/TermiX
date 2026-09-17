@@ -1,9 +1,13 @@
 package integration
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+
 	termixapp "github.com/jie0214/TermiX/backend/app"
 	"github.com/jie0214/TermiX/backend/controlpanel"
 	"github.com/jie0214/TermiX/backend/hostvault"
@@ -15,10 +19,6 @@ import (
 	"github.com/jie0214/TermiX/backend/ssh"
 	"github.com/jie0214/TermiX/backend/storage"
 	"github.com/jie0214/TermiX/backend/terminal"
-	"strconv"
-	"strings"
-	"testing"
-	"time"
 )
 
 func TestIntegrationSSHInteract(t *testing.T) {
@@ -266,7 +266,7 @@ func TestIntegrationSSHSudoConnect(t *testing.T) {
 		t.Fatalf("隔離式 sudo 驗證輸出缺少成功旗標：%q", isolatedRes.Output)
 	}
 
-	t.Log(fmt.Sprintf("sudo 連線驗證成功：session=%s", sessionKey))
+	t.Logf("sudo 連線驗證成功：session=%s", sessionKey)
 }
 
 func envValue(primary string, legacy string) string {

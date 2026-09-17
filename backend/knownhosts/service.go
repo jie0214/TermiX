@@ -1,12 +1,15 @@
 package knownhosts
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 
 	"go.uber.org/fx"
@@ -209,15 +212,26 @@ func (v *Validator) ListKnownHosts() ([]KnownHostEntry, error) {
 
 // RemoveHost 透過 ssh-keygen 撤銷對指定主機指紋的信任，支援帶 port 的條目清除
 func (v *Validator) RemoveHost(host string, port int) error {
-	// 清除基本主機名條目 (例如 IP)
-	cmd := exec.Command("ssh-keygen", "-R", host)
-	_ = cmd.Run()
-
-	// 若為非標準 port，清除帶有中括號與 port 的條目 (例如 [192.168.1.1]:2222)
-	if port != 22 && port > 0 {
-		addrWithPort := fmt.Sprintf("[%s]:%d", host, port)
-		cmdWithPort := exec.Command("ssh-keygen", "-R", addrWithPort)
-		_ = cmdWithPort.Run()
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return errors.New("移除 known_hosts 信任時主機不可空白")
 	}
-	return nil
+	if port < 0 || port > 65535 {
+		return fmt.Errorf("移除 known_hosts 信任時連接埠超出範圍：%d", port)
+	}
+
+	targets := []string{host}
+	// port=0 代表呼叫端已傳入 known_hosts 內的完整主機欄位；22 使用標準主機格式。
+	if port != 0 && port != 22 {
+		targets = append(targets, net.JoinHostPort(host, strconv.Itoa(port)))
+	}
+
+	var removeErrors []error
+	for _, target := range targets {
+		output, err := exec.Command("ssh-keygen", "-R", target).CombinedOutput()
+		if err != nil {
+			removeErrors = append(removeErrors, fmt.Errorf("移除 %q 失敗：%w，輸出：%s", target, err, strings.TrimSpace(string(output))))
+		}
+	}
+	return errors.Join(removeErrors...)
 }

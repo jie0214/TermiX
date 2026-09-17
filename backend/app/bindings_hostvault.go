@@ -92,6 +92,10 @@ func (a *App) GetHostSecretValue(request HostSecretValueRequest) OperationResult
 }
 
 func (a *App) ConnectHost(hostID string) OperationResult {
+	if !a.beginOperation() {
+		return OperationResult{Error: "正在準備結束或更新，請稍後再試。"}
+	}
+	defer a.endOperation()
 	config, err := a.hostVault.ResolveRuntimeConfig(a.contextOrBackground(), HostConnectionRequest{HostID: hostID})
 	if err != nil {
 		return failure(err)
@@ -109,6 +113,10 @@ func (a *App) CancelConnectHost(hostID string) OperationResult {
 }
 
 func (a *App) TestHostConnection(hostID string) OperationResult {
+	if !a.beginOperation() {
+		return OperationResult{Error: "正在準備結束或更新，請稍後再試。"}
+	}
+	defer a.endOperation()
 	config, err := a.hostVault.ResolveRuntimeConfig(a.contextOrBackground(), HostConnectionRequest{HostID: hostID})
 	if err != nil {
 		return failure(err)

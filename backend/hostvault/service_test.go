@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jie0214/TermiX/backend/keychain"
 	"github.com/jie0214/TermiX/backend/secrets"
 	"github.com/jie0214/TermiX/backend/storage"
 	"github.com/jie0214/TermiX/shared/constants"
@@ -114,6 +115,9 @@ func TestServiceSaveResolveAndExportHost(t *testing.T) {
 	}
 	if runtimeConfig.SessionID != "sess-1" {
 		t.Fatalf("ResolveRuntimeConfig() sessionId = %q, want sess-1", runtimeConfig.SessionID)
+	}
+	if runtimeConfig.Alias != "prod-1" {
+		t.Fatalf("執行期連線設定未保留主機 alias：%q", runtimeConfig.Alias)
 	}
 
 	exported, err := svc.Export(ctx, dto.HostExportOptions{Format: "json", Mode: "reference"})
@@ -270,13 +274,15 @@ func newTestService(t *testing.T, secretStore secrets.SecretStore) *Service {
 		t.Fatalf("OpenDatabase() error = %v", err)
 	}
 
-	return newServiceForTest(
-		storage.NewRepository(database),
-		secretStore,
-		func() time.Time {
+	repository := storage.NewRepository(database)
+	return &Service{
+		repo:     repository,
+		secrets:  secretStore,
+		keychain: keychain.NewService(repository, secretStore),
+		now: func() time.Time {
 			return time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC)
 		},
-	)
+	}
 }
 
 type failingSecretStore struct {
