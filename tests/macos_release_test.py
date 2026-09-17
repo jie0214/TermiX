@@ -26,6 +26,8 @@ if name == "uname":
     print("Darwin")
 elif name == "security" and args[0] == "find-identity":
     print('1) ' + 'A' * 40 + ' "' + os.environ.get("IDENTITY", "Developer ID Application: Test (ABCDEFGHIJ)") + '"')
+elif name == "security" and args == ["list-keychains", "-d", "user"]:
+    print('    "/tmp/original login.keychain-db"')
 elif name == "lipo":
     print(os.environ.get("ARCHS", "arm64 x86_64"))
 elif name == "file":
@@ -170,6 +172,11 @@ class MacOSReleaseTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(any(call[:2] == ["security", "delete-keychain"] for call in self.commands()))
         self.assertFalse(list(self.work.glob("termix-signing.*")))
+        changes = [call for call in self.commands() if call[:5] == ["security", "list-keychains", "-d", "user", "-s"]]
+        self.assertEqual(len(changes), 2)
+        self.assertTrue(changes[0][5].endswith("/signing.keychain-db"))
+        self.assertEqual(changes[0][6:], ["/tmp/original login.keychain-db"])
+        self.assertEqual(changes[1][5:], ["/tmp/original login.keychain-db"])
 
     def test_ci_cleans_keychain_after_packaging_failure(self):
         self.ci_settings()
@@ -187,6 +194,7 @@ class MacOSReleaseTest(unittest.TestCase):
         self.assertFalse(self.output.exists())
         self.assertTrue(any(call[:2] == ["security", "delete-keychain"] for call in self.commands()))
         self.assertFalse(list(self.work.glob("termix-signing.*")))
+        self.assertIn(["security", "list-keychains", "-d", "user", "-s", "/tmp/original login.keychain-db"], self.commands())
 
 
 if __name__ == "__main__":

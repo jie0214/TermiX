@@ -15,7 +15,12 @@ umask 077
 SIGNING_DIR="$(mktemp -d "$RUNNER_TEMP/termix-signing.XXXXXX")"
 export MACOS_SIGNING_KEYCHAIN="$SIGNING_DIR/signing.keychain-db"
 export MACOS_NOTARY_PROFILE=termix-ci-notary
+ORIGINAL_KEYCHAINS=()
+while IFS= read -r keychain; do
+  ORIGINAL_KEYCHAINS+=("$keychain")
+done < <(security list-keychains -d user | python3 -c 'import shlex,sys; print("\n".join(shlex.split(sys.stdin.read())))')
 cleanup() {
+  security list-keychains -d user -s "${ORIGINAL_KEYCHAINS[@]}" >/dev/null 2>&1 || true
   security delete-keychain "$MACOS_SIGNING_KEYCHAIN" >/dev/null 2>&1 || true
   rm -rf -- "$SIGNING_DIR"
 }
@@ -29,6 +34,8 @@ keychain_password="$(openssl rand -hex 32)"
 security create-keychain -p "$keychain_password" "$MACOS_SIGNING_KEYCHAIN"
 security set-keychain-settings -lut 21600 "$MACOS_SIGNING_KEYCHAIN"
 security unlock-keychain -p "$keychain_password" "$MACOS_SIGNING_KEYCHAIN"
+# codesign 的身分解析仍依賴搜尋清單，指定 --keychain 並不足以註冊新鑰匙圈。
+security list-keychains -d user -s "$MACOS_SIGNING_KEYCHAIN" "${ORIGINAL_KEYCHAINS[@]}"
 security import "$SIGNING_DIR/certificate.p12" -k "$MACOS_SIGNING_KEYCHAIN" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security >/dev/null
 security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$MACOS_SIGNING_KEYCHAIN" >/dev/null
 xcrun notarytool store-credentials "$MACOS_NOTARY_PROFILE" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --keychain "$MACOS_SIGNING_KEYCHAIN" >/dev/null
