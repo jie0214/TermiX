@@ -38,7 +38,7 @@ test('空白名稱保留原名，過長名稱限制為 80 個字元', () => {
 test('合併後可命名，再次合併仍保留自訂名稱與所有窗格', async () => {
   const source = await readFile(new URL('../../App.js', import.meta.url), 'utf8');
   const method = source.slice(source.indexOf('  mergeWorkspaces('), source.indexOf('  setupSidebarListeners('));
-  const app = new Function('terminalStore', 'KUBERNETES_SESSION_ID', 'window', `return ({${method}});`)(terminalStore, 'kubernetes-session', { location: {} });
+  const app = new Function('terminalStore', 'KUBERNETES_SESSION_ID', 'SFTP_TAB_ID', 'window', `return ({${method}});`)(terminalStore, 'kubernetes-session', 'sftp-tab', { location: {} });
   const instances = terminalStore.getState().xtermInstances;
   app.mergeWorkspaces('b', 'a');
   terminalStore.getState().renameWorkspace('a', '維運工作區');

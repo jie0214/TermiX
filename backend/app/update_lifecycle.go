@@ -76,6 +76,10 @@ func (a *App) prepareCloseWithPrompts(confirm func(string) bool, pendingPrompt f
 	a.closing = true
 	pending := a.pendingOperations
 	a.updateMu.Unlock()
+	transfers := 0
+	if a.sftp != nil {
+		transfers = a.sftp.ActiveCount()
+	}
 	terminals, shells, forwards := 0, 0, 0
 	if a.terminal != nil {
 		terminals = a.terminal.ActiveSessionCount()
@@ -91,12 +95,13 @@ func (a *App) prepareCloseWithPrompts(confirm func(string) bool, pendingPrompt f
 		a.updateMu.Unlock()
 		return false
 	}
-	if terminals+shells+forwards > 0 && !confirm(fmt.Sprintf("目前有 %d 個終端連線、%d 個 Pod shell 與 %d 個 port-forward。繼續會中斷這些工作；SSH 遠端程序不保證能在重啟後恢復。", terminals, shells, forwards)) {
+	if terminals+shells+forwards+transfers > 0 && !confirm(fmt.Sprintf("目前有 %d 個終端連線、%d 個 Pod shell 與 %d 個 port-forward、%d 個 SFTP 傳輸。繼續會中斷這些工作；SSH 遠端程序不保證能在重啟後恢復。", terminals, shells, forwards, transfers)) {
 		a.updateMu.Lock()
 		a.closing = false
 		a.updateMu.Unlock()
 		return false
 	}
+	ShutdownSFTP(a)
 	if a.terminal != nil {
 		a.terminal.CloseAll()
 	}

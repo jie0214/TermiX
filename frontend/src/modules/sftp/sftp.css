@@ -1,0 +1,92 @@
+sftp-page { display: block; height: 100%; min-height: 0; overflow: auto; }
+.sftp-page { --sftp-accent: var(--color-accent, #5b9fff); display: grid; grid-template-columns: 210px minmax(0, 1fr); height: 100%; min-height: 440px; color: var(--color-text); font-size: 12px; box-sizing: border-box; }
+.sftp-page *, .sftp-name-dialog * { box-sizing: border-box; }
+.sftp-page [hidden] { display: none !important; }
+.sftp-page h2, .sftp-page p { margin: 0; }
+.sftp-page button, .sftp-page summary { cursor: pointer; }
+.sftp-page button:disabled { opacity: .35; cursor: default; }
+.sftp-page :focus-visible { outline: 2px solid var(--sftp-accent); outline-offset: -2px; }
+.sftp-page input[type=checkbox] { accent-color: var(--sftp-accent); width: 13px; height: 13px; cursor: pointer; }
+.sftp-hosts { border-right: 1px solid var(--color-border); padding: 16px 10px; overflow: auto; min-height: 0; }
+.sftp-search { display: flex; align-items: center; gap: 8px; border: 1px solid var(--color-border); border-radius: 7px; padding: 0 10px; margin-bottom: 22px; background: var(--input-bg); color: var(--color-text-muted); }
+.sftp-search input { width: 100%; min-width: 0; padding: 10px 0; border: 0; background: transparent; color: var(--color-text); font: inherit; }
+.sftp-hosts h2 { font-size: 11px; font-weight: 500; color: var(--color-text-muted); margin: 18px 10px 8px; }
+.sftp-host-row, .sftp-session-row { display: flex; align-items: center; gap: 10px; width: 100%; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--color-text); padding: 11px 10px; text-align: left; }
+.sftp-host-row > .ti { font-size: 21px; color: var(--color-text-muted); }
+.sftp-host-row > span:not(.sftp-connection-dot) { min-width: 0; flex: 1; }
+.sftp-host-row strong, .sftp-host-row small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sftp-host-row strong { font-size: 13px; font-weight: 500; }
+.sftp-host-row small { color: var(--color-text-muted); margin-top: 5px; font-size: 11px; }
+.sftp-host-row:hover, .sftp-session-row:hover { background: var(--input-bg); }
+.sftp-host-row[aria-pressed=true], .sftp-session-row[aria-pressed=true] { background: color-mix(in srgb, var(--sftp-accent) 14%, transparent); border-color: color-mix(in srgb, var(--sftp-accent) 25%, transparent); }
+.sftp-session-area { margin-top: 24px; border-top: 1px solid var(--color-border); }
+.sftp-session-row { font-size: 11px; padding: 9px 10px; }
+.sftp-session-row > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sftp-no-hosts { padding: 12px; color: var(--color-text-muted); }
+.sftp-connection-dot { width: 7px; height: 7px; flex-shrink: 0; display: inline-block; border-radius: 50%; background: #4abb76; }
+.sftp-workspace { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 16px; gap: 12px; }
+.sftp-file-panes { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr); gap: 12px; flex: 1; min-height: 0; }
+.sftp-local, .sftp-browser { border: 1px solid var(--color-border); border-radius: 8px; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--input-bg); }
+.sftp-pane-heading { height: 54px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 12px; }
+.sftp-pane-heading h2 { font-size: 13px; display: flex; align-items: center; gap: 10px; min-width: 0; }
+.sftp-pane-heading h2 > .ti { font-size: 22px; color: var(--color-text-muted); }
+#sftp-active-host { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sftp-pane-heading > div { display: flex; align-items: center; flex-shrink: 0; }
+.sftp-icon-button { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; flex-shrink: 0; border: 0; border-radius: 5px; background: transparent; color: var(--color-text-muted); padding: 0; font-size: 18px; }
+.sftp-icon-button:hover:not(:disabled), .sftp-more[open] > summary { color: var(--color-text); background: color-mix(in srgb, var(--color-text) 8%, transparent); }
+.sftp-address { display: flex; gap: 2px; align-items: center; padding: 6px; border-block: 1px solid var(--color-border); }
+.sftp-address input { font: 11px ui-monospace, monospace; flex: 1; min-width: 0; width: 0; padding: 7px 6px; color: var(--color-text); border: 0; border-radius: 4px; background: transparent; }
+.sftp-local-list, .sftp-dropzone { flex: 1; min-height: 0; overflow: auto; }
+.sftp-page table { border-collapse: separate; border-spacing: 0; width: 100%; text-align: left; font-size: 11px; }
+.sftp-page th { color: var(--color-text-muted); font-weight: 500; white-space: nowrap; background: var(--input-bg); position: sticky; top: 0; z-index: 1; }
+.sftp-page th, .sftp-page td { padding: 10px 9px; border-bottom: 1px solid color-mix(in srgb, var(--color-border) 65%, transparent); }
+.sftp-file-panes th, .sftp-file-panes td { height: 39px; white-space: nowrap; }
+.sftp-file-panes th:first-child, .sftp-file-panes td:first-child { width: 28px; padding-right: 0; }
+.sftp-file-panes th:nth-child(2) { width: 100%; }
+.sftp-file-panes td:nth-child(2) { max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
+.sftp-file-panes td:nth-child(n+4) { color: var(--color-text-muted); font-size: 10px; }
+.sftp-type { display: none; }
+.sftp-file-icon { display: inline-flex; vertical-align: middle; font-size: 18px; margin-right: 8px; color: var(--color-text-muted); }
+.sftp-file-icon--directory { color: #e4b75e; }
+.sftp-page .sftp-directory { border: 0; border-radius: 3px; background: none; color: inherit; padding: 0; min-height: 0; font: inherit; text-align: left; white-space: nowrap; }
+.sftp-file-panes tbody tr:hover { background: color-mix(in srgb, var(--color-text) 4%, transparent); }
+.sftp-file-panes tr.sftp-selected { background: color-mix(in srgb, var(--sftp-accent) 16%, transparent); }
+.sftp-file-panes tr.sftp-drop-folder { background: color-mix(in srgb, var(--sftp-accent) 20%, transparent); outline: 2px dashed var(--sftp-accent); outline-offset: -2px; }
+.sftp-dropzone.wails-drop-target-active { outline: 2px dashed var(--sftp-accent); outline-offset: -2px; }
+.sftp-local-list tr[draggable=true] { cursor: grab; }
+.sftp-local-list tr[draggable=true]:active { cursor: grabbing; }
+.sftp-page .sftp-empty, .sftp-page .sftp-local-empty { padding: 50px 20px; text-align: center; color: var(--color-text-muted); }
+.sftp-page .sftp-empty:empty, .sftp-local-empty:empty, .sftp-error:empty, .sftp-drop-caption:empty { display: none; }
+.sftp-pane-footer { display: flex; align-items: center; gap: 10px; min-height: 30px; padding: 6px 12px; border-top: 1px solid var(--color-border); font-size: 10px; color: var(--color-text-muted); }
+.sftp-drop-caption { color: var(--sftp-accent); overflow-wrap: anywhere; }
+.sftp-error { color: var(--color-danger, #f87171); padding: 10px 12px; overflow-wrap: anywhere; font-size: 12px; }
+.sftp-more { position: relative; }
+.sftp-more summary { list-style: none; }
+.sftp-more summary::-webkit-details-marker { display: none; }
+.sftp-menu { position: absolute; top: 35px; right: 0; z-index: 5; width: 150px; background: var(--dialog-bg, #20232b); border: 1px solid var(--color-border); border-radius: 7px; padding: 5px; box-shadow: 0 8px 24px #0004; }
+.sftp-menu button { display: block; width: 100%; background: transparent; color: var(--color-text); border: 0; text-align: left; border-radius: 4px; padding: 9px; font: inherit; }
+.sftp-menu button:hover:not(:disabled) { background: var(--input-bg); }
+.sftp-menu [data-action=delete] { color: var(--color-danger, #f87171); }
+.sftp-transfers { border: 1px solid var(--color-border); border-radius: 8px; flex-shrink: 0; overflow: hidden; }
+.sftp-transfers header { display: flex; align-items: center; justify-content: space-between; padding: 6px 12px; }
+.sftp-queue-toggle { display: flex; align-items: center; gap: 9px; color: var(--color-text); background: transparent; border: 0; padding: 6px 0; font: inherit; font-weight: 600; }
+.sftp-queue-toggle[aria-expanded=false] .ti { transform: rotate(-90deg); }
+#sftp-transfer-count { color: var(--color-text-muted); background: var(--input-bg); border: 1px solid var(--color-border); border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 400; }
+.sftp-queue-scroll { max-height: 180px; overflow: auto; border-top: 1px solid var(--color-border); }
+.sftp-transfers td { white-space: nowrap; }
+.sftp-transfers td:first-child { max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.sftp-transfers small { display: block; margin-top: 4px; font-size: 10px; color: var(--color-text-muted); }
+.sftp-transfers progress { width: 100px; height: 6px; accent-color: var(--sftp-accent); vertical-align: middle; margin-right: 5px; }
+.sftp-status { font-size: 11px; }
+.sftp-status--running { color: var(--sftp-accent); }
+.sftp-status--completed { color: #4abb76; }
+.sftp-status--failed, .sftp-transfer-error { color: var(--color-danger, #f87171); }
+.sftp-transfers td.sftp-transfer-error { white-space: normal; overflow-wrap: anywhere; max-width: 260px; min-width: 80px; }
+.sftp-transfers tr[data-transfer-status=failed] progress { accent-color: var(--color-danger, #f87171); }
+.sftp-name-dialog { width: 360px; background: var(--dialog-bg, #20232b); color: var(--color-text); border: 1px solid var(--color-border); border-radius: 12px; padding: 24px; }
+.sftp-name-dialog::backdrop { background: #0008; }
+.sftp-name-dialog label, .sftp-name-dialog input { display: block; margin: 12px 0; width: 100%; }
+.sftp-name-dialog input { padding: 9px; background: var(--input-bg); color: var(--color-text); border: 1px solid var(--color-border); border-radius: 6px; }
+.sftp-name-dialog form > div { display: flex; gap: 10px; justify-content: flex-end; }
+@media (max-width: 1100px) { .sftp-page { grid-template-columns: 175px minmax(0, 1fr); } .sftp-workspace { padding: 10px; gap: 10px; } .sftp-file-panes { gap: 8px; } .sftp-pane-heading { padding-inline: 8px; } }
+@media (max-width: 760px) { .sftp-page { height: auto; min-height: 100%; grid-template-columns: 145px minmax(0, 1fr); } .sftp-file-panes { grid-template-columns: minmax(0, 1fr); } .sftp-local, .sftp-browser { height: 350px; } .sftp-hosts { padding-inline: 6px; } .sftp-host-row { gap: 6px; padding-inline: 6px; } }

@@ -1,3 +1,4 @@
+import type { SFTPSession, SFTPListing, SFTPTransfer, SFTPLocalListing } from '../../modules/sftp/types';
 import type {
   AWSIntegration,
   AWSIntegrationSecretsInput,
@@ -48,6 +49,18 @@ import type {
 } from '../../domain';
 
 export interface WailsAppContract {
+  ListSFTPLocalDirectory(path: string): Promise<SFTPLocalListing>;
+  SelectSFTPLocalDirectory(): Promise<SFTPLocalListing | null>;
+  ConnectSFTP(hostID: string): Promise<SFTPSession>;
+  ListSFTPSessions(): Promise<SFTPSession[]>;
+  ListSFTPDirectory(id: string, path: string): Promise<SFTPListing>;
+  MutateSFTP(id: string, action: string, path: string, name: string): Promise<void>;
+  DisconnectSFTP(id: string): Promise<void>;
+  ListSFTPTransfers(): Promise<SFTPTransfer[]>;
+  ClearSFTPTransfers(): Promise<void>;
+  QueueSFTPUpload(id: string, paths: string[], destination: string): Promise<void>;
+  SelectSFTPUpload(id: string, destination: string, directory: boolean): Promise<void>;
+  DownloadSFTP(id: string, paths: string[]): Promise<void>;
   GetLegacyWebSettings(): Promise<Record<string, string>>;
   GetLegacyControlPanelComponents(): Promise<string>;
   StartLocalTerminal(shellPath: string): Promise<OperationResult>;

@@ -1,3 +1,5 @@
+import './modules/sftp/SFTPPage';
+import { SFTP_TAB_ID } from './modules/sftp/SFTPService';
 import { terminalStore } from './modules/terminal/TerminalStore';
 import { TerminalAPI } from './modules/terminal/TerminalAPI';
 import { cleanupFrontendSession, markSessionUserClosed, consumeUserClosed } from './modules/terminal/TerminalLifecycle';
@@ -628,6 +630,7 @@ export class TermixApp extends HTMLElement {
     // 控制台側欄切換鈕僅在「Terminal Session」分頁顯示（Vaults / Control Panel / Kubernetes 皆隱藏）。
     const isTerminalSessionActive = activeWorkspaceId !== 'host-tab'
       && activeWorkspaceId !== 'control-panel-tab'
+      && activeWorkspaceId !== SFTP_TAB_ID
       && activeWorkspaceId !== KUBERNETES_SESSION_ID;
     const sidebarToggle = this.querySelector('#toggleControlSidebar');
     if (!isTerminalSessionActive) this.collapseControlSidebar();
@@ -645,6 +648,13 @@ export class TermixApp extends HTMLElement {
           <line x1="6" y1="18" x2="6.01" y2="18"/>
         </svg>
         <span>Vaults</span>
+      </div>
+      <div class="session-tab ui-button ui-button--tab no-drag ${activeWorkspaceId === SFTP_TAB_ID ? 'active' : ''}" data-workspace-id="${SFTP_TAB_ID}">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/>
+          <path d="M7 11h9l-3-3M17 16H8l3 3"/>
+        </svg>
+        <span>SFTP</span>
       </div>
     `;
 
@@ -705,6 +715,11 @@ export class TermixApp extends HTMLElement {
             hostStore.getState().setSelectedTab('hosts');
           }
           window.location.hash = '#/hosts';
+        } else if (wsId === SFTP_TAB_ID) {
+          terminalStore.getState().setActiveWorkspaceId(SFTP_TAB_ID);
+          terminalStore.getState().setActivePaneSessionKey(null);
+          this.collapseControlSidebar();
+          window.location.hash = '#/sftp';
         } else if (wsId === KUBERNETES_SESSION_ID) {
           terminalStore.getState().setActiveWorkspaceId(KUBERNETES_SESSION_ID);
           terminalStore.getState().setActivePaneSessionKey(null);
@@ -721,7 +736,7 @@ export class TermixApp extends HTMLElement {
       });
 
       // 2. 終端機連線分頁拖曳合併 (Drag & Drop) 邏輯
-      if (wsId !== 'host-tab' && wsId !== KUBERNETES_SESSION_ID) {
+      if (wsId !== 'host-tab' && wsId !== KUBERNETES_SESSION_ID && wsId !== SFTP_TAB_ID) {
         tab.addEventListener('contextmenu', (event) => {
           if (event.target.closest('.session-tab-name-input')) return;
           event.preventDefault();
@@ -895,7 +910,7 @@ export class TermixApp extends HTMLElement {
   // 將 sourceWsId 合併至 targetWsId 分割視窗中
   mergeWorkspaces(sourceWsId, targetWsId) {
     if (sourceWsId === targetWsId) return;
-    if ([sourceWsId, targetWsId].includes('host-tab') || [sourceWsId, targetWsId].includes(KUBERNETES_SESSION_ID)) return;
+    if ([sourceWsId, targetWsId].includes(SFTP_TAB_ID) || [sourceWsId, targetWsId].includes('host-tab') || [sourceWsId, targetWsId].includes(KUBERNETES_SESSION_ID)) return;
 
     const state = terminalStore.getState();
     const workspaces = [...state.workspaces];
@@ -2320,6 +2335,7 @@ export class TermixApp extends HTMLElement {
     // Workspace。背景 Session 結束時不得因為找不到同名 Workspace 而切離目前頁面。
     if (
       activeWorkspaceId === KUBERNETES_SESSION_ID
+      || activeWorkspaceId === SFTP_TAB_ID
       || activeWorkspaceId === 'host-tab'
       || activeWorkspaceId === 'control-panel-tab'
     ) {

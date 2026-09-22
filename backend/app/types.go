@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	sftpservice "github.com/jie0214/TermiX/backend/sftp"
 	"sync"
 
 	"github.com/jie0214/TermiX/backend/controlpanel"
@@ -15,6 +16,7 @@ import (
 )
 
 type App struct {
+	sftp                 *sftpservice.Manager
 	updateMu             sync.Mutex
 	closing              bool
 	pendingOperations    int

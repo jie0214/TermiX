@@ -25,6 +25,12 @@ function operationFailure(error = t('misc.wails.mockUnavailable')): OperationRes
 
 function createAppMock(): WailsAppBindings {
   return {
+    ListSFTPLocalDirectory: async () => { throw new Error('瀏覽本機檔案需要桌面版 TermiX。'); },
+    SelectSFTPLocalDirectory: async () => null,
+    ListSFTPSessions: async () => [],
+    ListSFTPTransfers: async () => [],
+    ClearSFTPTransfers: async () => undefined,
+    ConnectSFTP: async () => { throw new Error('SFTP 連線需要桌面版 TermiX。'); },
     StartLocalTerminal: async (shellPath: string) =>
       operationFailure(t('misc.wails.mockUnavailableShell', { shell: shellPath })),
     SelectFile: async () => '',

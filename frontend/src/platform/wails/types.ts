@@ -4,6 +4,8 @@ export type WailsEventCallback = (...data: unknown[]) => void;
 export type WailsEventOff = () => void;
 
 export interface WailsRuntime {
+  OnFileDrop?(callback: (x: number, y: number, paths: string[]) => void, useDropTarget: boolean): void;
+  OnFileDropOff?(): void;
   EventsEmit(eventName: string, ...data: unknown[]): void;
   EventsOn(eventName: string, callback: WailsEventCallback): WailsEventOff;
   EventsOnMultiple(

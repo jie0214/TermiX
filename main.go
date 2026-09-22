@@ -101,11 +101,12 @@ func main() {
 	stopStatusBar := func() {}
 
 	err := wails.Run(&options.App{
-		Title:     "TermiX",
-		Width:     1360,
-		Height:    900,
-		MinWidth:  980,
-		MinHeight: 680,
+		Title:       "TermiX",
+		DragAndDrop: &options.DragAndDrop{EnableFileDrop: true},
+		Width:       1360,
+		Height:      900,
+		MinWidth:    980,
+		MinHeight:   680,
 		// macOS 以自訂 shell 繪製 9px 外框，避免標準 NSWindow 系統圓角不可調整。
 		Frameless: runtime.GOOS == "darwin",
 		Menu:      appMenu,
@@ -126,7 +127,7 @@ func main() {
 			}
 			return finishNativeQuit()
 		},
-		OnShutdown: func(context.Context) { stopStatusBar() },
+		OnShutdown: func(context.Context) { stopStatusBar(); termixapp.ShutdownSFTP(app) },
 		OnDomReady: func(context.Context) {
 			startNativeUpdater(app)
 			// 視窗加入 AppKit 視窗集合後再次裁切，避免啟動時序略過主視窗。

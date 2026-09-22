@@ -53,3 +53,9 @@
 .ti-search::before { content: "\eb1c"; }
 .ti-server::before { content: "\eb1f"; }
 .ti-upload::before { content: "\eb47"; }
+.ti-device-desktop::before { content: "\ea89"; }
+.ti-folder::before { content: "\eaad"; }
+.ti-arrow-up::before { content: "\ea25"; }
+.ti-refresh::before { content: "\eb13"; }
+.ti-playlist-x::before { content: "\f009"; }
+.ti-file::before { content: "\eaa4"; }

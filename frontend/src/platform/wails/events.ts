@@ -105,3 +105,10 @@ export function openBrowserURL(url: string): void {
   }
   globalThis.window?.open?.(target, '_blank', 'noopener');
 }
+
+// 拖放訂閱只屬於目前頁面；解除監聽不影響後端 SFTP 傳輸。
+export function onWailsFileDrop(callback: (x: number, y: number, paths: string[]) => void): WailsEventOff {
+  const runtime = getRuntime();
+  runtime?.OnFileDrop?.(callback, true);
+  return () => runtime?.OnFileDropOff?.();
+}

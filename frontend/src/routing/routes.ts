@@ -2,6 +2,7 @@ export const DEFAULT_ROUTE_PATH = '/hosts';
 
 export const APP_ROUTE_PATHS = [
   '/hosts',
+  '/sftp',
   '/terminal',
   '/kubernetes-session',
   '/control-panel',
@@ -10,6 +11,7 @@ export const APP_ROUTE_PATHS = [
 export type AppRoutePath = (typeof APP_ROUTE_PATHS)[number];
 
 export const LEGACY_VAADIN_ROUTES = [
+  { path: '/sftp', component: 'sftp-page' },
   { path: '/hosts', component: 'host-list-page' },
   { path: '/terminal', component: 'terminal-page' },
   { path: '/kubernetes-session', component: 'kubernetes-session-page' },

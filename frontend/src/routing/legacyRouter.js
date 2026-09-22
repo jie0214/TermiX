@@ -1,3 +1,4 @@
+import { SFTP_TAB_ID } from '../modules/sftp/SFTPService.js';
 import { kubernetesSessionStore, KUBERNETES_SESSION_ID } from '../modules/kubernetes/KubernetesSessionStore.js';
 import { terminalStore } from '../modules/terminal/TerminalStore.js';
 import {
@@ -19,6 +20,12 @@ function syncTerminalWorkspace() {
 export function syncActiveWorkspaceFromRoute(pathname) {
   if (pathname === '/hosts' || pathname === '/control-panel') {
     terminalStore.getState().setActiveWorkspaceId('host-tab');
+    return;
+  }
+
+  if (pathname === '/sftp') {
+    terminalStore.getState().setActiveWorkspaceId(SFTP_TAB_ID);
+    terminalStore.getState().setActivePaneSessionKey(null);
     return;
   }
 

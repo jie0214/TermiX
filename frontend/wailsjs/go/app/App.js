@@ -18,6 +18,10 @@ export function CheckForUpdate() {
   return window['go']['app']['App']['CheckForUpdate']();
 }
 
+export function ClearSFTPTransfers() {
+  return window['go']['app']['App']['ClearSFTPTransfers']();
+}
+
 export function CloseKubernetesPodShell(arg1) {
   return window['go']['app']['App']['CloseKubernetesPodShell'](arg1);
 }
@@ -40,6 +44,10 @@ export function ConnectHostTerminal(arg1) {
 
 export function ConnectKubernetesCluster(arg1) {
   return window['go']['app']['App']['ConnectKubernetesCluster'](arg1);
+}
+
+export function ConnectSFTP(arg1) {
+  return window['go']['app']['App']['ConnectSFTP'](arg1);
 }
 
 export function ConnectTerminal(arg1) {
@@ -92,6 +100,14 @@ export function DeleteSnippet(arg1) {
 
 export function DisconnectKubernetesCluster() {
   return window['go']['app']['App']['DisconnectKubernetesCluster']();
+}
+
+export function DisconnectSFTP(arg1) {
+  return window['go']['app']['App']['DisconnectSFTP'](arg1);
+}
+
+export function DownloadSFTP(arg1, arg2) {
+  return window['go']['app']['App']['DownloadSFTP'](arg1, arg2);
 }
 
 export function DownloadUpdate() {
@@ -190,6 +206,14 @@ export function GetKubernetesSecretValue(arg1) {
   return window['go']['app']['App']['GetKubernetesSecretValue'](arg1);
 }
 
+export function GetLegacyControlPanelComponents() {
+  return window['go']['app']['App']['GetLegacyControlPanelComponents']();
+}
+
+export function GetLegacyWebSettings() {
+  return window['go']['app']['App']['GetLegacyWebSettings']();
+}
+
 export function HandleNativeUpdateCheck(arg1) {
   return window['go']['app']['App']['HandleNativeUpdateCheck'](arg1);
 }
@@ -242,8 +266,32 @@ export function ListKubernetesServicePortForwards(arg1) {
   return window['go']['app']['App']['ListKubernetesServicePortForwards'](arg1);
 }
 
+export function ListSFTPDirectory(arg1, arg2) {
+  return window['go']['app']['App']['ListSFTPDirectory'](arg1, arg2);
+}
+
+export function ListSFTPLocalDirectory(arg1) {
+  return window['go']['app']['App']['ListSFTPLocalDirectory'](arg1);
+}
+
+export function ListSFTPSessions() {
+  return window['go']['app']['App']['ListSFTPSessions']();
+}
+
+export function ListSFTPTransfers() {
+  return window['go']['app']['App']['ListSFTPTransfers']();
+}
+
 export function ListSnippets() {
   return window['go']['app']['App']['ListSnippets']();
+}
+
+export function MutateSFTP(arg1, arg2, arg3, arg4) {
+  return window['go']['app']['App']['MutateSFTP'](arg1, arg2, arg3, arg4);
+}
+
+export function QueueSFTPUpload(arg1, arg2, arg3) {
+  return window['go']['app']['App']['QueueSFTPUpload'](arg1, arg2, arg3);
 }
 
 export function ReadBackupFile(arg1) {
@@ -312,6 +360,14 @@ export function ScaleKubernetesResource(arg1) {
 
 export function SelectFile(arg1) {
   return window['go']['app']['App']['SelectFile'](arg1);
+}
+
+export function SelectSFTPLocalDirectory() {
+  return window['go']['app']['App']['SelectSFTPLocalDirectory']();
+}
+
+export function SelectSFTPUpload(arg1, arg2, arg3) {
+  return window['go']['app']['App']['SelectSFTPUpload'](arg1, arg2, arg3);
 }
 
 export function SetHostStartupSnippet(arg1) {
