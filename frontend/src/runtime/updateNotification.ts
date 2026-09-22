@@ -1,5 +1,6 @@
+import { dismissUpdateVersion } from './updatePolicy';
 // 右上角「有新版本可用」彈出小卡。
-// 非阻塞、可手動關閉；每次呼叫只保留最新一張（重複呼叫會取代舊卡）。
+// 非阻塞且不自動消失；同版本維持原卡片，避免每小時重設操作狀態。
 // 樣式沿用主題色變數（--color-*），隨淺/深色主題切換。
 
 import { getAppBinding, openBrowserURL } from '../platform/wails';
@@ -28,10 +29,13 @@ export function showUpdateNotification(latestVersion: string, releaseUrl: string
   if (typeof document === 'undefined' || !document.body) return;
 
   // 移除既有卡片，避免重複（例如自動檢查後又手動檢查）。
-  document.getElementById(CONTAINER_ID)?.remove();
+  const existing = document.getElementById(CONTAINER_ID);
+  if (existing?.dataset.version === latestVersion) return;
+  existing?.remove();
 
   const card = document.createElement('div');
   card.id = CONTAINER_ID;
+  card.dataset.version = latestVersion;
   card.setAttribute('role', 'status');
   card.setAttribute('aria-live', 'polite');
   card.style.cssText = [
@@ -82,7 +86,7 @@ export function showUpdateNotification(latestVersion: string, releaseUrl: string
     setTimeout(() => card.remove(), 220);
   };
 
-  card.querySelector('[data-action="close"]')?.addEventListener('click', dismiss);
+  card.querySelector('[data-action="close"]')?.addEventListener('click', () => { dismissUpdateVersion(latestVersion); dismiss(); });
 
   const downloadBtn = card.querySelector<HTMLButtonElement>('[data-action="download"]');
   downloadBtn?.addEventListener('click', async () => {
@@ -91,7 +95,6 @@ export function showUpdateNotification(latestVersion: string, releaseUrl: string
     const downloadUpdate = getAppBinding('DownloadUpdate');
     if (!downloadUpdate) {
       if (releaseUrl) openReleasePage(releaseUrl);
-      dismiss();
       return;
     }
 
@@ -112,7 +115,10 @@ export function showUpdateNotification(latestVersion: string, releaseUrl: string
       console.warn('[TermiX] 更新下載失敗', error);
       showToast(t('misc.update.downloadFailed'), { type: 'error' });
       if (releaseUrl) openReleasePage(releaseUrl);
-      dismiss();
+      downloadBtn.disabled = false;
+      downloadBtn.style.opacity = '1';
+      downloadBtn.style.cursor = 'pointer';
+      downloadBtn.textContent = t('misc.update.confirm');
     }
   });
 

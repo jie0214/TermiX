@@ -1,8 +1,9 @@
 import { createStore } from 'zustand/vanilla';
 
-export const terminalStore = createStore((set, get) => ({
+const createTerminalState = (set, get) => ({
   workspaces: [],
   activeWorkspaceId: 'host-tab',
+  workspaceHistory: [],
   workspaceCounter: 1,
   activePaneSessionKey: null,
   sessions: {},
@@ -63,6 +64,13 @@ export const terminalStore = createStore((set, get) => ({
 
   setActiveWorkspaceId: (id) => set({ activeWorkspaceId: id }),
 
+  getRecentWorkspace: (excludedId) => {
+    const state = get();
+    const available = state.workspaces.filter(ws => ws.id !== excludedId);
+    return state.workspaceHistory.map(id => available.find(ws => ws.id === id)).find(Boolean)
+      || available.at(-1);
+  },
+
   // Pane (分割視窗) 管理
   setActivePaneSessionKey: (key) => set({ activePaneSessionKey: key }),
 
@@ -100,4 +108,19 @@ export const terminalStore = createStore((set, get) => ({
     next[sessionKey] = history;
     return { sessionHistories: next };
   })
-}));
+});
+
+// 包含連線建立及分頁合併的批次 setState，確保所有切換入口共用使用順序。
+export const terminalStore = createStore((set, get, api) => {
+  const trackWorkspaceFocus = (partial, replace) => set(state => {
+    const changes = typeof partial === 'function' ? partial(state) : partial;
+    if (!changes || (changes.activeWorkspaceId === undefined && changes.workspaces === undefined)) return changes;
+    const next = { ...state, ...changes };
+    const valid = new Set(next.workspaces.map(ws => ws.id));
+    const history = changes.workspaceHistory ?? state.workspaceHistory;
+    const ids = [next.activeWorkspaceId, state.activeWorkspaceId, ...history];
+    return { ...changes, workspaceHistory: [...new Set(ids)].filter(id => valid.has(id)) };
+  }, replace);
+  api.setState = trackWorkspaceFocus;
+  return createTerminalState(trackWorkspaceFocus, get);
+});

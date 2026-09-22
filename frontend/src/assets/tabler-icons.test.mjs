@@ -21,7 +21,7 @@ test('Tabler Icons 子集合涵蓋所有程式碼用到的 icon', async () => {
   const used = new Set();
   for (const file of await sourceFiles(sourceRoot)) {
     const source = await readFile(file, 'utf8');
-    for (const match of source.matchAll(/\bti ti-([a-z0-9-]+)/g)) {
+    for (const match of source.matchAll(/\bti-([a-z0-9-]+)/g)) {
       used.add(match[1]);
     }
   }

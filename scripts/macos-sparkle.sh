@@ -27,6 +27,6 @@ import json, plistlib, sys
 path=sys.argv[1]
 with open(path,'rb') as source: info=plistlib.load(source,fmt=plistlib.FMT_XML)
 with open(sys.argv[2]) as source: config=json.load(source)
-info.update(SUPublicEDKey=config['publicKey'], SUFeedURL=config['feedURL'], SUEnableAutomaticChecks=True, SUAutomaticallyUpdate=False, SUAllowsAutomaticUpdates=True, SUScheduledCheckInterval=86400, SURequireSignedFeed=True, SUVerifyUpdateBeforeExtraction=True, LSMinimumSystemVersion='11.0')
+info.update(SUPublicEDKey=config['publicKey'], SUFeedURL=config['feedURL'], SUEnableAutomaticChecks=True, SUAutomaticallyUpdate=False, SUAllowsAutomaticUpdates=True, SUScheduledCheckInterval=3600, SURequireSignedFeed=True, SUVerifyUpdateBeforeExtraction=True, LSMinimumSystemVersion='11.0')
 with open(path,'wb') as output: plistlib.dump(info,output)
 PY

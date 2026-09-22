@@ -2262,6 +2262,7 @@ export class TermixApp extends HTMLElement {
       }
     }
 
+    const wasActive = terminalStore.getState().activeWorkspaceId === wsId;
     ws.columns.forEach((col) => {
       col.panes.forEach((pane) => {
         markSessionUserClosed(pane.sessionKey);
@@ -2272,11 +2273,11 @@ export class TermixApp extends HTMLElement {
 
     terminalStore.getState().removeWorkspace(wsId);
 
-    if (state.activeWorkspaceId === wsId) {
-      const remain = terminalStore.getState().workspaces;
-      if (remain.length > 0) {
-        terminalStore.getState().setActiveWorkspaceId(remain[0].id);
-        const firstPane = remain[0].columns[0]?.panes[0];
+    if (wasActive) {
+      const previous = terminalStore.getState().getRecentWorkspace(wsId);
+      if (previous) {
+        terminalStore.getState().setActiveWorkspaceId(previous.id);
+        const firstPane = previous.columns[0]?.panes[0];
         terminalStore.getState().setActivePaneSessionKey(firstPane ? firstPane.sessionKey : null);
         window.location.hash = '#/terminal';
       } else {
@@ -2312,7 +2313,7 @@ export class TermixApp extends HTMLElement {
     terminalStore.getState().setWorkspaces(workspaces);
 
     if (state.activePaneSessionKey === sessionKey) {
-      const activeWs = workspaces.find((ws) => ws.id === state.activeWorkspaceId) || workspaces[0];
+      const activeWs = workspaces.find((ws) => ws.id === state.activeWorkspaceId) || terminalStore.getState().getRecentWorkspace();
       const nextPane = activeWs?.columns[0]?.panes[0];
       terminalStore.getState().setActivePaneSessionKey(nextPane ? nextPane.sessionKey : null);
     }
@@ -2350,7 +2351,7 @@ export class TermixApp extends HTMLElement {
     }
 
     if (!state.workspaces.some((ws) => ws.id === activeWorkspaceId)) {
-      const nextWs = state.workspaces[0];
+      const nextWs = state.getRecentWorkspace();
       terminalStore.getState().setActiveWorkspaceId(nextWs.id);
       const firstPane = nextWs.columns[0]?.panes[0];
       terminalStore.getState().setActivePaneSessionKey(firstPane ? firstPane.sessionKey : null);

@@ -23,11 +23,7 @@ function isTextEditingTarget(target) {
   return Boolean(target?.closest?.('input, textarea, [contenteditable="true"], [contenteditable=""]'));
 }
 
-// 高風險 Kubernetes 資源類型：刪除這些資源影響範圍大且難以復原，
-// 因此採用「輸入資源名稱比對」的嚴格確認，而非脆弱的雙擊 + 自動逾時機制。
-// 註：Deployment 與 StatefulSet 亦列為高風險——刪除它們會連帶砍光其管理的 Pod，
-// 破壞力與其他 controller 相當，故改走輸入名稱確認流程。
-// Pod 維持低風險（controller 會自動重建，破壞力低），採兩段點擊確認。
+// 資源風險分類僅用於批次選取提示；所有資源共用明確的刪除確認流程。
 const HIGH_RISK_KUBERNETES_KINDS = new Set([
   'deployment', 'statefulset', 'daemonset', 'replicaset',
   'persistentvolume', 'persistentvolumeclaim', 'pv', 'pvc',
@@ -331,8 +327,7 @@ export class KubernetesSessionPage extends HTMLElement {
     this.detailReturnTarget = null;
     this.returnToCreateButton = false;
     this.createYAMLDraft = null;
-    this.deleteConfirmInput = '';
-    // 低風險資源刪除的兩段確認階段（狀態驅動，避免被背景輪詢重繪重置）。
+    // 資源刪除的兩段確認階段（狀態驅動，避免被背景輪詢重繪重置）。
     this.pendingDeleteConfirm = false;
     // Secret data 已揭露明文的快取（key→明文）；切換資源時清空，避免跨 Secret 殘留。
     this.revealedSecrets = {};
@@ -894,22 +889,9 @@ export class KubernetesSessionPage extends HTMLElement {
     if (!deleteButton || !this.contains(deleteButton)) return;
     event.preventDefault();
     event.stopPropagation();
-    const resource = kubernetesSessionStore.getState().selectedResource || {};
-    const kind = resource.kind || 'Resource';
     if (deleteButton.disabled) return;
 
-    if (isHighRiskKubernetesKind(kind)) {
-      // 高風險 kind：按鈕僅在輸入名稱比對成功時才會啟用（render 階段控制 disabled）。
-      // 此處不再依賴脆弱的 3 秒逾時雙擊，直接執行刪除流程。
-      this.deleteConfirmInput = '';
-      kubernetesSessionStore.getState().deleteSelectedResource().catch(error => {
-        console.error('[Kubernetes][UI][Delete] 刪除流程失敗', error);
-      });
-      return;
-    }
-
-    // 低風險 kind：兩段式明確點擊。確認階段改為元件狀態驅動（this.pendingDeleteConfirm），
-    // 避免背景輪詢重繪（會重建按鈕）把 DOM 上的確認階段靜默清掉。
+    // 所有資源均以兩段點擊確認，背景重繪不會清除確認狀態。
     if (this.pendingDeleteConfirm) {
       this.pendingDeleteConfirm = false;
       kubernetesSessionStore.getState().deleteSelectedResource().catch(error => {
@@ -1442,19 +1424,16 @@ export class KubernetesSessionPage extends HTMLElement {
     });
   }
 
-  // 批量刪除流程：確認（含高風險資源時要求打字 delete）後呼叫 store，彙總 toast，失敗項保留勾選。
+  // 批量刪除流程：明確確認後呼叫 store，彙總結果，失敗項保留勾選。
   async handleBulkDelete() {
     const targets = [...this.selectedRows.values()];
     if (!targets.length) return;
-    const hasHighRisk = targets.some(r => isHighRiskKubernetesKind(r.kind));
     const confirmed = await confirmDialog(
       t('k8s.bulkDelete.message', { count: targets.length }),
       {
         title: t('k8s.bulkDelete.title'),
         confirmText: t('k8s.select.deleteSelected'),
-        danger: true,
-        requireText: hasHighRisk ? 'delete' : '',
-        requireTextHint: hasHighRisk ? t('k8s.bulkDelete.highRiskHint', { text: 'delete' }) : ''
+        danger: true
       }
     );
     if (!confirmed) return;
@@ -3053,32 +3032,13 @@ export class KubernetesSessionPage extends HTMLElement {
     const name = detail.name || selected.name || '';
     const namespace = detail.namespace || selected.namespace || '';
     const fullId = `${kind}${namespace ? `/${namespace}` : ''}/${name}`;
-    const highRisk = isHighRiskKubernetesKind(kind);
-
-    if (highRisk) {
-      // 高風險 kind：移除脆弱的 3 秒自動重置，改為要求輸入完整資源名稱比對後才啟用刪除。
-      const typed = this.deleteConfirmInput || '';
-      const matched = name !== '' && typed === name;
-      return `<section class="kubernetes-detail-section kubernetes-pod-delete">
-        ${state.deleteError ? `<div class="kubernetes-session-error compact" role="alert"><strong>${t('k8s.delete.failed', { kind: escapeHtml(kind) })}</strong><span>${escapeHtml(state.deleteError)}</span></div>` : ''}
-        <div class="kubernetes-delete-highrisk">
-          <strong>${t('k8s.delete.deleteLabel', { id: escapeHtml(fullId) })}</strong>
-          <small>${t('k8s.delete.highRiskHint', { name: `<code>${escapeHtml(name)}</code>` })}</small>
-          <input type="text" id="kubernetesDeleteConfirmInput" class="no-drag" autocomplete="off" spellcheck="false" placeholder="${t('k8s.delete.confirmPlaceholder')}" value="${escapeHtml(typed)}" ${state.deleteLoading ? 'disabled' : ''}>
-          <button type="button" id="deleteKubernetesResource" class="no-drag kubernetes-danger-btn ui-button ui-button--danger" ${(state.deleteLoading || !matched) ? 'disabled' : ''}>${state.deleteLoading ? t('k8s.delete.deleting') : t('k8s.delete.confirm')}</button>
-        </div>
-      </section>`;
-    }
-
-    // 低風險 kind：兩段點擊確認，確認階段由 this.pendingDeleteConfirm 決定（狀態驅動，
-    // 重繪不會重置）。第一次點擊後按鈕改為「確認刪除 X？」並套用 confirm-stage 樣式。
     const confirming = this.pendingDeleteConfirm === true;
     const buttonLabel = state.deleteLoading
       ? t('k8s.delete.deleting')
       : (confirming ? t('k8s.delete.confirmDelete', { id: escapeHtml(fullId) }) : t('k8s.delete.delete'));
     return `<section class="kubernetes-detail-section kubernetes-pod-delete">
       ${state.deleteError ? `<div class="kubernetes-session-error compact" role="alert"><strong>${t('k8s.delete.failed', { kind: escapeHtml(kind) })}</strong><span>${escapeHtml(state.deleteError)}</span></div>` : ''}
-      <div><span><strong>${t('k8s.delete.deleteLabel', { id: escapeHtml(fullId) })}</strong><small>${t('k8s.delete.lowRiskHint')}</small></span><button type="button" id="deleteKubernetesResource" class="no-drag kubernetes-danger-btn ${confirming ? 'confirm-stage' : ''} ui-button ui-button--danger" ${state.deleteLoading ? 'disabled' : ''}>${buttonLabel}</button></div>
+      <div><span><strong>${t('k8s.delete.deleteLabel', { id: escapeHtml(fullId) })}</strong><small>${t(kind.toLowerCase() === 'pod' ? 'k8s.delete.lowRiskHint' : 'k8s.delete.resourceHint')}</small></span><button type="button" id="deleteKubernetesResource" class="no-drag kubernetes-danger-btn ${confirming ? 'confirm-stage' : ''} ui-button ui-button--danger" ${state.deleteLoading ? 'disabled' : ''}>${buttonLabel}</button></div>
     </section>`;
   }
 
@@ -3386,8 +3346,7 @@ export class KubernetesSessionPage extends HTMLElement {
     });
     this.querySelectorAll('.kubernetes-resource-row').forEach((row) => {
       const open = () => {
-        // 切換到另一個資源時，清掉前一個資源的刪除確認輸入與 YAML 編輯/搜尋狀態，避免誤帶。
-        this.deleteConfirmInput = '';
+        // 切換到另一個資源時，清掉前一個資源的刪除確認與 YAML 編輯/搜尋狀態，避免誤帶。
         this.pendingDeleteConfirm = false;
         this.yamlEditing = false;
         this.yamlEditDraft = null;
@@ -3460,19 +3419,6 @@ export class KubernetesSessionPage extends HTMLElement {
       const yaml = this.querySelector('#kubernetesCreateYAML')?.value || '';
       kubernetesSessionStore.getState().saveCreateResourceYAML(yaml).catch(() => {});
     });
-    // 高風險資源刪除：輸入名稱比對，即時切換刪除按鈕的 disabled 狀態（不重繪，避免輸入焦點遺失）。
-    const deleteConfirmInput = this.querySelector('#kubernetesDeleteConfirmInput');
-    if (deleteConfirmInput) {
-      deleteConfirmInput.addEventListener('input', () => {
-        this.deleteConfirmInput = deleteConfirmInput.value;
-        const selected = kubernetesSessionStore.getState().selectedResource || {};
-        const targetName = selected.name || '';
-        const deleteBtn = this.querySelector('#deleteKubernetesResource');
-        if (deleteBtn) {
-          deleteBtn.disabled = !(targetName !== '' && deleteConfirmInput.value === targetName);
-        }
-      });
-    }
     const createEditor = this.querySelector('#kubernetesCreateYAML');
     const createLineNumbers = this.querySelector('#kubernetesCreateLineNumbers');
     createEditor?.addEventListener('input', () => {

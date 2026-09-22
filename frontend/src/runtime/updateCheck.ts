@@ -1,3 +1,4 @@
+import { UPDATE_CHECK_INTERVAL_MS, shouldNotifyUpdate } from './updatePolicy';
 import { getAppBinding } from '../platform/wails';
 import { onWailsEvent } from '../platform/wails/events';
 import { showToast } from '../components/feedback/toast.js';
@@ -20,8 +21,8 @@ async function runUpdateCheck(manual: boolean): Promise<void> {
 
     if (info?.hasUpdate && info.latestVersion) {
       // 有新版本：右上角跳出可關閉的更新小卡。
-      // 每次啟動 / 每次手動檢查只要有新版都會再次提示（關閉僅隱藏當次）。
-      showUpdateNotification(info.latestVersion, info.releaseUrl ?? '');
+      // 手動檢查可重看已關閉版本，自動檢查只提示更新的版本。
+      if (shouldNotifyUpdate(info.latestVersion, manual)) showUpdateNotification(info.latestVersion, info.releaseUrl ?? '');
       return;
     }
 
@@ -37,7 +38,10 @@ async function runUpdateCheck(manual: boolean): Promise<void> {
 }
 
 // 啟動時於背景自動檢查更新。
+let updateTimer: ReturnType<typeof setInterval> | undefined;
 export async function checkForUpdateAndNotify(): Promise<void> {
+  // 原生更新器存在時 runUpdateCheck 會交還 Sparkle，不建立第二套原生檢查。
+  if (updateTimer === undefined) updateTimer = setInterval(() => { void runUpdateCheck(false); }, UPDATE_CHECK_INTERVAL_MS);
   await runUpdateCheck(false);
 }
 

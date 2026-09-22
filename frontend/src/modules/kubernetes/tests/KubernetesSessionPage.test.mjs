@@ -360,3 +360,53 @@ test('Session 區分首次載入、過期快照、空資料與 RBAC 錯誤', () 
   assert.match(sessionSource, /k8s\.dashboard\.errorRbac/);
   assert.match(sessionSource, /escapeHtml\(state\.dashboardError\)/);
 });
+
+test('所有資源刪除皆不要求輸入名稱，保留第二次確認與載入鎖定', () => {
+  const method = sessionSource.slice(sessionSource.indexOf('  renderResourceDelete('), sessionSource.indexOf('  renderCreateDrawer('));
+  const page = new Function('t', 'escapeHtml', `return ({${method}})`)((key) => key, String);
+  for (const kind of ['Pod', 'Deployment', 'Namespace', 'Secret', 'PersistentVolume', 'CustomResourceDefinition']) {
+    const resource = { kind, name: 'example', namespace: 'default' };
+    page.pendingDeleteConfirm = false;
+    const initial = page.renderResourceDelete(resource, {}, {});
+    assert.doesNotMatch(initial, /<input|disabled|confirm-stage/);
+    page.pendingDeleteConfirm = true;
+    assert.match(page.renderResourceDelete(resource, {}, {}), /confirm-stage/);
+    assert.match(page.renderResourceDelete(resource, {}, { deleteLoading: true }), /disabled/);
+  }
+});
+
+test('單筆刪除第一次點擊只確認，第二次才呼叫刪除，停用按鈕不執行', () => {
+  const start = sessionSource.indexOf('    const deleteButton =');
+  const end = sessionSource.indexOf('\n  }', start);
+  let deletes = 0;
+  const handle = new Function('event', 'kubernetesSessionStore', sessionSource.slice(start, end));
+  const store = { getState: () => ({ deleteSelectedResource: async () => { deletes++; } }) };
+  const button = { disabled: false };
+  const event = { target: { closest: () => button }, preventDefault() {}, stopPropagation() {} };
+  const page = { contains: () => true, render() {}, setupListeners() {}, pendingDeleteConfirm: false };
+  handle.call(page, event, store);
+  assert.equal(deletes, 0);
+  assert.equal(page.pendingDeleteConfirm, true);
+  handle.call(page, event, store);
+  assert.equal(deletes, 1);
+  assert.equal(page.pendingDeleteConfirm, false);
+  button.disabled = true;
+  handle.call(page, event, store);
+  assert.equal(deletes, 1);
+  assert.equal(page.pendingDeleteConfirm, false);
+});
+
+test('批次刪除高風險資源保留確認但不要求文字，取消不刪除', async () => {
+  const start = sessionSource.indexOf('  async handleBulkDelete()');
+  const end = sessionSource.indexOf('\n  // Deployment', start);
+  let options;
+  const page = new Function('confirmDialog', 't', `return ({${sessionSource.slice(start, end)}})`)(
+    async (_message, value) => { options = value; return false; },
+    (key) => key
+  );
+  page.selectedRows = new Map([['ns', { kind: 'Namespace', name: 'example' }]]);
+  await page.handleBulkDelete();
+  assert.equal(options.danger, true);
+  assert.equal(options.requireText, undefined);
+  assert.equal(page.selectedRows.size, 1);
+});

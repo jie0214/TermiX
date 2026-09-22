@@ -10,6 +10,7 @@ beforeEach(() => {
       { id: 'b', label: '主機 B', columns: [{ id: 'cb', width: 100, panes: [{ sessionKey: 'ssh-b', height: 100 }] }] },
     ],
     activeWorkspaceId: 'a',
+    workspaceHistory: [],
     activePaneSessionKey: 'ssh-a',
     sessions: { 'ssh-a': { label: '主機 A' }, 'ssh-b': { label: '主機 B' } },
     xtermInstances: { 'ssh-a': { marker: '既有終端' } },
@@ -49,4 +50,45 @@ test('合併後可命名，再次合併仍保留自訂名稱與所有窗格', as
   assert.equal(state.workspaces[0].label, '維運工作區');
   assert.deepEqual(state.workspaces[0].columns.flatMap(column => column.panes.map(pane => pane.sessionKey)), ['ssh-a', 'ssh-b', 'ssh-c']);
   assert.equal(state.xtermInstances, instances);
+});
+
+async function closeHarness() {
+  const source = await readFile(new URL('../../App.js', import.meta.url), 'utf8');
+  const close = source.slice(source.indexOf('  async closeWorkspace('), source.indexOf('  removeSessionFromWorkspaces('));
+  return new Function('terminalStore', 'confirmDialog', 't', 'markSessionUserClosed', 'TerminalAPI', 'cleanupFrontendSession', 'window', `return ({${close}});`)(terminalStore, async () => true, value => value, () => {}, { closeTerminalSession: async () => {} }, () => {}, { location: {} });
+}
+
+test('關閉目前分頁回到最近使用的 Session，而不是第一個分頁', async () => {
+  const app = await closeHarness();
+  terminalStore.getState().addWorkspace({ id: 'c', columns: [{ panes: [{ sessionKey: 'ssh-c' }] }] });
+  terminalStore.getState().setActiveWorkspaceId('b');
+  terminalStore.getState().setActiveWorkspaceId('c');
+  await app.closeWorkspace('c');
+  assert.equal(terminalStore.getState().activeWorkspaceId, 'b');
+  assert.equal(terminalStore.getState().activePaneSessionKey, 'ssh-b');
+});
+
+test('以使用順序而非建立順序切換，連續關閉略過已移除的 Session', async () => {
+  const app = await closeHarness();
+  terminalStore.getState().addWorkspace({ id: 'c', columns: [{ panes: [{ sessionKey: 'ssh-c' }] }] });
+  for (const id of ['b', 'c', 'a', 'c']) terminalStore.getState().setActiveWorkspaceId(id);
+  await app.closeWorkspace('c');
+  assert.equal(terminalStore.getState().activeWorkspaceId, 'a');
+  await app.closeWorkspace('a');
+  assert.equal(terminalStore.getState().activeWorkspaceId, 'b');
+  await app.closeWorkspace('b');
+  assert.equal(terminalStore.getState().activeWorkspaceId, 'host-tab');
+  assert.equal(terminalStore.getState().activePaneSessionKey, null);
+  assert.deepEqual(terminalStore.getState().workspaceHistory, []);
+});
+
+test('關閉背景 Session 不切走目前分頁，批次建立分頁也記錄最近使用順序', async () => {
+  const app = await closeHarness();
+  terminalStore.getState().setActiveWorkspaceId('b');
+  terminalStore.setState(state => ({ workspaces: [...state.workspaces, { id: 'c', columns: [{ panes: [{ sessionKey: 'ssh-c' }] }] }], activeWorkspaceId: 'c', activePaneSessionKey: 'ssh-c' }));
+  await app.closeWorkspace('a');
+  assert.equal(terminalStore.getState().activeWorkspaceId, 'c');
+  assert.equal(terminalStore.getState().activePaneSessionKey, 'ssh-c');
+  await app.closeWorkspace('c');
+  assert.equal(terminalStore.getState().activeWorkspaceId, 'b');
 });
