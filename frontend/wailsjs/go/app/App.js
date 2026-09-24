@@ -142,6 +142,10 @@ export function ExportKeychainKey(arg1) {
   return window['go']['app']['App']['ExportKeychainKey'](arg1);
 }
 
+export function ExportMobileSettings() {
+  return window['go']['app']['App']['ExportMobileSettings']();
+}
+
 export function GenerateKeychainKey(arg1) {
   return window['go']['app']['App']['GenerateKeychainKey'](arg1);
 }
@@ -212,6 +216,10 @@ export function GetLegacyControlPanelComponents() {
 
 export function GetLegacyWebSettings() {
   return window['go']['app']['App']['GetLegacyWebSettings']();
+}
+
+export function GetMobileSyncStatus() {
+  return window['go']['app']['App']['GetMobileSyncStatus']();
 }
 
 export function HandleNativeUpdateCheck(arg1) {
@@ -374,6 +382,10 @@ export function SetHostStartupSnippet(arg1) {
   return window['go']['app']['App']['SetHostStartupSnippet'](arg1);
 }
 
+export function SetMobileCloudEnabled(arg1) {
+  return window['go']['app']['App']['SetMobileCloudEnabled'](arg1);
+}
+
 export function ShowNativeUpdateSettings() {
   return window['go']['app']['App']['ShowNativeUpdateSettings']();
 }
@@ -408,6 +420,10 @@ export function SyncAWS(arg1) {
 
 export function SyncGCP(arg1) {
   return window['go']['app']['App']['SyncGCP'](arg1);
+}
+
+export function SyncMobileSettings() {
+  return window['go']['app']['App']['SyncMobileSettings']();
 }
 
 export function TestConnection(arg1) {

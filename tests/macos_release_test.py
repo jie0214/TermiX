@@ -14,7 +14,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 MOCK = r'''
-import json, os, pathlib, shutil, sys, zipfile
+import json, os, pathlib, shutil, sys, zipfile, plistlib, datetime
 name = pathlib.Path(sys.argv[0]).name
 args = sys.argv[1:]
 with open(os.environ["CALLS"], "a") as log:
@@ -22,7 +22,12 @@ with open(os.environ["CALLS"], "a") as log:
 failure = os.environ.get("FAIL_AT", "")
 if failure and " ".join([name] + args).startswith(failure):
     sys.exit(1)
-if name == "uname":
+cloud_entitlements = {"com.apple.application-identifier": "ABCDEFGHIJ.io.github.jie0214.termix", "com.apple.developer.team-identifier": "ABCDEFGHIJ", "com.apple.developer.icloud-container-identifiers": ["iCloud.test.termix"], "com.apple.developer.icloud-services": ["CloudKit"], "com.apple.developer.icloud-container-environment": "Production"}
+if name == "security" and args[:2] == ["cms", "-D"]:
+    sys.stdout.buffer.write(plistlib.dumps({"ExpirationDate": datetime.datetime(2099, 1, 1), "TeamIdentifier": ["ABCDEFGHIJ"], "Entitlements": cloud_entitlements}))
+elif name == "codesign" and args[:2] == ["-d", "--entitlements"]:
+    sys.stdout.buffer.write(plistlib.dumps(cloud_entitlements))
+elif name == "uname":
     print("Darwin")
 elif name == "security" and args[0] == "find-identity":
     print('1) ' + 'A' * 40 + ' "' + os.environ.get("IDENTITY", "Developer ID Application: Test (ABCDEFGHIJ)") + '"')
@@ -74,9 +79,11 @@ class MacOSReleaseTest(unittest.TestCase):
         self.plist.write_bytes(plistlib.dumps(self.info))
         self.output = self.work / "dist/release.zip"
         self.calls = self.work / "calls.jsonl"
+        self.cloud_profile = self.work / "cloud.provisionprofile"
+        self.cloud_profile.write_bytes(b"test profile")
         self.script_root = ROOT
-        self.env = {key: value for key, value in os.environ.items() if not key.startswith(("MACOS_", "APPLE_", "SPARKLE_")) and key != "VERSION"}
-        self.env.update(PATH=str(self.bin) + os.pathsep + os.environ["PATH"], APPLE_TEAM_ID="ABCDEFGHIJ", MACOS_NOTARY_PROFILE="test", MACOS_NOTARY_LOG_DIR=str(self.work / "logs"), TMPDIR=str(self.work), CALLS=str(self.calls))
+        self.env = {key: value for key, value in os.environ.items() if not key.startswith(("MACOS_", "APPLE_", "SPARKLE_", "TERMIX_")) and key != "VERSION"}
+        self.env.update(TERMIX_ICLOUD_CONTAINER="iCloud.test.termix", TERMIX_ICLOUD_PROFILE=str(self.cloud_profile), PATH=str(self.bin) + os.pathsep + os.environ["PATH"], APPLE_TEAM_ID="ABCDEFGHIJ", MACOS_NOTARY_PROFILE="test", MACOS_NOTARY_LOG_DIR=str(self.work / "logs"), TMPDIR=str(self.work), CALLS=str(self.calls))
 
     def run_release(self, script="macos-release.sh"):
         return subprocess.run(["bash", str(self.script_root / "scripts" / script), str(self.app), str(self.output)], env=self.env, capture_output=True, text=True)
@@ -104,6 +111,10 @@ class MacOSReleaseTest(unittest.TestCase):
         self.assertTrue(all("--deep" not in call for call in sign_calls))
         self.assertTrue(all("--timestamp" in call and "runtime" in call for call in sign_calls))
         self.assertFalse(list(self.work.glob("termix-sign.*")))
+
+    def test_local_release_requires_cloud_profile(self):
+        del self.env['TERMIX_ICLOUD_PROFILE']
+        self.assert_rejected()
 
     def test_development_certificate_rejected(self):
         self.assert_rejected(IDENTITY="Apple Development: Test (ABCDEFGHIJ)")
@@ -156,14 +167,22 @@ class MacOSReleaseTest(unittest.TestCase):
         (self.script_root / "scripts").mkdir(parents=True)
         (self.script_root / "build/darwin").mkdir(parents=True)
         shutil.copy(ROOT / "build/darwin/Info.plist", self.script_root / "build/darwin/Info.plist")
-        for name in ("macos-ci-release.sh", "macos-release.sh"):
+        for name in ("macos-ci-release.sh", "macos-release.sh", "configure-macos-cloud.py", "check-apple-cloud.py"):
             shutil.copy(ROOT / "scripts" / name, self.script_root / "scripts" / name)
         for name in ("macos-dmg.sh", "macos-appcast.sh"):
             (self.script_root / "scripts" / name).write_text('set -eu\n[[ "${FAIL_PACKAGE:-}" != true ]]\n')
-        self.env.update(SPARKLE_PRIVATE_KEY="test-key", GITHUB_ACTIONS="true", RUNNER_TEMP=str(self.work), MACOS_CERTIFICATE_P12_BASE64="dGVzdA==", MACOS_CERTIFICATE_PASSWORD="test-password", APPLE_ID="test@example.invalid", APPLE_APP_SPECIFIC_PASSWORD="test-app-password")
+        self.env.update(TERMIX_ICLOUD_CONTAINER="iCloud.test.termix", TERMIX_ICLOUD_PROFILE_BASE64="dGVzdA==", SPARKLE_PRIVATE_KEY="test-key", GITHUB_ACTIONS="true", RUNNER_TEMP=str(self.work), MACOS_CERTIFICATE_P12_BASE64="dGVzdA==", MACOS_CERTIFICATE_PASSWORD="test-password", APPLE_ID="test@example.invalid", APPLE_APP_SPECIFIC_PASSWORD="test-app-password")
 
     def test_ci_missing_secrets_rejected(self):
         self.assertNotEqual(self.run_release("macos-ci-release.sh").returncode, 0)
+        self.assertEqual(self.commands(), [])
+
+    def test_ci_missing_cloud_configuration_stops_before_keychain(self):
+        self.ci_settings()
+        del self.env['TERMIX_ICLOUD_PROFILE_BASE64']
+        result = self.run_release('macos-ci-release.sh')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('TERMIX_ICLOUD_PROFILE_BASE64', result.stderr)
         self.assertEqual(self.commands(), [])
 
     def test_ci_cleans_keychain_after_success(self):

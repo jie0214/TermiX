@@ -1,0 +1,38 @@
+jest.unmock('react-native/Libraries/Utilities/useColorScheme');
+import { act, render, fireEvent, screen, waitFor } from '@testing-library/react-native';
+import { Appearance } from 'react-native';
+import { AppearanceProvider } from '../src/features/appearance/AppearanceProvider';
+import { AppearanceSettings } from '../src/features/appearance/AppearanceSettings';
+import { AppearanceStore } from '../src/features/appearance/store';
+import { HostProvider } from '../src/features/hosts/HostProvider';
+import { HostForm } from '../src/features/hosts/HostForm';
+import { HostRepository } from '../src/features/hosts/repository';
+import { memoryVault } from './fixtures';
+jest.mock('expo', () => ({ requireNativeModule: () => ({ clearSensitiveImportCopy: async () => {} }) }));
+jest.mock('expo-document-picker', () => ({ getDocumentAsync: jest.fn() }));
+jest.mock('expo-file-system', () => ({ Paths: { cache: { uri: 'file:///cache/' } } }));
+
+it('外觀立即更新表單、保留輸入，跟隨系統變動且可固定淺色', async () => {
+  let scheme: 'light' | 'dark' = 'light';
+  const listeners = new Set<(value: { colorScheme: 'light' | 'dark' }) => void>();
+  jest.spyOn(Appearance, 'getColorScheme').mockImplementation(() => scheme);
+  jest.spyOn(Appearance, 'addChangeListener').mockImplementation(listener => { listeners.add(listener); return { remove: () => { listeners.delete(listener); } }; });
+  const native = jest.spyOn(Appearance, 'setColorScheme').mockImplementation(() => {});
+  const storage = { getItem: async () => null, setItem: async () => {} };
+  const store = new AppearanceStore(storage);
+  await render(<AppearanceProvider store={store}><AppearanceSettings onBack={() => {}} /><HostProvider repository={new HostRepository(storage, () => 'test', memoryVault())}><HostForm onSaved={() => {}} onCancel={() => {}} /></HostProvider></AppearanceProvider>);
+  await screen.findByLabelText('名稱');
+  await fireEvent.changeText(screen.getByLabelText('名稱'), '保留輸入');
+  await fireEvent.press(screen.getByRole('radio', { name: '深色' }));
+  await waitFor(() => expect(screen.getByLabelText('名稱')).toHaveStyle({ backgroundColor: '#1c1c1e', color: '#f2f2f7' }));
+  expect(screen.getByDisplayValue('保留輸入')).toBeTruthy();
+  expect(native).toHaveBeenLastCalledWith('dark');
+  await fireEvent.press(screen.getByRole('radio', { name: '跟隨系統' }));
+  await waitFor(() => expect(native).toHaveBeenLastCalledWith('unspecified'));
+  await act(() => { scheme = 'dark'; listeners.forEach(listener => listener({ colorScheme: scheme })); });
+  expect(screen.getByLabelText('名稱')).toHaveStyle({ backgroundColor: '#1c1c1e' });
+  await fireEvent.press(screen.getByRole('radio', { name: '淺色' }));
+  await waitFor(() => expect(screen.getByLabelText('名稱')).toHaveStyle({ backgroundColor: '#ffffff' }));
+  expect(screen.getByDisplayValue('保留輸入')).toBeTruthy();
+  jest.restoreAllMocks();
+});

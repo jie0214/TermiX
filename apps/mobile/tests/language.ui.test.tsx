@@ -1,0 +1,34 @@
+import { render, screen, fireEvent, waitFor } from '@testing-library/react-native';
+import { LanguageProvider } from '../src/features/language/LanguageProvider';
+import { LanguageSettings } from '../src/features/language/LanguageSettings';
+import { LanguageStore } from '../src/features/language/store';
+import { HostProvider } from '../src/features/hosts/HostProvider';
+import { HostRepository } from '../src/features/hosts/repository';
+import { HostForm } from '../src/features/hosts/HostForm';
+import { memoryVault } from './fixtures';
+jest.mock('expo', () => ({ requireNativeModule: () => ({ clearSensitiveImportCopy: async () => {} }) }));
+jest.mock('expo-document-picker', () => ({ getDocumentAsync: jest.fn() }));
+jest.mock('expo-file-system', () => ({Paths:{cache:{uri:'file:///cache/'}}}));
+
+it('切換語言立即更新主機表單，保留輸入與使用者原文，重開仍使用所選語言',async()=>{
+ const data=new Map<string,string>();
+ const storage={getItem:async(key:string)=>data.get(key)??null,setItem:async(key:string,value:string)=>{data.set(key,value)}};
+ const store=new LanguageStore(storage);const hosts=new HostRepository(storage,()=> 'host',memoryVault());
+ const view=await render(<LanguageProvider store={store}><LanguageSettings onBack={()=>{}} /><HostProvider repository={hosts}><HostForm onSaved={()=>{}} onCancel={()=>{}} /></HostProvider></LanguageProvider>);
+ await waitFor(()=>expect(screen.getByLabelText('名稱')).toBeTruthy());
+ await fireEvent.changeText(screen.getByLabelText('主機位址'), '192.0.2.1');
+ await fireEvent.changeText(screen.getByLabelText('登入密碼'), 'test-only-password');
+ await fireEvent.press(screen.getByRole('button', { name: '儲存' }));
+ await screen.findByText('請填寫有效的名稱。');
+ await fireEvent.changeText(screen.getByLabelText('名稱'),'取消');
+ await fireEvent.press(screen.getByText('English'));
+ await waitFor(()=>expect(screen.getByLabelText('Host address')).toBeTruthy());
+ expect(screen.getByDisplayValue('取消')).toBeTruthy();
+ expect(screen.getByText('Enter a valid name.')).toBeTruthy();
+ await fireEvent.press(screen.getByText('日本語'));
+ await waitFor(()=>expect(screen.getByLabelText('ホストアドレス')).toBeTruthy());
+ expect(screen.getByDisplayValue('取消')).toBeTruthy();
+ await view.unmount();
+ await render(<LanguageProvider store={new LanguageStore(storage)}><LanguageSettings onBack={()=>{}} /></LanguageProvider>);
+ await waitFor(()=>expect(screen.getByText('設定に戻る')).toBeTruthy());
+});

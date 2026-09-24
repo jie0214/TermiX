@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jie0214/TermiX/backend/common"
@@ -22,6 +23,7 @@ import (
 var log = common.DomainLogger("hostvault")
 
 type Service struct {
+	mobileMu                sync.Mutex
 	repo                    *storage.Repository
 	secrets                 secrets.SecretStore
 	keychain                *keychain.Service

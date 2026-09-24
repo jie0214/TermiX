@@ -74,6 +74,8 @@ export function ExportHostsBackup(arg1:dto.HostExportOptions):Promise<dto.Operat
 
 export function ExportKeychainKey(arg1:dto.ExportKeychainKeyRequest):Promise<dto.OperationResult>;
 
+export function ExportMobileSettings():Promise<dto.OperationResult>;
+
 export function GenerateKeychainKey(arg1:dto.GenerateKeychainKeyRequest):Promise<dto.OperationResult>;
 
 export function GetAWSIntegration(arg1:string):Promise<dto.OperationResult>;
@@ -109,6 +111,8 @@ export function GetKubernetesSecretValue(arg1:dto.KubernetesSecretValueRequest):
 export function GetLegacyControlPanelComponents():Promise<string>;
 
 export function GetLegacyWebSettings():Promise<Record<string, string>>;
+
+export function GetMobileSyncStatus():Promise<dto.OperationResult>;
 
 export function HandleNativeUpdateCheck(arg1:boolean):Promise<boolean>;
 
@@ -190,6 +194,8 @@ export function SelectSFTPUpload(arg1:string,arg2:string,arg3:boolean):Promise<v
 
 export function SetHostStartupSnippet(arg1:dto.HostStartupSnippetRequest):Promise<dto.HostStartupSnippet>;
 
+export function SetMobileCloudEnabled(arg1:boolean):Promise<dto.OperationResult>;
+
 export function ShowNativeUpdateSettings():Promise<void>;
 
 export function StartKubernetesPodPortForward(arg1:dto.KubernetesPodPortForwardRequest):Promise<dto.KubernetesPodPortForward>;
@@ -207,6 +213,8 @@ export function SwitchKubernetesContext(arg1:dto.KubernetesContextSwitchRequest)
 export function SyncAWS(arg1:string):Promise<dto.OperationResult>;
 
 export function SyncGCP(arg1:string):Promise<dto.OperationResult>;
+
+export function SyncMobileSettings():Promise<dto.OperationResult>;
 
 export function TestConnection(arg1:dto.SSHConfig):Promise<dto.OperationResult>;
 

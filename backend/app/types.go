@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"github.com/jie0214/TermiX/backend/mobilecloud"
 	sftpservice "github.com/jie0214/TermiX/backend/sftp"
 	"sync"
 
@@ -16,6 +17,8 @@ import (
 )
 
 type App struct {
+	mobileCloud          *mobilecloud.Service
+	mobileCloudCancel    context.CancelFunc
 	sftp                 *sftpservice.Manager
 	updateMu             sync.Mutex
 	closing              bool

@@ -4,7 +4,7 @@ set +x
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 fail() { printf '錯誤：%s\n' "$*" >&2; exit 1; }
-for name in MACOS_CERTIFICATE_P12_BASE64 MACOS_CERTIFICATE_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID SPARKLE_PRIVATE_KEY; do
+for name in MACOS_CERTIFICATE_P12_BASE64 MACOS_CERTIFICATE_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID SPARKLE_PRIVATE_KEY TERMIX_ICLOUD_CONTAINER TERMIX_ICLOUD_PROFILE_BASE64; do
   [[ -n "${!name:-}" ]] || fail "GitHub Actions 尚未設定 ${name}，停止 macOS 發佈。"
 done
 [[ "$APPLE_TEAM_ID" =~ ^[A-Z0-9]{10}$ ]] || fail 'APPLE_TEAM_ID 必須是 10 碼英文大寫字母或數字。'
@@ -41,6 +41,13 @@ security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain
 xcrun notarytool store-credentials "$MACOS_NOTARY_PROFILE" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --keychain "$MACOS_SIGNING_KEYCHAIN" >/dev/null
 rm -f "$SIGNING_DIR/certificate.p12"
 unset MACOS_CERTIFICATE_P12_BASE64 MACOS_CERTIFICATE_PASSWORD APPLE_APP_SPECIFIC_PASSWORD keychain_password
+export TERMIX_ICLOUD_PROFILE="$SIGNING_DIR/cloud.provisionprofile"
+python3 - "$TERMIX_ICLOUD_PROFILE" <<'PYPROFILE'
+import base64, os, sys
+with open(sys.argv[1], "wb") as output:
+    output.write(base64.b64decode("".join(os.environ["TERMIX_ICLOUD_PROFILE_BASE64"].split()), validate=True))
+PYPROFILE
+unset TERMIX_ICLOUD_PROFILE_BASE64
 bash "$ROOT/scripts/macos-release.sh" "$@"
 
 bash "$ROOT/scripts/macos-dmg.sh" "$2" "${2%.zip}.dmg"

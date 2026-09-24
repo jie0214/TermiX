@@ -49,6 +49,10 @@ import type {
 } from '../../domain';
 
 export interface WailsAppContract {
+  ExportMobileSettings(): Promise<OperationResult>;
+  GetMobileSyncStatus(): Promise<OperationResult>;
+  SetMobileCloudEnabled(enabled: boolean): Promise<OperationResult>;
+  SyncMobileSettings(): Promise<OperationResult>;
   ListSFTPLocalDirectory(path: string): Promise<SFTPLocalListing>;
   SelectSFTPLocalDirectory(): Promise<SFTPLocalListing | null>;
   ConnectSFTP(hostID: string): Promise<SFTPSession>;

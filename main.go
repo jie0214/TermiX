@@ -127,7 +127,7 @@ func main() {
 			}
 			return finishNativeQuit()
 		},
-		OnShutdown: func(context.Context) { stopStatusBar(); termixapp.ShutdownSFTP(app) },
+		OnShutdown: func(context.Context) { stopStatusBar(); termixapp.ShutdownMobileSync(app); termixapp.ShutdownSFTP(app) },
 		OnDomReady: func(context.Context) {
 			startNativeUpdater(app)
 			// 視窗加入 AppKit 視窗集合後再次裁切，避免啟動時序略過主視窗。

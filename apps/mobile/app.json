@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "TermiX",
+    "slug": "termix-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.jie0214.termix.mobile"
+    },
+    "android": {
+      "predictiveBackGestureEnabled": false,
+      "package": "com.jie0214.termix.mobile"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-sqlite",
+      "expo-asset",
+      "expo-font",
+      "expo-secure-store",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "enableSceneSupport": true
+          }
+        }
+      ]
+    ],
+    "scheme": "termix",
+    "platforms": [
+      "ios",
+      "android"
+    ]
+  }
+}

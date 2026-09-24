@@ -113,6 +113,10 @@ function createAppMock(): WailsAppBindings {
       ),
     SaveAppSettings: async (settings) =>
       operationResult(true, JSON.stringify(settings)),
+    ExportMobileSettings: async () => operationFailure(),
+    GetMobileSyncStatus: async () => operationFailure(),
+    SetMobileCloudEnabled: async () => operationFailure(),
+    SyncMobileSettings: async () => operationFailure(),
     ExportHostsBackup: async () => operationFailure(),
     ImportHostsBackup: async () => operationFailure(),
     ExecuteLocalCommand: async () => operationFailure(),

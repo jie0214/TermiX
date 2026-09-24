@@ -124,6 +124,11 @@ export const HostAPI = {
     return callApp(['RemoveKnownHost'], host, port);
   },
 
+  exportMobileSettings: () => callApp('ExportMobileSettings'),
+  getMobileSyncStatus: () => callApp('GetMobileSyncStatus'),
+  setMobileCloudEnabled: enabled => callApp('SetMobileCloudEnabled', enabled),
+  syncMobileSettings: () => callApp('SyncMobileSettings'),
+
   exportHostsBackup(options) {
     return callApp(['ExportHostsBackup'], options);
   },

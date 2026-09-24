@@ -1,0 +1,50 @@
+# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.pem
+
+# local env files
+.env*.local
+
+# typescript
+*.tsbuildinfo
+
+# generated native folders
+/ios
+/android
+
+# 由鎖定版本的 Go 工具重新產生。
+modules/termix-ssh/ios/TermixSSH.xcframework/
+modules/termix-ssh/android/libs/
+src/features/terminal/terminalHtml.ts
+
+# 瀏覽器回歸測試產物。
+/test-results/
+/playwright-report/

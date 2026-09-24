@@ -22,6 +22,8 @@ xcrun notarytool store-credentials termix-notary
 ```sh
 export APPLE_TEAM_ID='你的 10 碼 Team ID'
 export MACOS_NOTARY_PROFILE=termix-notary
+export TERMIX_ICLOUD_CONTAINER=iCloud.com.jie0214.termix
+export TERMIX_ICLOUD_PROFILE=/path/to/CloudKit.provisionprofile
 bash scripts/macos-release.sh --check
 CGO_LDFLAGS='-framework UniformTypeIdentifiers' wails build -platform darwin/universal
 bash scripts/macos-release.sh build/bin/TermiX.app dist/TermiX-macos.zip
@@ -40,6 +42,8 @@ bash scripts/macos-release.sh build/bin/TermiX.app dist/TermiX-macos.zip
 | 類型 | 名稱 | 內容 |
 | --- | --- | --- |
 | Variable | `APPLE_TEAM_ID` | 正式憑證所屬的 10 碼 Team ID |
+| Variable | `TERMIX_ICLOUD_CONTAINER` | 桌面與 iPhone 共用的 CloudKit 容器 ID |
+| Secret | `TERMIX_ICLOUD_PROFILE_BASE64` | Developer ID CloudKit provisioning profile 的 Base64 |
 | Secret | `MACOS_CERTIFICATE_P12_BASE64` | Developer ID Application 憑證與私鑰匯出的加密 `.p12`，再編碼為 Base64 |
 | Secret | `MACOS_CERTIFICATE_PASSWORD` | 匯出 `.p12` 時設定的密碼 |
 | Secret | `APPLE_ID` | 有公證權限的 Apple Account |
@@ -127,3 +131,5 @@ GitHub Actions 另外需要 `SPARKLE_PRIVATE_KEY` Secret，其內容為 Sparkle 
 - v1.8.2 曾以隔離資料啟動實際 Wails App，確認組件還原、主機掛載保留、新舊組件合併與刪除後再次啟動的行為。測試 App 不連線至主機。
 
 - 更新通知不會自動消失。關閉通知（包括「稍後提醒」或「略過此版本」）後，記住該版本並跨重啟保持靜默，直到更高版本才再次提示；手動「Check for Updates」仍可查看已關閉的版本。
+
+正式 CI 發佈必須包含 iCloud 同步設定；缺少容器或描述檔會在匯入鑰匙圈前停止，簽署後再核對 Production 權限。一般本機不含 CloudKit 的測試建置仍可使用檔案匯出，但不得當作正式同步版本發佈。

@@ -1,0 +1,11 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+group = 'com.termix'
+version = '0.1.0'
+android {
+  namespace 'expo.modules.termixssh'
+  sourceSets.main.jniLibs.srcDirs = ['libs/jni']
+}
+dependencies { implementation files('libs/classes.jar') }

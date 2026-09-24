@@ -124,6 +124,8 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          TERMIX_ICLOUD_CONTAINER: ${{ vars.TERMIX_ICLOUD_CONTAINER }}
+          TERMIX_ICLOUD_PROFILE_BASE64: ${{ secrets.TERMIX_ICLOUD_PROFILE_BASE64 }}
         run: bash scripts/macos-ci-release.sh --check
 
       - name: Build macOS
@@ -150,6 +152,8 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          TERMIX_ICLOUD_CONTAINER: ${{ vars.TERMIX_ICLOUD_CONTAINER }}
+          TERMIX_ICLOUD_PROFILE_BASE64: ${{ secrets.TERMIX_ICLOUD_PROFILE_BASE64 }}
           MACOS_NOTARY_LOG_DIR: ${{ runner.temp }}/termix-notarization
         run: bash scripts/macos-ci-release.sh build/bin/TermiX.app "dist/TermiX-${VERSION}-macos.zip"
 

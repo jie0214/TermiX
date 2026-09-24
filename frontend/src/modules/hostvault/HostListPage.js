@@ -1,3 +1,4 @@
+import { mobileSyncOptions } from './mobileSyncOptions.js';
 import { setupDropdowns } from '../../components/controls/dropdown.js';
 import { hostStore } from './HostStore';
 import { themeStore } from '../../stores/ThemeStore';
@@ -368,6 +369,34 @@ function promptImportMode() {
       { value: 'reference+secret', label: 'Reference + Secret' }
     ]
   });
+}
+
+let mobileSyncDialogOpen = false;
+async function manageMobileSync() {
+  if (mobileSyncDialogOpen) return;
+  mobileSyncDialogOpen = true;
+  try {
+    const status = await HostAPI.getMobileSyncStatus();
+    const action = await showChoiceDialog({
+      title: t('hostvault.mobileSync'),
+      options: mobileSyncOptions(status, t)
+    });
+    if (!action) return;
+    if (action === 'file') {
+      const data = await HostAPI.exportMobileSettings();
+      const result = await HostAPI.saveJSONFile('termix-mobile-settings.json', JSON.stringify(data, null, 2));
+      if (result?.success) showToast(t('hostvault.mobileExported'), { type: 'success' });
+      else if (result?.error !== '已取消匯出') showToast(t('hostvault.mobileSyncFailed'), { type: 'error' });
+      return;
+    }
+    if (action === 'toggle' && !status.enabled && !(await confirmDialog(t('hostvault.mobileCloudConfirm'), { title: t('hostvault.mobileSync') }))) return;
+    showToast(t('hostvault.mobileSyncWorking'));
+    const result = action === 'toggle' ? await HostAPI.setMobileCloudEnabled(!status.enabled) : await HostAPI.syncMobileSettings();
+    const errorKeys = { not_configured: 'hostvault.mobileCloudNotConfigured', unsupported: 'hostvault.mobileCloudUnsupported', no_account: 'hostvault.mobileCloudNoAccount', invalid: 'hostvault.mobileInvalid' };
+    if (result.error) showToast(t(errorKeys[result.error] || 'hostvault.mobileSyncFailed'), { type: 'error' });
+    else showToast(t(result.enabled ? 'hostvault.mobileCloudSynced' : 'hostvault.mobileCloudDisabled'), { type: 'success' });
+  } catch { showToast(t('hostvault.mobileSyncFailed'), { type: 'error' }); }
+  finally { mobileSyncDialogOpen = false; }
 }
 
 function showChoiceDialog({ title, options }) {
@@ -1832,6 +1861,8 @@ export class HostListPage extends HTMLElement {
                   <div class="vault-menu-label">${t('hostvault.importBackup')}</div>
                   <button type="button" class="no-drag termix-dropdown-item ui-button ui-button--menu" id="importHostsJsonBtn" aria-label="${t('hostvault.importBackup')} JSON"><i class="ti ti-upload" aria-hidden="true"></i><span>JSON</span></button>
                   <button type="button" class="no-drag termix-dropdown-item ui-button ui-button--menu" id="importHostsYamlBtn" aria-label="${t('hostvault.importBackup')} YAML"><i class="ti ti-upload" aria-hidden="true"></i><span>YAML</span></button>
+                  <div class="vault-menu-divider" role="separator"></div>
+                  <button type="button" class="no-drag termix-dropdown-item ui-button ui-button--menu" id="mobileSyncBtn"><i class="ti ti-refresh" aria-hidden="true"></i><span>${t('hostvault.mobileSync')}</span></button>
                   <div class="vault-menu-divider" role="separator"></div>
                   <div class="vault-menu-label">${t('hostvault.exportBackup')}</div>
                   <button type="button" class="no-drag termix-dropdown-item ui-button ui-button--menu" id="exportHostsJsonBtn" aria-label="${t('hostvault.exportBackup')} JSON"><i class="ti ti-download" aria-hidden="true"></i><span>JSON</span></button>
@@ -4435,6 +4466,10 @@ export class HostListPage extends HTMLElement {
         showToast(t('hostvault.importFailed', { error: err.message }), { type: 'error' });
       }
     };
+
+    this.querySelector('#mobileSyncBtn')?.addEventListener('click', event => {
+      event.preventDefault(); event.stopPropagation(); void manageMobileSync();
+    });
 
     // 17. 備份設定匯出 JSON/YAML
     const exportJsonBtn = this.querySelector('#exportHostsJsonBtn');

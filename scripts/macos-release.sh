@@ -43,6 +43,7 @@ print(matches[0])
 printf '已找到 Team %s 的 Developer ID Application 憑證。\n' "$APPLE_TEAM_ID"
 
 if [[ "${1:-}" == --check ]]; then exit 0; fi
+[[ -n "${TERMIX_ICLOUD_CONTAINER:-}" && -f "${TERMIX_ICLOUD_PROFILE:-}" ]] || fail '正式 macOS 發佈必須設定 TERMIX_ICLOUD_CONTAINER 與 TERMIX_ICLOUD_PROFILE。'
 [[ $# == 2 ]] || fail '用法：macos-release.sh <App 路徑> <輸出 ZIP 路徑>'
 [[ -n "${MACOS_NOTARY_PROFILE:-}" ]] || fail '請先用 notarytool store-credentials 建立 MACOS_NOTARY_PROFILE。'
 APP_PATH="$1"
@@ -81,7 +82,18 @@ STAGED_APP="$WORK_DIR/TermiX.app"
 ditto "$APP_PATH" "$STAGED_APP"
 
 # 先簽署內層 Mach-O，再簽署巢狀 bundle 與外層 App；簽署不用 --deep。
-# 目前 Wails 不需要額外的 Hardened Runtime 例外，也不沿用開發用 entitlements。
+# 正式封裝必須提供已核准的容器與描述檔，簽入 CloudKit 權限。
+CLOUD_SIGN_ARGS=()
+if [[ -n "${TERMIX_ICLOUD_CONTAINER:-}" ]]; then
+  [[ -f "${TERMIX_ICLOUD_PROFILE:-}" ]] || fail '啟用 CloudKit 時需提供 TERMIX_ICLOUD_PROFILE。'
+  security cms -D -i "$TERMIX_ICLOUD_PROFILE" > "$WORK_DIR/cloud-profile.plist"
+  python3 "$ROOT/scripts/configure-macos-cloud.py" "$WORK_DIR/cloud-profile.plist" \
+    "$STAGED_APP/Contents/Info.plist" "$WORK_DIR/cloud.entitlements.plist" "$TERMIX_ICLOUD_CONTAINER" "$APPLE_TEAM_ID"
+  cp "$TERMIX_ICLOUD_PROFILE" "$STAGED_APP/Contents/embedded.provisionprofile"
+  CLOUD_SIGN_ARGS=(--entitlements "$WORK_DIR/cloud.entitlements.plist")
+fi
+
+# 不加入與 CloudKit 無關的 Hardened Runtime 例外。
 while IFS= read -r -d '' code; do
   if [[ "$(file -b "$code")" == *Mach-O* ]]; then
     codesign --force --sign "$IDENTITY" --timestamp --options runtime "${KEYCHAIN_ARGS[@]}" "$code"
@@ -90,8 +102,11 @@ done < <(find "$STAGED_APP/Contents" -type f -print0)
 while IFS= read -r -d '' bundle; do
   codesign --force --sign "$IDENTITY" --timestamp --options runtime "${KEYCHAIN_ARGS[@]}" "$bundle"
 done < <(find "$STAGED_APP/Contents" -depth -type d \( -name '*.framework' -o -name '*.app' -o -name '*.xpc' -o -name '*.appex' -o -name '*.bundle' \) -print0)
-codesign --force --sign "$IDENTITY" --timestamp --options runtime "${KEYCHAIN_ARGS[@]}" "$STAGED_APP"
+codesign --force --sign "$IDENTITY" --timestamp --options runtime "${KEYCHAIN_ARGS[@]}" "${CLOUD_SIGN_ARGS[@]}" "$STAGED_APP"
 codesign --verify --deep --strict --verbose=2 "$STAGED_APP"
+if [[ -n "${TERMIX_ICLOUD_CONTAINER:-}" ]]; then
+  python3 "$ROOT/scripts/check-apple-cloud.py" "$STAGED_APP"
+fi
 signature="$(codesign -dv --verbose=4 "$STAGED_APP" 2>&1)"
 [[ "$signature" == *"TeamIdentifier=$APPLE_TEAM_ID"* && "$signature" == *'Authority=Developer ID Application:'* && "$signature" == *'(runtime)'* ]] || fail '簽署身分、Team ID 或 Hardened Runtime 驗證失敗。'
 
