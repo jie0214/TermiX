@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/jie0214/TermiX/backend/kubernetes"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -183,4 +184,15 @@ func (a *App) ScaleKubernetesResource(request KubernetesResourceScaleRequest) er
 	}
 	defer a.endOperation()
 	return a.kubernetes.ScaleResource(a.contextOrBackground(), request)
+}
+
+// StartKubernetesLiveUpdates 由畫面掛載時訂閱，離開畫面或切換連線時取消。
+func (a *App) StartKubernetesLiveUpdates(connectedAt, streamID string) error {
+	return a.kubernetes.StartLiveUpdates(a.contextOrBackground(), connectedAt, streamID, func(batch kubernetes.LiveBatch) {
+		runtime.EventsEmit(a.ctx, "kubernetes-live-update", batch)
+	})
+}
+
+func (a *App) StopKubernetesLiveUpdates(streamID string) {
+	a.kubernetes.StopLiveUpdates(streamID)
 }

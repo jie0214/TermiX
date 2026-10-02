@@ -1,3 +1,4 @@
+import { ResourceEditorPanel } from '../../features/kubernetes/ResourceEditorPanel';
 import { PodUsage } from '../../features/kubernetes/ResourceUsage';
 import { Feather } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
@@ -20,8 +21,8 @@ export default function Kubernetes() {
   const { t } = useLanguage();
   const { workspace, state } = useKubernetes();
   useEffect(() => {
-    const subscription = AppState.addEventListener('change', status => { if (status !== 'active') { workspace.closeDetail(); workspace.closeLogs(); workspace.closeScale(); workspace.closeMetrics(); } });
-    return () => { subscription.remove(); workspace.closeDetail(); workspace.closeLogs(); workspace.closeScale(); workspace.closeMetrics(); };
+    const subscription = AppState.addEventListener('change', status => { if (status !== 'active') { workspace.closeEditor();workspace.closeDetail(); workspace.closeLogs(); workspace.closeScale(); workspace.closeMetrics(); } });
+    return () => { subscription.remove(); workspace.closeEditor();workspace.closeDetail(); workspace.closeLogs(); workspace.closeScale(); workspace.closeMetrics(); };
   }, [workspace]);
   const searchScope=JSON.stringify([state.profile?.context,state.profile?.eks?.profile,state.namespace,state.kind]);
   const [searchState,setSearchState] = useState({scope:'',value:''});
@@ -31,7 +32,7 @@ export default function Kubernetes() {
   const selected=selection.scope===searchScope && state.status==='ready' ? [...state.pods,...state.resources].find(item=>item.name===selection.name) : undefined;
   useFocusEffect(useCallback(()=>{
     if(state.profile && !state.configBusy && state.namespace===workspace.getSnapshot().namespace && state.kind===workspace.getSnapshot().kind) {void workspace.refresh();}
-    return ()=>{workspace.closeDetail();workspace.closeLogs();workspace.closeScale();workspace.closeMetrics();};
+    return ()=>{workspace.closeEditor();workspace.closeDetail();workspace.closeLogs();workspace.closeScale();workspace.closeMetrics();};
   },[workspace,state.profile,state.configBusy,state.namespace,state.kind]));
   useFocusEffect(useCallback(()=>{
     if(state.profile && !state.configBusy) void workspace.refreshNamespaces();
@@ -48,6 +49,8 @@ export default function Kubernetes() {
         <Button variant="secondary" label={t('返回資源')} onPress={()=>setSelection({scope:'',name:''})}/>
         <Text style={styles.detailName}>{selected.name}</Text><HealthBadge health={selected.health}/>
         <Text style={styles.note}>{state.profile.cluster} / {state.namespace}</Text>
+        <Button variant="secondary" label={t('查看 YAML')} onPress={()=>void workspace.openEditor(selected.name,'yaml')}/>
+        <Button variant="secondary" label={t('變更 image')} onPress={()=>void workspace.openEditor(selected.name,'image')}/>
         {'phase' in selected ? <>
           <Text style={styles.note}>{selected.reason || selected.phase} · {t('{ready}/{total} 就緒',{ready:selected.ready,total:selected.total})}</Text>
           <Button label={t('查看 {name} Log',{name:selected.name})} onPress={()=>void workspace.openPodLogs(selected.name)}/>
@@ -96,6 +99,7 @@ export default function Kubernetes() {
         <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.detail}>
           <Button variant="secondary" label={t("關閉內容")} onPress={() => workspace.closeDetail()} />
           <Text style={styles.name}>{state.detailName}</Text>
+          <Button label={t('查看 YAML')} onPress={()=>{if(state.detailName) void workspace.openEditor(state.detailName,'yaml');}}/>
           {state.detailStatus === 'loading' && <Text style={styles.note}>{t("讀取中…")}</Text>}
           {state.detailStatus === 'error' && <>
             <Text accessibilityRole="alert" style={styles.error}>{t(state.detailMessage)}</Text>
@@ -115,10 +119,11 @@ export default function Kubernetes() {
       </Modal>
       <PodLogPanel />
       <ScalePanel />
+      <ResourceEditorPanel />
       <MetricsPanel />
       {state.hasMore && <Text style={styles.note}>{t('目前僅顯示前 200 個 {resource}', { resource: label })}</Text>}
     </>}
-    {!state.scale && !!state.scaleNotice && <Text style={styles.note}>{t(state.scaleNotice)}</Text>}
+    {!state.scale && !state.editor && !!state.scaleNotice && <Text style={styles.note}>{t(state.scaleNotice)}</Text>}
     {state.status === 'error' && !!state.message && <Text accessibilityRole="alert" style={state.status === 'error' ? styles.error : styles.note}>{t(state.message)}</Text>}
   </ScrollView>;
 }

@@ -44,10 +44,10 @@ export const kubernetes: DictBundle = {
     'k8s.namespace.selectAria': 'Select Namespace',
 
     // ── Pods ──
+    'k8s.live.reconnecting': 'Some live updates are unavailable; retrying…',
     'k8s.pods.searchPlaceholder': 'Search Pods',
     'k8s.pods.filterBySuffix': '· Pods',
     'k8s.pods.clearFilter': 'Clear filter',
-    'k8s.pods.watching': 'Watching',
     'k8s.pods.filter.all': 'All',
     'k8s.pods.filter.running': 'Running',
     'k8s.pods.filter.pending': 'Pending',
@@ -403,10 +403,10 @@ export const kubernetes: DictBundle = {
     'k8s.namespace.noMatch': '沒有符合的 namespace。',
     'k8s.namespace.selectAria': '選擇 Namespace',
 
+    'k8s.live.reconnecting': '部分資料暫停即時更新，正在重試…',
     'k8s.pods.searchPlaceholder': '搜尋 Pod',
     'k8s.pods.filterBySuffix': '的 Pods',
     'k8s.pods.clearFilter': '清除過濾',
-    'k8s.pods.watching': 'Watching',
     'k8s.pods.filter.all': 'All',
     'k8s.pods.filter.running': 'Running',
     'k8s.pods.filter.pending': 'Pending',
@@ -746,10 +746,10 @@ export const kubernetes: DictBundle = {
     'k8s.namespace.noMatch': '一致する namespace がありません。',
     'k8s.namespace.selectAria': 'Namespace を選択',
 
+    'k8s.live.reconnecting': '一部のリアルタイム更新が中断されています。再試行中…',
     'k8s.pods.searchPlaceholder': 'Pod を検索',
     'k8s.pods.filterBySuffix': 'の Pod',
     'k8s.pods.clearFilter': 'フィルターを解除',
-    'k8s.pods.watching': 'Watching',
     'k8s.pods.filter.all': 'All',
     'k8s.pods.filter.running': 'Running',
     'k8s.pods.filter.pending': 'Pending',

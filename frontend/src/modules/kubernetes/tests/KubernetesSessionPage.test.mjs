@@ -410,3 +410,76 @@ test('批次刪除高風險資源保留確認但不要求文字，取消不刪�
   assert.equal(options.requireText, undefined);
   assert.equal(page.selectedRows.size, 1);
 });
+
+for (const [id, property] of [
+  ['kubernetesPodSearch', 'podSearch'],
+  ['kubernetesSectionSearch', 'tableSearch'],
+  ['kubernetesEventsSearch', 'eventsSearch'],
+  ['kubernetesLogSearch', 'logSearch'],
+]) {
+  test(`${id} 輸入後保留各容器捲動位置與搜尋游標`, () => {
+    const start = sessionSource.indexOf(`    this.querySelector('#${id}')?.addEventListener('input', event => {`);
+    const closing = '\n    }, { signal: this.listenerController.signal });';
+    const end = sessionSource.indexOf(closing, start) + closing.length;
+    const methodsStart = sessionSource.indexOf('  captureScrollState() {');
+    const methodsEnd = sessionSource.indexOf('  renderDetailDrawer(', methodsStart);
+    const page = new Function('suppressScrollbarAutohide', `return new (class {${sessionSource.slice(methodsStart, methodsEnd)}})()`)(fn => fn());
+    const selectors = ['.kubernetes-session-scrollbody', '.kubernetes-session-nav', '.kubernetes-eventlist-scroll', '.kubernetes-detail-body', '.kubernetes-session-logs', '#kubernetesLogOutput'];
+    let nodes;
+    let onInput;
+    let selection;
+    let focused = false;
+    const resetNodes = () => {
+      nodes = Object.fromEntries(selectors.map(selector => [selector, { scrollTop: 0, scrollLeft: 0 }]));
+    };
+    resetNodes();
+    selectors.forEach(selector => { nodes[selector].scrollTop = 180; nodes[selector].scrollLeft = 90; });
+    const input = {
+      addEventListener(_type, listener) { onInput = listener; },
+      focus(options) {
+        focused = true;
+        if (!options?.preventScroll) nodes['.kubernetes-session-scrollbody'].scrollTop = 0;
+      },
+      setSelectionRange(start, end) { selection = [start, end]; },
+    };
+    page.tableSearch = {};
+    page.listenerController = new AbortController();
+    page.querySelector = selector => selector === `#${id}` ? input : nodes[selector];
+    page.render = resetNodes;
+    page.setupListeners = () => {};
+    const before = page.captureScrollState();
+    new Function(sessionSource.slice(start, end)).call(page);
+    onInput({ target: { value: 'api', selectionStart: 2, dataset: { sectionSearch: 'deployments' } } });
+    assert.deepEqual(page.captureScrollState(), before);
+    assert.equal(property === 'tableSearch' ? page.tableSearch.deployments : page[property], 'api');
+    assert.equal(focused, true);
+    assert.deepEqual(selection, [2, 2]);
+  });
+}
+
+test('Pod drawer 標頭提供 Shell，依執行狀態與容器資訊決定是否啟用', () => {
+  const start = sessionSource.indexOf('  renderDetailDrawer(state) {');
+  const end = sessionSource.indexOf('  renderResourceDetailTabs(', start);
+  const page = new Function('t', 'escapeHtml', 'renderKubernetesIcon', `return ({${sessionSource.slice(start, end)}})`)(key => key, String, () => '<svg></svg>');
+  page.renderResourceDetailTab = () => '';
+  page.renderResourceDetailTabs = () => '';
+  page.scaleButton = () => '<button data-scale="test">Scale</button>';
+  const state = {
+    detailOpen: true,
+    selectedResource: { kind: 'pod', name: 'api', namespace: 'staging' },
+    resourceDetail: { name: 'api', namespace: 'staging', status: 'Running', containers: [{ name: 'app' }, { name: 'sidecar' }] },
+  };
+  const html = page.renderDetailDrawer(state);
+  const button = html.match(/<button[^>]*data-pod-action="shell"[^>]*>/)?.[0];
+  assert.ok(button);
+  assert.doesNotMatch(button, /disabled/);
+  assert.match(button, /data-container="app"/);
+  assert.deepEqual(JSON.parse(decodeURIComponent(button.match(/data-pod="([^"]+)"/)[1])), { name: 'api', namespace: 'staging' });
+  assert.match(html, /kubernetes-detail-header-actions"><button[^>]*kubernetes-shell-btn/);
+  for (const detail of [null, { ...state.resourceDetail, status: 'Pending' }, { ...state.resourceDetail, containers: [] }]) {
+    assert.match(page.renderDetailDrawer({ ...state, resourceDetail: detail }), /data-pod-action="shell"[^>]*disabled/);
+  }
+  const deployment = page.renderDetailDrawer({ ...state, selectedResource: { ...state.selectedResource, kind: 'deployment' } });
+  assert.match(deployment, /data-scale=/);
+  assert.doesNotMatch(deployment, /data-pod-action="shell"/);
+});

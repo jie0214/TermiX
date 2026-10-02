@@ -1,6 +1,6 @@
 import { useLanguage } from '../language/LanguageProvider';
-import { useRef, useState } from 'react';
-import { Keyboard, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { AppState, Keyboard, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from '../../components/Button';
 import { useThemedStyles, type ThemeColors } from '../../components/theme';
@@ -19,16 +19,26 @@ export function TerminalComposer({ session }: { session: TerminalSession }) {
   const styles = useThemedStyles(createStyles);
   const { t } = useLanguage();
   const [input, setInput] = useState(''); const [sending, setSending] = useState(false);
+  const [secret, setSecret] = useState(false);
   const [remoteInput, setRemoteInput] = useState(false);
   const [open, setOpen] = useState(false); const [replacement, setReplacement] = useState<SavedCommand>();
   const busy = useRef(false); const insets = useSafeAreaInsets();
   const commands = useCommands();
   const close = () => { setOpen(false); setReplacement(undefined); };
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', status => {
+      if (status !== 'active') { setInput(''); setOpen(false); setReplacement(undefined); }
+    });
+    return () => subscription.remove();
+  }, []);
   const send = async (suffix = '\r', discard = false) => {
     if (busy.current) return false;
     busy.current = true; setSending(true);
     const submitted = input;
-    const sent = await session.send(`${discard ? '' : submitted}${suffix}`);
+    if (secret) setInput('');
+    let sent = false;
+    try { sent = await session.send(`${discard ? '' : submitted}${suffix}`); }
+    catch { /* 不將輸入或傳輸例外顯示到畫面。 */ }
     if (sent) {
       setInput(current => current === submitted ? '' : current);
       setRemoteInput(!discard && suffix !== '\r');
@@ -39,8 +49,8 @@ export function TerminalComposer({ session }: { session: TerminalSession }) {
   const insert = (item: SavedCommand) => { setInput(item.command); close(); };
   return <View style={styles.composer}>
     <Pressable accessibilityRole="button" accessibilityLabel={t("快捷鍵與常用指令")} accessibilityState={{ expanded: open }}
-      style={styles.trigger} onPress={() => { Keyboard.dismiss(); setOpen(true); }}><Text style={styles.symbol}>⌘</Text></Pressable>
-    <TextInput accessibilityLabel={t("終端輸入")} placeholder={t("輸入指令")} value={input} onChangeText={setInput}
+      style={styles.trigger} onPress={() => { Keyboard.dismiss(); setOpen(true); }}><Text style={styles.symbol}>{secret ? '●' : '⌘'}</Text></Pressable>
+    <TextInput accessibilityLabel={t("終端輸入")} secureTextEntry={secret} placeholder={t(secret ? "機密輸入" : "輸入指令")} value={input} onChangeText={setInput}
       style={styles.input} autoCapitalize="none" autoCorrect={false} spellCheck={false} autoComplete="off" textContentType="none" maxLength={4093}
       returnKeyType="send" submitBehavior="submit" onSubmitEditing={() => void send()} />
     <Button label={t("送出")} disabled={sending} onPress={() => void send()} />
@@ -50,6 +60,9 @@ export function TerminalComposer({ session }: { session: TerminalSession }) {
         <View accessibilityViewIsModal style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) }]}>
           <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
             <Button variant="secondary" label={t("關閉快捷面板")} onPress={close} />
+            <Button variant="secondary" label={t(secret ? "停用機密輸入" : "啟用機密輸入")} onPress={() => {
+              setInput(''); setSecret(value => !value); close();
+            }} />
             {replacement ? <>
               <Text style={styles.title}>{remoteInput ? t("先傳送 Ctrl+C，再填入指令？") : t("取代目前輸入？")}</Text>
               <Button variant="secondary" label={t("取消取代")} onPress={() => setReplacement(undefined)} />

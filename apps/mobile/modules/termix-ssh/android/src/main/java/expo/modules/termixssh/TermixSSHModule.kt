@@ -9,8 +9,32 @@ import com.termix.mobilessh.Mobilessh
 
 class TermixSSHModule : Module() {
   private val engine = Mobilessh.newEngine()
+  private fun clearImportCopies() {
+    val context = appContext.reactContext ?: throw IllegalStateException("import_cleanup_failed")
+    val directory = java.io.File(context.cacheDir, "DocumentPicker")
+    if (!directory.exists()) return
+    if (directory.canonicalFile != directory.absoluteFile) throw IllegalStateException("import_cleanup_failed")
+    val files = directory.listFiles() ?: throw IllegalStateException("import_cleanup_failed")
+    for (file in files) {
+      if (java.nio.file.Files.isSymbolicLink(file.toPath())) {
+        if (!file.delete()) throw IllegalStateException("import_cleanup_failed")
+      } else if (!file.isFile || !file.delete()) throw IllegalStateException("import_cleanup_failed")
+    }
+  }
   override fun definition() = ModuleDefinition {
     Name("TermixSSH")
+    OnCreate {
+      appContext.currentActivity?.let { activity ->
+        activity.runOnUiThread { activity.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE) }
+      }
+      try { clearImportCopies() } catch (_: Exception) { /* 匯入前會重試並阻擋失敗。 */ }
+    }
+    AsyncFunction("clearSensitiveImportCopies") { clearImportCopies() }
+    OnActivityEntersForeground {
+      appContext.currentActivity?.let { activity ->
+        activity.runOnUiThread { activity.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE) }
+      }
+    }
     AsyncFunction("start") { config: String -> engine.start(config) }
     AsyncFunction("poll") { id: String -> engine.poll(id) }
     AsyncFunction("trust") { id: String, accept: Boolean -> engine.trust(id, accept) }
@@ -30,6 +54,8 @@ class TermixSSHModule : Module() {
     AsyncFunction("getKubeConfigMap") Coroutine { raw: String, namespace: String, name: String -> withContext(Dispatchers.IO) { Mobilessh.getKubeConfigMap(raw, namespace, name) } }
     AsyncFunction("listKubePodMetrics") Coroutine { raw: String, namespace: String -> withContext(Dispatchers.IO) { Mobilessh.listKubePodMetrics(raw, namespace) } }
     AsyncFunction("getKubePodMetrics") Coroutine { raw: String, namespace: String, name: String -> withContext(Dispatchers.IO) { Mobilessh.getKubePodMetrics(raw, namespace, name) } }
+    AsyncFunction("getKubeDocument") Coroutine { raw: String, namespace: String, kind: String, name: String -> withContext(Dispatchers.IO) { Mobilessh.getKubeDocument(raw, namespace, kind, name) } }
+    AsyncFunction("updateKubeDocument") Coroutine { raw: String, namespace: String, kind: String, name: String, payload: String -> withContext(Dispatchers.IO) { Mobilessh.updateKubeDocument(raw, namespace, kind, name, payload) } }
     AsyncFunction("getKubeScale") Coroutine { raw: String, namespace: String, kind: String, name: String -> withContext(Dispatchers.IO) { Mobilessh.getKubeScale(raw, namespace, kind, name) } }
     AsyncFunction("updateKubeScale") Coroutine { raw: String, namespace: String, kind: String, name: String, payload: String -> withContext(Dispatchers.IO) { Mobilessh.updateKubeScale(raw, namespace, kind, name, payload) } }
     AsyncFunction("getKubePodContainers") Coroutine { raw: String, namespace: String, name: String -> withContext(Dispatchers.IO) { Mobilessh.getKubePodContainers(raw, namespace, name) } }

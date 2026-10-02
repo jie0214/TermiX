@@ -5,12 +5,16 @@ cd "$(dirname "$0")/.."
 : "${APPLE_TEAM_ID:?請提供 Apple Developer Team ID}"
 export TERMIX_APPLE_RELEASE=1
 npx expo config --type public --json >/dev/null
+npm run test:security
 npm run build:terminal
 npm run build:ssh:ios
 npx expo prebuild --platform ios --no-install
 npx pod-install
 archive_path="${TERMIX_IOS_ARCHIVE:-$PWD/dist/TermiX.xcarchive}"
+# CocoaPods 會產生 SQLite 標頭；獨立快取避免乾淨安裝後沿用舊 Clang 模組。
+module_cache="$(mktemp -d)"
+trap 'rm -rf "$module_cache"' EXIT
 xcodebuild -workspace ios/TermiX.xcworkspace -scheme TermiX -configuration Release \
   -destination 'generic/platform=iOS' -archivePath "$archive_path" \
-  DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic -allowProvisioningUpdates archive
+  CLANG_MODULE_CACHE_PATH="$module_cache" DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic -allowProvisioningUpdates archive
 python3 ../../scripts/check-apple-cloud.py "$archive_path/Products/Applications/TermiX.app"

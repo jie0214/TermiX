@@ -1,6 +1,6 @@
 {
   "name": "@termix/mobile",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "main": "expo-router/entry",
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
@@ -30,7 +30,8 @@
     "react-native-screens": "~4.26.0",
     "react-native-web": "^0.21.2",
     "react-native-webview": "13.16.1",
-    "react-native-worklets": "0.10.1"
+    "react-native-worklets": "0.10.1",
+    "decode-uri-component": "file:vendor/decode-uri-component"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
@@ -63,11 +64,18 @@
     "preexport": "npm run build:terminal",
     "test:ssh": "cd native/ssh && go test -race ./...",
     "archive:ios": "bash scripts/archive-ios.sh",
-    "test:terminal": "npm run build:terminal && playwright test"
+    "test:terminal": "npm run build:terminal && playwright test",
+    "test:security": "bash scripts/check-security.sh"
   },
   "private": true,
   "type": "module",
   "engines": {
     "node": ">=24"
+  },
+  "overrides": {
+    "decode-uri-component": "$decode-uri-component",
+    "xcode": {
+      "uuid": "11.1.1"
+    }
   }
 }

@@ -394,6 +394,10 @@ export function StartKubernetesPodPortForward(arg1) {
   return window['go']['app']['App']['StartKubernetesPodPortForward'](arg1);
 }
 
+export function StartKubernetesLiveUpdates(arg1, arg2) {
+  return window['go']['app']['App']['StartKubernetesLiveUpdates'](arg1, arg2);
+}
+
 export function StartKubernetesPodShell(arg1) {
   return window['go']['app']['App']['StartKubernetesPodShell'](arg1);
 }
@@ -404,6 +408,10 @@ export function StartKubernetesServicePortForward(arg1) {
 
 export function StartLocalTerminal(arg1) {
   return window['go']['app']['App']['StartLocalTerminal'](arg1);
+}
+
+export function StopKubernetesLiveUpdates(arg1) {
+  return window['go']['app']['App']['StopKubernetesLiveUpdates'](arg1);
 }
 
 export function StopKubernetesPodPortForward(arg1) {

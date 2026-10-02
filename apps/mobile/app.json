@@ -2,13 +2,14 @@
   "expo": {
     "name": "TermiX",
     "slug": "termix-mobile",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.jie0214.termix.mobile"
+      "bundleIdentifier": "com.jie0214.termix.mobile",
+      "buildNumber": "2"
     },
     "android": {
       "predictiveBackGestureEnabled": false,

@@ -1,4 +1,5 @@
 import { createStore } from 'zustand/vanilla';
+import { applyKubernetesChanges } from './KubernetesLiveState.js';
 import { KubernetesAPI } from './KubernetesAPI.js';
 import { createResourceTemplate, KUBERNETES_CREATE_RESOURCE_TYPES } from './KubernetesResourceTemplates.js';
 import { showToast } from '../../components/feedback/toast.js';
@@ -45,6 +46,8 @@ const INITIAL_STATE = Object.freeze({
   dashboardLoading: false,
   dashboardError: '',
   lastUpdatedAt: '',
+  liveStreamId: '',
+  liveErrors: {},
   detailOpen: false,
   detailLoading: false,
   // 相關事件改為抽屜開啟後非同步延後載入，獨立於 detail 載入。
@@ -275,6 +278,8 @@ export function createKubernetesSessionStore(api = KubernetesAPI) {
           dashboardLoading: false,
           dashboardError: '',
           lastUpdatedAt: '',
+          liveStreamId: '',
+          liveErrors: {},
           detailOpen: false,
           detailLoading: false,
           detailError: '',
@@ -344,6 +349,8 @@ export function createKubernetesSessionStore(api = KubernetesAPI) {
           dashboardLoading: false,
           dashboardError: '',
           lastUpdatedAt: '',
+          liveStreamId: '',
+          liveErrors: {},
           detailOpen: false,
           detailLoading: false,
           detailError: '',
@@ -388,11 +395,44 @@ export function createKubernetesSessionStore(api = KubernetesAPI) {
       }
     },
 
+    setLiveStream: (streamId) => set({ liveStreamId: streamId, liveErrors: {} }),
+    applyLiveBatch: (batch) => {
+      const state = get();
+      if (!state.dashboard || state.dashboardLoading || !state.liveStreamId || batch?.streamId !== state.liveStreamId || batch.connectedAt !== state.connectedCluster?.connectedAt) return;
+      const result = applyKubernetesChanges(state.dashboard, batch.changes || []);
+      const liveErrors = { ...state.liveErrors };
+      for (const [section, error] of Object.entries(result.liveErrors)) {
+        if (error) liveErrors[section] = error;
+        else delete liveErrors[section];
+      }
+      if (result.dashboard === state.dashboard && JSON.stringify(liveErrors) === JSON.stringify(state.liveErrors)) return;
+      set({ dashboard: result.dashboard, namespaces: result.dashboard.namespaces, liveErrors, lastUpdatedAt: new Date().toISOString() });
+    },
+    // 背景更新明細不切換頁籤、不清除日誌與編輯狀態，舊請求不可覆蓋新 drawer。
+    refreshResourceDetail: async () => {
+      const state = get();
+      if (!state.detailOpen || state.detailLoading || !state.selectedResource) return;
+      const selected = state.selectedResource;
+      const version = detailRequestVersion;
+      const session = state.connectedCluster;
+      try {
+        const detail = await api.getResourceDetail({ kind: selected.kind, name: selected.name, namespace: selected.namespace, apiVersion: selected.apiVersion || '' });
+        if (version !== detailRequestVersion || get().connectedCluster !== session || !get().detailOpen) return;
+        if (!detail) return;
+        set({ resourceDetail: { ...detail, events: get().resourceDetail?.events || [], eventsError: get().resourceDetail?.eventsError || '' }, detailError: '' });
+        await get().loadResourceEvents(detail, version);
+      } catch (error) {
+        if (version === detailRequestVersion && get().connectedCluster === session && get().detailOpen) set({ detailError: errorMessage(error) });
+      }
+    },
+
     // 只載入 namespace 名稱清單（輕量），與整包 dashboard 解耦，讓篩選下拉快速可用。
     loadNamespaces: async () => {
-      if (!get().connectedCluster) return;
+      const session = get().connectedCluster;
+      if (!session) return;
       try {
         const names = await api.listNamespaces();
+        if (get().connectedCluster !== session) return;
         if (Array.isArray(names) && names.length) set({ namespaces: names });
       } catch (error) {
         // 靜默失敗：dashboard 快照仍會補上 namespace 清單。
@@ -449,9 +489,8 @@ export function createKubernetesSessionStore(api = KubernetesAPI) {
     },
 
     refreshDashboard: async () => {
-      // 抓取所用 namespace 由多選狀態推導：恰好選 1 個 → 該 namespace；否則 '*' 抓全部。
-      const { fetchNamespace } = deriveNamespaceState(get().selectedNamespaces);
-      return get().loadDashboard(fetchNamespace || get().selectedNamespace);
+      // 保留完整叢集快照，篩選一律在前端處理，避免切換 namespace 時缺少資料。
+      return get().loadDashboard('*');
     },
     selectNamespace: async (namespace) => {
       // 相容既有單選 API：'*'（All）→ 清空多選陣列；其他 → 設為單一元素陣列。

@@ -405,9 +405,9 @@ export class TerminalPage extends HTMLElement {
   renderReconnectOverlay(sessionKey) {
     const reconnecting = isReconnecting(sessionKey);
     const ctx = getReconnectContext(sessionKey);
-    // 決定初始顯示狀態：重連中 → connecting；有 pendingInput（重連成功待確認）→ pending。
+    // 從上下文還原連線中或失敗狀態，避免重繪後遺失重試按鈕。
     let initialState = 'hidden';
-    if (reconnecting) initialState = 'connecting';
+    if (reconnecting) initialState = ctx?.status || 'connecting';
     else if (ctx && ctx.pendingInput) initialState = 'pending';
 
     const safeSessionKey = escapeHtml(sessionKey);
@@ -436,7 +436,7 @@ export class TerminalPage extends HTMLElement {
     // 推導狀態：優先採用外部指定（onStatus），否則依當前重連旗標 / pendingInput 推導。
     let uiState = statusOverride;
     if (!uiState) {
-      if (reconnecting) uiState = 'connecting';
+      if (reconnecting) uiState = ctx?.status || 'connecting';
       else if (ctx && ctx.pendingInput) uiState = 'pending';
       else uiState = 'hidden';
     }
@@ -508,7 +508,7 @@ export class TerminalPage extends HTMLElement {
         // 放棄重連 → 清理重連上下文後，走既有 closePane 流程移除 pane。
         abortReconnect(key);
         this.updateReconnectOverlay(key, 'hidden');
-        this.closePane(key);
+        this.closePane(key, { confirm: false });
       });
     }
     const flushBtn = overlay.querySelector('.reconnect-btn-flush');
@@ -780,6 +780,8 @@ export class TerminalPage extends HTMLElement {
       // 首次掛載：清空容器後掛載 xterm
       container.replaceChildren();
       term.open(container);
+      // 背景重連完成時尚未建立 xterm，首次掛載需補上已收到的輸出。
+      if (session?.outputHtml) term.write(session.outputHtml);
       // 以 WebGL/Canvas 渲染器取代預設 DOM 渲染器：DOM 渲染器在 Retina（DPR>1）搭配
       // UI 縮放的分數 zoom（.xterm-pane-container 的 1/scale）下，逐字的 sub-pixel 定位
       // 會累積偏移，長行會跑版／字元溢出。Canvas/WebGL 以整張點陣圖精確繪製，zoom 只等比
@@ -1142,83 +1144,44 @@ export class TerminalPage extends HTMLElement {
     }
   }
 
-  async closePane(sessionKey) {
-    const state = terminalStore.getState();
-    const ws = state.workspaces.find(w => w.id === state.activeWorkspaceId);
-    if (!ws) return;
-
-    // 破壞性操作二次確認：若此 pane 仍有連線中的 session（非本機終端、非歷史日誌回放），
-    // 則關閉前先要求使用者確認；空 pane / 本機 / 日誌回放可直接關閉。
+  async closePane(sessionKey, { confirm = true } = {}) {
+    let state = terminalStore.getState();
     const session = state.sessions[sessionKey];
-    const isActiveSession = !!session && !session.isLogView && !session.isLocal && !(session.config && session.config.isLocal);
-    if (isActiveSession) {
+    const isActiveSession = !!session && !session.isLogView && !session.isLocal && !session.config?.isLocal;
+    if (confirm && isActiveSession && !isReconnecting(sessionKey)) {
       const cfg = session.config || {};
-      const sessionLabel = cfg.alias || session.label || cfg.host || sessionKey;
-      if (!(await confirmDialog(t('terminal.closeConfirmMessage', { name: sessionLabel }), { title: t('terminal.closeConfirmTitle'), danger: true }))) {
-        return;
-      }
+      const name = cfg.alias || session.label || cfg.host || sessionKey;
+      if (!(await confirmDialog(t('terminal.closeConfirmMessage', { name }), { title: t('terminal.closeConfirmTitle'), danger: true }))) return;
     }
 
-    // 1. 斷開連線（標記為使用者主動關閉，避免觸發遠端斷線提示）
+    // 確認期間可能切換分頁；依 session 找到所屬 workspace，並使用最新狀態。
+    state = terminalStore.getState();
+    const ws = state.workspaces.find(w => w.columns.some(col => col.panes.some(p => p.sessionKey === sessionKey)));
+    if (!ws) return;
+    abortReconnect(sessionKey);
     markSessionUserClosed(sessionKey);
     TerminalAPI.closeTerminalSession(sessionKey).catch(() => {});
 
-    // 2. 從 workspaces 結構中移除
-    let foundColIdx = -1;
-    let foundPaneIdx = -1;
-
-    for (let cIdx = 0; cIdx < ws.columns.length; cIdx++) {
-      const col = ws.columns[cIdx];
-      const pIdx = col.panes.findIndex(p => p.sessionKey === sessionKey);
-      if (pIdx !== -1) {
-        foundColIdx = cIdx;
-        foundPaneIdx = pIdx;
-        break;
-      }
+    const columns = ws.columns.map(col => {
+      const panes = col.panes.filter(p => p.sessionKey !== sessionKey);
+      return panes.length === col.panes.length ? col : {
+        ...col, panes: panes.map(p => ({ ...p, height: 100 / panes.length }))
+      };
+    }).filter(col => col.panes.length);
+    const updated = { ...ws, columns: columns.length === ws.columns.length ? columns : columns.map(col => ({ ...col, width: 100 / columns.length })) };
+    const workspaces = state.workspaces.flatMap(w => w.id === ws.id ? (columns.length ? [updated] : []) : [w]);
+    let activeWorkspaceId = state.activeWorkspaceId;
+    let activePaneSessionKey = state.activePaneSessionKey;
+    if (activeWorkspaceId === ws.id && !columns.length) {
+      const next = state.getRecentWorkspace(ws.id);
+      activeWorkspaceId = next?.id || 'host-tab';
+      activePaneSessionKey = next?.columns[0]?.panes[0]?.sessionKey || null;
+    } else if (activePaneSessionKey === sessionKey) {
+      activePaneSessionKey = columns[0]?.panes[0]?.sessionKey || null;
     }
-
-    if (foundColIdx !== -1 && foundPaneIdx !== -1) {
-      const col = ws.columns[foundColIdx];
-      col.panes.splice(foundPaneIdx, 1);
-
-      if (col.panes.length === 0) {
-        ws.columns.splice(foundColIdx, 1);
-        if (ws.columns.length === 0) {
-          // 移除該 Workspace
-          terminalStore.getState().removeWorkspace(ws.id);
-          const remain = terminalStore.getState().workspaces;
-          if (remain.length > 0) {
-            terminalStore.getState().setActiveWorkspaceId(remain[0].id);
-            const firstPane = remain[0].columns[0]?.panes[0];
-            terminalStore.getState().setActivePaneSessionKey(firstPane ? firstPane.sessionKey : null);
-          } else {
-            terminalStore.getState().setActiveWorkspaceId('host-tab');
-            terminalStore.getState().setActivePaneSessionKey(null);
-            // 路由退回到主機列表
-            window.location.hash = '#/hosts';
-          }
-        } else {
-          // 重新均分 columns
-          const numCols = ws.columns.length;
-          ws.columns.forEach(c => c.width = 100 / numCols);
-        }
-      } else {
-        // 重新均分 panes
-        const numPanes = col.panes.length;
-        col.panes.forEach(p => p.height = 100 / numPanes);
-      }
-
-      if (terminalStore.getState().activePaneSessionKey === sessionKey) {
-        const nextPane = col.panes[foundPaneIdx] || col.panes[foundPaneIdx - 1] || ws.columns[0]?.panes[0];
-        terminalStore.getState().setActivePaneSessionKey(nextPane ? nextPane.sessionKey : null);
-      }
-    }
-
-    // 3. 清理前端 session 資料
+    terminalStore.setState({ workspaces, activeWorkspaceId, activePaneSessionKey });
     cleanupFrontendSession(sessionKey);
-    
-    // 4. 觸發狀態重繪
-    terminalStore.getState().setWorkspaces([...state.workspaces]);
+    if (activeWorkspaceId === 'host-tab') window.location.hash = '#/hosts';
   }
 
   // A. 分頁 Tab 拖曳分割合併至當前視窗

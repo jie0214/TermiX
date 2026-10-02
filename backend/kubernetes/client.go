@@ -24,6 +24,7 @@ type clusterClients struct {
 	core          kubernetes.Interface
 	metrics       metricsclient.Interface
 	dynamic       dynamic.Interface
+	watchDynamic  dynamic.Interface
 	restMapper    meta.RESTMapper
 	serverVersion string
 	podLogs       func(context.Context, string, string, *corev1.PodLogOptions) (io.ReadCloser, error)
@@ -58,6 +59,13 @@ func buildClusterClients(session dto.KubernetesSession) (*clusterClients, error)
 	if err != nil {
 		return nil, fmt.Errorf("建立 Kubernetes Dynamic Client 失敗：請檢查 kubeconfig 連線設定")
 	}
+	// Watch 使用獨立長連線 Client；List 另以 context 控制逾時。
+	watchConfig := rest.CopyConfig(restConfig)
+	watchConfig.Timeout = 0
+	watchDynamic, err := dynamic.NewForConfig(watchConfig)
+	if err != nil {
+		return nil, fmt.Errorf("建立 Kubernetes Watch Client 失敗")
+	}
 	// RESTMapper 用於把 YAML 的 apiVersion/kind（GVK）對映到 GVR 與 scope，
 	// 讓建立資源走泛用 dynamic client、不需逐 kind 寫死。以 memcache 包住 discovery
 	// 降低往返；mapping miss（例如剛裝的 CRD）時由呼叫端 Reset() 後重試。
@@ -71,6 +79,7 @@ func buildClusterClients(session dto.KubernetesSession) (*clusterClients, error)
 		core:          coreClient,
 		metrics:       metricsClient,
 		dynamic:       dynamicClient,
+		watchDynamic:  watchDynamic,
 		restMapper:    restMapper,
 		serverVersion: version.GitVersion,
 		restConfig:    rest.CopyConfig(restConfig),

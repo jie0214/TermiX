@@ -200,11 +200,15 @@ export function ShowNativeUpdateSettings():Promise<void>;
 
 export function StartKubernetesPodPortForward(arg1:dto.KubernetesPodPortForwardRequest):Promise<dto.KubernetesPodPortForward>;
 
+export function StartKubernetesLiveUpdates(arg1:string,arg2:string):Promise<void>;
+
 export function StartKubernetesPodShell(arg1:dto.KubernetesPodShellStartRequest):Promise<dto.KubernetesPodShellSession>;
 
 export function StartKubernetesServicePortForward(arg1:dto.KubernetesServicePortForwardRequest):Promise<dto.KubernetesPodPortForward>;
 
 export function StartLocalTerminal(arg1:string):Promise<dto.OperationResult>;
+
+export function StopKubernetesLiveUpdates(arg1:string):Promise<void>;
 
 export function StopKubernetesPodPortForward(arg1:dto.KubernetesPodPortForwardStopRequest):Promise<void>;
 

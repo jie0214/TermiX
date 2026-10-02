@@ -19,6 +19,8 @@ import (
 )
 
 type Service struct {
+	liveCancel     context.CancelFunc
+	liveStreamID   string
 	repo           *storage.Repository
 	mu             sync.Mutex
 	activeSession  *dto.KubernetesSession
@@ -255,6 +257,7 @@ func (s *Service) Connect(request dto.KubernetesConnectRequest) (dto.KubernetesS
 	if err != nil {
 		return dto.KubernetesSession{}, err
 	}
+	s.stopLiveUpdatesLocked()
 	s.stopAllPodPortForwardsLocked()
 	s.stopAllPodShellsLocked()
 	s.activeSession = &session
@@ -276,6 +279,7 @@ func (s *Service) Connect(request dto.KubernetesConnectRequest) (dto.KubernetesS
 func (s *Service) Disconnect() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.stopLiveUpdatesLocked()
 	s.stopAllPodPortForwardsLocked()
 	s.stopAllPodShellsLocked()
 	s.activeSession = nil

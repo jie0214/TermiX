@@ -3478,13 +3478,13 @@ kubernetes-session-page {
 }
 .kubernetes-resource-row.kubernetes-row-selected { background: color-mix(in srgb, var(--color-primary) 12%, transparent); }
 /* ── 調整副本數（Scale） ── */
-/* 列尾 / drawer 的 Scale 膠囊鈕 */
-.kubernetes-scale-btn { display: inline-flex; align-items: center; gap: 5px; min-height: 24px; padding: 0 10px; border: 1px solid var(--color-border); border-radius: 999px; background: transparent; color: var(--color-text-muted); font: inherit; font-size: 11px; font-weight: 500; cursor: pointer; }
-.kubernetes-scale-btn:hover { border-color: var(--color-primary); color: var(--color-text); }
-.kubernetes-scale-btn svg { display: block; flex: 0 0 auto; }
+/* 列尾 / drawer 的 Scale 與 Shell 膠囊鈕 */
+.kubernetes-scale-btn, .kubernetes-shell-btn { display: inline-flex; align-items: center; gap: 5px; min-height: 24px; padding: 0 10px; border: 1px solid var(--color-border); border-radius: 999px; background: transparent; color: var(--color-text-muted); font: inherit; font-size: 11px; font-weight: 500; cursor: pointer; }
+.kubernetes-scale-btn:hover, .kubernetes-shell-btn:not(:disabled):hover { border-color: var(--color-primary); color: var(--color-text); }
+.kubernetes-scale-btn svg, .kubernetes-shell-btn svg { display: block; flex: 0 0 auto; }
 /* drawer 標頭右側動作群組；覆蓋 header span 的全域大寫樣式，避免 Scale 文字被套成大寫主色 */
 .kubernetes-detail-header-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
-.kubernetes-detail-drawer > header .kubernetes-scale-btn span { color: inherit; font-size: 11px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.kubernetes-detail-drawer > header .kubernetes-scale-btn span, .kubernetes-detail-drawer > header .kubernetes-shell-btn span { color: inherit; font-size: 11px; font-weight: 500; letter-spacing: 0; text-transform: none; }
 /* 步進器對話框 */
 .kubernetes-scale-overlay { position: fixed; inset: 0; z-index: 4100; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.6); }
 .kubernetes-scale-dialog { width: 300px; max-width: calc(100vw - 32px); padding: 20px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--dialog-bg); color: var(--color-text); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5); }
@@ -6224,3 +6224,6 @@ button:focus-visible,
     padding: 20px !important;
   }
 }
+
+/* 即時同步異常時保留內容，以小型狀態訊息提示。 */
+.kubernetes-live-status { padding: 6px 10px; color: var(--color-text-muted); font-size: 12px; }

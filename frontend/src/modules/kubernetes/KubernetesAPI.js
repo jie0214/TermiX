@@ -82,6 +82,16 @@ export const KubernetesAPI = {
     return callApp('DisconnectKubernetesCluster');
   },
 
+  /** @param {string} connectedAt @param {string} streamId */
+  startLiveUpdates(connectedAt, streamId) {
+    return callApp('StartKubernetesLiveUpdates', connectedAt, streamId);
+  },
+
+  /** @param {string} streamId */
+  stopLiveUpdates(streamId) {
+    return callApp('StopKubernetesLiveUpdates', streamId);
+  },
+
   getActiveSession() {
     return callApp('GetActiveKubernetesSession');
   },

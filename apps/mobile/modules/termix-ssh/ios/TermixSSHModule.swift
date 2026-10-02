@@ -1,11 +1,20 @@
 import ExpoModulesCore
 import TermixSSH
+import UIKit
 
 public class TermixSSHModule: Module {
   private let engine = MobilesshNewEngine()!
 
   public func definition() -> ModuleDefinition {
     Name("TermixSSH")
+    OnCreate {
+      if Thread.isMainThread { PrivacyShield.shared.start() }
+      else { DispatchQueue.main.sync { PrivacyShield.shared.start() } }
+      // 啟動時清理；失敗仍會在下一次匯入前重試並阻擋匯入。
+      try? SensitiveImports.clean()
+    }
+    AsyncFunction("clearSensitiveImportCopies") { try SensitiveImports.clean() }
+
     Function("mobileSyncCapability") { MobileCloud.capability() }
     AsyncFunction("fetchMobileSettings") { () async -> [String: String] in await MobileCloud.fetch() }
     AsyncFunction("start") { (config: String) in try self.engine.start(config) }
@@ -89,6 +98,18 @@ public class TermixSSHModule: Module {
     AsyncFunction("getKubePodMetrics") { (raw: String, namespace: String, name: String) -> String in
       var error: NSError?
       let result = MobilesshGetKubePodMetrics(raw, namespace, name, &error)
+      if let error { throw error }
+      return result
+    }.runOnQueue(.global(qos: .userInitiated))
+    AsyncFunction("getKubeDocument") { (raw: String, namespace: String, kind: String, name: String) -> String in
+      var error: NSError?
+      let result = MobilesshGetKubeDocument(raw, namespace, kind, name, &error)
+      if let error { throw error }
+      return result
+    }.runOnQueue(.global(qos: .userInitiated))
+    AsyncFunction("updateKubeDocument") { (raw: String, namespace: String, kind: String, name: String, payload: String) -> String in
+      var error: NSError?
+      let result = MobilesshUpdateKubeDocument(raw, namespace, kind, name, payload, &error)
       if let error { throw error }
       return result
     }.runOnQueue(.global(qos: .userInitiated))

@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { useLanguage } from '../language/LanguageProvider';
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { Button } from '../../components/Button';
@@ -10,6 +11,12 @@ export function PodLogPanel() {
   const { t } = useLanguage();
   const { workspace, state } = useKubernetes();
   const logs = state.logs;
+  const output = useRef<ScrollView>(null);
+  useEffect(() => {
+    if (logs?.status !== 'ready') return;
+    const frame = requestAnimationFrame(() => output.current?.scrollToEnd({animated:false}));
+    return () => cancelAnimationFrame(frame);
+  }, [logs]);
   return <Modal visible={!!logs} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => workspace.closeLogs()}>
     {logs && <View style={styles.page}>
       <Button variant="secondary" label={t("關閉 Log")} onPress={() => workspace.closeLogs()} />
@@ -36,7 +43,7 @@ export function PodLogPanel() {
         {logs.status === 'error' && <Text accessibilityRole="alert" style={styles.error}>{t(logs.message)}</Text>}
         {logs.status === 'ready' && !logs.text && <Text style={styles.note}>{t("沒有 Log 紀錄")}</Text>}
         {logs.truncated && <Text style={styles.note}>{t("已達顯示上限，內容可能不完整。")}</Text>}
-        <ScrollView style={styles.output} contentContainerStyle={styles.outputContent}>
+        <ScrollView ref={output} onContentSizeChange={() => { if(logs.status === 'ready') output.current?.scrollToEnd({animated:false}); }} style={styles.output} contentContainerStyle={styles.outputContent}>
           {!!logs.text && <Text selectable style={styles.log}>{logs.text}</Text>}
         </ScrollView>
       </>}

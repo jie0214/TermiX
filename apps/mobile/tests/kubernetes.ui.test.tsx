@@ -1,3 +1,4 @@
+import { ScrollView } from 'react-native';
 import KubernetesSettings from '../src/app/settings/kubernetes';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
@@ -7,6 +8,8 @@ import Kubernetes from '../src/app/(tabs)/kubernetes';
 import { KubernetesWorkspace } from '../src/features/kubernetes/workspace';
 
 const unusedResources = {
+  getDocument: async () => { throw new Error('非預期 YAML 查詢'); },
+  updateDocument: async () => { throw new Error('非預期資源寫入'); },
   listPodMetrics:async()=>({}),
   listNamespaces: async () => ({items:["dev","staging","default"],cursor:""}),
   listAWSProfiles: async () => [],
@@ -53,7 +56,7 @@ test('權限不足時只顯示錯誤，不沿用舊 Pod', async () => {
   await render(<SafeAreaProvider initialMetrics={{frame:{x:0,y:0,width:390,height:844},insets:{top:59,left:0,right:0,bottom:34}}}><KubernetesProvider workspace={workspace}><Kubernetes /></KubernetesProvider></SafeAreaProvider>);
   await screen.findByText('local');
 
-  await screen.findByText('此帳號沒有查看此資源的權限。');
+  await screen.findByText('此帳號沒有執行此資源操作的權限。');
   expect(screen.queryByText('api-0')).toBeNull();
 });
 
@@ -194,4 +197,57 @@ await screen.findByText('健康');expect(screen.getByText('不健康')).toBeTrut
  await fireEvent.press(screen.getByRole('button',{name:'只看異常'}));expect(screen.getByText('api-good')).toBeTruthy();
  await fireEvent.changeText(screen.getByLabelText('搜尋資源名稱'),'BAD');expect(screen.queryByText('api-good')).toBeNull();expect(screen.getByText('api-bad')).toBeTruthy();
  await fireEvent.changeText(screen.getByLabelText('搜尋資源名稱'),'missing');expect(screen.getByText('找不到符合的資源')).toBeTruthy();
+});
+
+test('使用者可檢視與編輯 YAML，確認後才寫入',async()=>{
+ const updateDocument=jest.fn(async()=>({yaml:'kind: Pod',uid:'id',resourceVersion:'8',containers:[]}));
+ const ws=new KubernetesWorkspace({...unusedResources,inspect:async()=>({context:'qa',cluster:'local',namespace:'dev'}),
+ listPods:async()=>({items:[{name:'web',namespace:'dev',phase:'Running',ready:1,total:1}],hasMore:false}),
+ getDocument:async()=>({yaml:'kind: Pod',uid:'id',resourceVersion:'7',containers:[]}),updateDocument},{load:async()=>'config',save:async()=>{}});
+ await render(<SafeAreaProvider initialMetrics={{frame:{x:0,y:0,width:390,height:844},insets:{top:59,left:0,right:0,bottom:34}}}><KubernetesProvider workspace={ws}><Kubernetes/></KubernetesProvider></SafeAreaProvider>);
+ await fireEvent.press(await screen.findByRole('button',{name:'查看 web'}));
+ await fireEvent.press(screen.getByRole('button',{name:'查看 YAML'}));
+ await fireEvent.press(await screen.findByRole('button',{name:'編輯 YAML'}));
+ await fireEvent.changeText(screen.getByLabelText('YAML 內容'),'kind: Pod\nmetadata: {}');
+ await fireEvent.press(screen.getByRole('button',{name:'檢查變更'}));
+ expect(updateDocument).not.toHaveBeenCalled();
+ await fireEvent.press(screen.getByRole('button',{name:'確認儲存'}));
+ await screen.findByText('叢集已接受變更，請重新查詢資源狀態。');
+ expect(updateDocument).toHaveBeenCalledTimes(1);
+});
+
+
+test('每次 Log 更新都捲到最後，即使回傳內容相同',async()=>{
+ const scroll=jest.spyOn(ScrollView.prototype,'scrollToEnd').mockImplementation(()=>{});
+ try {
+  const ws=new KubernetesWorkspace({...unusedResources,inspect:async()=>({context:'qa',cluster:'local',namespace:'dev'}),
+   listPods:async()=>({items:[{name:'web',namespace:'dev',phase:'Running',ready:1,total:1}],hasMore:false}),
+   getPodContainers:async()=>({containers:[{name:'app',kind:'regular' as const}]}),getPodLogs:async()=>({text:'old\nlatest',truncated:false})},{load:async()=>'config',save:async()=>{}});
+  await render(<SafeAreaProvider initialMetrics={{frame:{x:0,y:0,width:390,height:844},insets:{top:59,left:0,right:0,bottom:34}}}><KubernetesProvider workspace={ws}><Kubernetes/></KubernetesProvider></SafeAreaProvider>);
+  await fireEvent.press(await screen.findByRole('button',{name:'查看 web'}));
+  await fireEvent.press(screen.getByRole('button',{name:'查看 web Log'}));
+  await screen.findByText('old\nlatest');
+  await waitFor(()=>expect(scroll).toHaveBeenCalled());scroll.mockClear();
+  await fireEvent.press(screen.getByRole('button',{name:'重新整理 Log'}));
+  await waitFor(()=>expect(scroll).toHaveBeenCalled());
+ } finally {scroll.mockRestore();}
+});
+
+test('image 面板顯示一般與初始化容器，修改選定容器後確認送出',async()=>{
+ const containers=[{name:'app',group:'containers' as const,image:'nginx:old'},{name:'setup',group:'initContainers' as const,image:'setup:v1'}];
+ const updateDocument=jest.fn(async()=>({yaml:'kind: Pod',uid:'id',resourceVersion:'8',containers}));
+ const ws=new KubernetesWorkspace({...unusedResources,inspect:async()=>({context:'qa',cluster:'local',namespace:'dev'}),
+ listPods:async()=>({items:[{name:'web',namespace:'dev',phase:'Running',ready:1,total:1}],hasMore:false}),
+ getDocument:async()=>({yaml:'kind: Pod',uid:'id',resourceVersion:'7',containers}),updateDocument},{load:async()=>'config',save:async()=>{}});
+ await render(<SafeAreaProvider initialMetrics={{frame:{x:0,y:0,width:390,height:844},insets:{top:59,left:0,right:0,bottom:34}}}><KubernetesProvider workspace={ws}><Kubernetes/></KubernetesProvider></SafeAreaProvider>);
+ await fireEvent.press(await screen.findByRole('button',{name:'查看 web'}));
+ await fireEvent.press(screen.getByRole('button',{name:'變更 image'}));
+ await screen.findByText('nginx:old');
+ await fireEvent.press(await screen.findByRole('button',{name:'變更 setup image'}));
+ await fireEvent.changeText(screen.getByLabelText('容器 image'),'setup:v2');
+ await fireEvent.press(screen.getByRole('button',{name:'檢查變更'}));
+ await screen.findByText('setup:v1 → setup:v2');expect(updateDocument).not.toHaveBeenCalled();
+ await fireEvent.press(screen.getByRole('button',{name:'確認儲存'}));
+ await screen.findByText('叢集已接受變更，請重新查詢資源狀態。');
+ expect(updateDocument).toHaveBeenCalledWith('config','dev','pods','web',{uid:'id',resourceVersion:'7',container:{name:'setup',group:'initContainers',image:'setup:v2'}});
 });

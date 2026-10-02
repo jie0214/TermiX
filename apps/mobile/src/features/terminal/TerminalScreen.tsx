@@ -1,6 +1,6 @@
 import { useLanguage } from '../language/LanguageProvider';
-import { useCallback, useRef, useState } from 'react';
-import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AppState, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from '../../components/Button';
 import { useThemedStyles, type ThemeColors } from '../../components/theme';
@@ -46,6 +46,10 @@ function PassphraseRetry({ session }: { session: TerminalSession }) {
   const styles = useThemedStyles(createStyles);
   const { t } = useLanguage();
   const [passphrase, setPassphrase] = useState('');
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', status => { if (status !== 'active') setPassphrase(''); });
+    return () => subscription.remove();
+  }, []);
   const [saving, setSaving] = useState(false);
   const busy = useRef(false);
   const retry = async () => {

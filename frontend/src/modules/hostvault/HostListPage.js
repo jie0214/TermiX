@@ -6,6 +6,7 @@ import { HostAPI } from './HostAPI';
 import { KeychainAPI } from './KeychainAPI';
 import { terminalStore } from '../terminal/TerminalStore';
 import { TerminalAPI } from '../terminal/TerminalAPI';
+import { formatTerminalBootstrapOutput } from '../terminal/TerminalOutput.js';
 import { KubernetesAPI } from '../kubernetes/KubernetesAPI.js';
 import { onWailsEvent } from '../../platform/wails/events.ts';
 import { clearSessionLogs, deleteSessionLogs, LOGS_CHANGED_EVENT, readSessionLogs, sanitizeTerminalLogOutput } from '../terminal/SessionLogStore';
@@ -110,8 +111,7 @@ function sortHosts(hosts, sortBy = 'name', sortDir = 'asc') {
 }
 
 function normalizeTerminalBootstrapOutput(output) {
-  const sanitized = sanitizeTerminalLogOutput(output).trim();
-  return sanitized ? `${sanitized}\n\n` : t('hostvault.connectSuccess');
+  return formatTerminalBootstrapOutput(output) || t('hostvault.connectSuccess');
 }
 
 function normalizeConnectionErrorMessage(errorMessage) {

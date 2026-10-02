@@ -204,3 +204,19 @@ npm run test:ssh              # 真實 loopback SSH 協定測試，含 race dete
 參考：[Kubernetes 資源 requests 與 limits](https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/)。
 
 「雲端帳號」提供「新增雲端帳號 → 選擇雲端供應商」流程，目前只列出 AWS，選取後進入既有 AWS 帳號管理與新增表單；GCP／Azure 不顯示未實作選項。
+
+
+### 發佈前安全檢查
+
+執行 `npm run test:security` 檢查 npm 與 Go 可觸及的已知漏洞，並在 macOS 執行原生暫存清理測試；`archive:ios` 會先執行此檢查，失敗即停止。完整回歸仍需 typecheck、lint、npm test、Go race 測試與 iOS Release 建置。
+
+- SSH 原生模組使用 `golang.org/x/crypto v0.56.0`。Go 掃描仍列出的 OpenPGP 模組公告不涉及本 App 匯入或呼叫的套件。
+- URL 解碼採上游 0.5.0 的 CommonJS 相容副本，位於 `vendor/decode-uri-component`，只修改匯出格式並保留授權；外部連結僅可開啟固定頁面，不接受查詢參數、編碼內容或超長字串。
+- 終端快捷面板提供「啟用機密輸入」。此模式遮蔽本機輸入，送出成功或失敗都清空，切換模式及離開前景也清空。遠端程式若主動回顯密碼，仍會出現在終端輸出；請只在正確的密碼提示下輸入。
+- iOS 在原生失去前景通知時以不透明視窗遮蔽所有 Scene（包含 modal），回到前景後恢復；Android 使用 FLAG_SECURE，亦會阻擋截圖。
+- App 啟動及檔案匯入前後清理本 App 的 DocumentPicker 與 iOS Inbox 副本；清理失敗會阻擋匯入，且不跟隨符號連結。來源檔案不會被刪除。閃退後會在下次啟動清理，並不宣稱能在 App 尚未再次執行時消除殘留。
+- 真機驗收需使用測試資料檢查背景預覽遮罩、機密輸入與私鑰匯入；Android 原生驗收須另於 Android 裝置執行。
+
+原生遮罩回歸可用 `bash scripts/check-privacy-ios.sh <已啟動的模擬器 UDID>`；測試建立獨立的測試 App，驗證 Scene 失去前景、重複通知及恢復前景，不讀取 TermiX 的帳號或憑證，完成後移除測試 App。
+
+正式封存使用獨立 Clang 模組快取。乾淨安裝依賴後若 ExpoSQLite 顯示找不到 exsqlite3 函式，先重新執行 pod-install，再使用新的 CLANG_MODULE_CACHE_PATH；已驗證舊快取能重現失敗，而相同編譯命令只換快取即通過。

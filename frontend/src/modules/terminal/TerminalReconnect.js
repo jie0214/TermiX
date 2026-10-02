@@ -1,6 +1,7 @@
 import { terminalStore } from './TerminalStore';
 import { TerminalAPI } from './TerminalAPI';
-import { cleanupFrontendSession, consumeUserClosed } from './TerminalLifecycle';
+import { formatTerminalBootstrapOutput } from './TerminalOutput.js';
+import { consumeUserClosed } from './TerminalLifecycle';
 import { t } from '../../i18n/index.ts';
 
 // ============================================================================
@@ -25,10 +26,10 @@ const reconnectingKeys = new Set();
 
 // 每個斷線 pane 的重連上下文，鍵為「當前 pane 綁定的 sessionKey」。
 // 重連成功後會遷移到新的 sessionKey。
-// 結構：{ key, wsId, target, label, attempts, autoRetried, pendingInput, term }
+// 結構：{ key, wsId, target, label, status, attempts, pendingInput }
 const reconnectContexts = new Map();
 
-const MAX_AUTO_RETRY = 1; // 自動重試次數（失敗後轉為一鍵重連）。
+const MAX_OUTPUT_LENGTH = 200000;
 
 /**
  * 判斷此 session 是否為「可重連的遠端 SSH」。
@@ -38,7 +39,7 @@ const MAX_AUTO_RETRY = 1; // 自動重試次數（失敗後轉為一鍵重連）
  */
 export function isReconnectableSession(session) {
   if (!session) return false;
-  if (session.isLogView) return false;
+  if (session.isLogView || session.isKubernetesShell) return false;
   if (session.isLocal) return false;
   const cfg = session.config || {};
   if (cfg.isLocal) return false;
@@ -83,37 +84,25 @@ function locatePane(sessionKey) {
   return null;
 }
 
-/**
- * 把 workspaces 內某個 pane 的 sessionKey 由 oldKey 改綁為 newKey（就地、不動位置）。
- * 回傳是否有實際改動。
- * @param {string} oldKey
- * @param {string} newKey
- * @returns {boolean}
- */
-function rebindPaneSessionKey(oldKey, newKey) {
-  const state = terminalStore.getState();
-  let changed = false;
-  const workspaces = state.workspaces.map((ws) => ({
-    ...ws,
-    columns: ws.columns.map((col) => ({
-      ...col,
-      panes: col.panes.map((pane) => {
-        if (pane.sessionKey === oldKey) {
-          changed = true;
-          return { ...pane, sessionKey: newKey };
-        }
-        return pane;
-      })
-    }))
-  }));
-  if (!changed) return false;
+// 後端會先啟動 PTY 串流，才回傳連線結果；以每次嘗試的 sessionId 接住早到事件。
+function findConnectingContext(sessionKey) {
+  return [...reconnectContexts.values()].find(ctx =>
+    ctx.inFlight && typeof sessionKey === 'string' &&
+    sessionKey.endsWith('|' + ctx.target.config.sessionId));
+}
 
-  const nextActive =
-    state.activePaneSessionKey === oldKey ? newKey : state.activePaneSessionKey;
-  terminalStore.setState({
-    workspaces,
-    activePaneSessionKey: nextActive
-  });
+export function bufferReconnectOutput(sessionKey, chunk) {
+  const ctx = findConnectingContext(sessionKey);
+  if (!ctx || typeof chunk !== 'string') return false;
+  ctx.earlyOutput = (ctx.earlyOutput + chunk).slice(-MAX_OUTPUT_LENGTH);
+  return true;
+}
+
+export function handleReconnectClosed(sessionKey) {
+  if (reconnectingKeys.has(sessionKey)) return true;
+  const ctx = findConnectingContext(sessionKey);
+  if (!ctx) return false;
+  ctx.connectionClosed = true;
   return true;
 }
 
@@ -160,11 +149,11 @@ export function bufferReconnectInput(sessionKey, data) {
  * @param {{
  *   onStatus?: (sessionKey: string, status: 'connecting'|'failed'|'success', ctx: any) => void
  * }} [hooks] UI 回呼；狀態改變時通知呼叫端更新 pane overlay。
- * @returns {boolean} 是否成功進入重連流程（false 表示不符合條件或已在重連）。
+ * @returns {boolean} 是否成功進入重連流程（false 表示不符合條件）。
  */
 export function beginReconnect(sessionKey, hooks = {}) {
   if (!sessionKey) return false;
-  if (reconnectingKeys.has(sessionKey)) return false;
+  if (reconnectingKeys.has(sessionKey)) return true;
 
   const state = terminalStore.getState();
   const session = state.sessions[sessionKey];
@@ -176,9 +165,6 @@ export function beginReconnect(sessionKey, hooks = {}) {
   const cfg = session.config || {};
   const label = cfg.alias || session.label || cfg.host || sessionKey;
 
-  // 保留原 xterm 實例（若有），重連後沿用以維持 scrollback。
-  const term = state.xtermInstances[sessionKey] || null;
-
   const ctx = {
     key: sessionKey,
     wsId: located.wsId,
@@ -188,7 +174,6 @@ export function beginReconnect(sessionKey, hooks = {}) {
     attempts: 0,
     autoRetried: false,
     pendingInput: '',
-    term,
     hooks
   };
   reconnectContexts.set(sessionKey, ctx);
@@ -223,6 +208,9 @@ export function abortReconnect(sessionKey) {
   if (!ctx) return null;
   reconnectContexts.delete(sessionKey);
   reconnectingKeys.delete(sessionKey);
+  if (ctx.inFlight) {
+    Promise.resolve().then(() => TerminalAPI.cancelConnectTarget(ctx.target)).catch(() => {});
+  }
   return sessionKey;
 }
 
@@ -233,6 +221,9 @@ export function abortReconnect(sessionKey) {
  */
 async function runReconnectAttempt(ctx, opts) {
   if (ctx.inFlight) return;
+  ctx.target = buildReconnectTarget(ctx.session);
+  ctx.earlyOutput = '';
+  ctx.connectionClosed = false;
   ctx.inFlight = true;
   ctx.attempts += 1;
   if (opts.auto) ctx.autoRetried = true;
@@ -249,17 +240,18 @@ async function runReconnectAttempt(ctx, opts) {
 
   ctx.inFlight = false;
 
-  // 重連進行中若 pane 已被使用者關閉（consumeUserClosed 會標記），或上下文已被放棄，
+  // 重連進行中若 pane 已被關閉或上下文已被放棄，
   // 則清掉剛建立的新連線並終止流程，避免產生孤兒 session。
   const stillTracking = reconnectContexts.get(ctx.key) === ctx;
-  if (!stillTracking) {
+  if (!stillTracking || !locatePane(ctx.key) || !terminalStore.getState().sessions[ctx.key]) {
+    if (stillTracking) abortReconnect(ctx.key);
     if (res && res.success && res.sessionKey) {
       TerminalAPI.closeTerminalSession(res.sessionKey).catch(() => {});
     }
     return;
   }
 
-  if (err || !res || !res.success || !res.sessionKey) {
+  if (err || !res || !res.success || !res.sessionKey || ctx.connectionClosed) {
     notify(ctx, 'failed');
     return;
   }
@@ -276,62 +268,51 @@ function finalizeReconnect(ctx, res) {
   const oldKey = ctx.key;
   const newKey = res.sessionKey;
   const state = terminalStore.getState();
-  const oldSession = state.sessions[oldKey] || ctx.session || {};
-
-  // 若後端剛好回傳與舊 key 相同（理論上不會），仍當作成功但不需遷移。
-  const keyChanged = newKey !== oldKey;
-
-  // 1. 建立新 session 記錄，沿用舊 config / label；outputHtml 接續舊鏡像 + 重連橫幅 + 新 boot 輸出。
+  const oldSession = state.sessions[oldKey];
+  const term = state.xtermInstances[oldKey];
   const banner = '\r\n\x1b[32m' + t('terminal.reconnectedBanner') + '\x1b[0m\r\n';
-  const bootOutput = res.output || '';
-  const mergedOutput = (oldSession.outputHtml || '') + banner + bootOutput;
-
-  terminalStore.getState().addSession(newKey, {
-    label: oldSession.label,
-    config: { ...(oldSession.config || {}) },
-    outputHtml: mergedOutput,
+  const bootOutput = formatTerminalBootstrapOutput(res.output) + ctx.earlyOutput;
+  const sessions = { ...state.sessions };
+  const xtermInstances = { ...state.xtermInstances };
+  const sessionHistories = { ...state.sessionHistories };
+  const broadcastInputSessions = new Set(state.broadcastInputSessions);
+  delete sessions[oldKey];
+  delete xtermInstances[oldKey];
+  delete sessionHistories[oldKey];
+  sessions[newKey] = {
+    ...oldSession,
+    config: { ...oldSession.config, sessionId: ctx.target.config.sessionId },
+    outputHtml: ((oldSession.outputHtml || '') + banner + bootOutput).slice(-MAX_OUTPUT_LENGTH),
     isSudo: Boolean(res.isSudo),
     infoBoxOutputs: {}
-  });
-
-  // 2. 沿用舊 xterm 實例（保留 scrollback），重新掛到新 key。
-  //    TerminalPage 重繪時會依 pane 的新 sessionKey 找到此實例並 re-parent。
-  if (ctx.term && keyChanged) {
-    terminalStore.getState().setXtermInstance(newKey, ctx.term);
-    // 同步更新 term 實例上的「當前綁定 key」，讓 xterm onData 立即以新 key 送出輸入，
-    // 不必等待 TerminalPage 下一次 re-parent（避免重連後打字沒反應）。
-    ctx.term.__termixSessionKey = newKey;
-    // 寫入重連橫幅到既有 xterm 畫面 + 新 boot 輸出。
-    try {
-      ctx.term.write(banner);
-      if (bootOutput) ctx.term.write(bootOutput);
-    } catch (e) {
-      /* term 可能尚未 open，忽略 */
-    }
+  };
+  if (state.sessionHistories[oldKey]) sessionHistories[newKey] = state.sessionHistories[oldKey];
+  if (broadcastInputSessions.delete(oldKey)) broadcastInputSessions.add(newKey);
+  if (term) {
+    xtermInstances[newKey] = term;
+    term.__termixSessionKey = newKey;
+    term.write(banner + bootOutput);
+    // 新 PTY 不會繼承舊連線尺寸，即使 xterm 的尺寸沒變也必須同步。
+    TerminalAPI.resizeTerminal(newKey, term.cols, term.rows).catch(() => {});
   }
 
-  // 3. 就地把 pane 綁定改到新 key（不改變 pane 在 workspace 的位置）。
-  rebindPaneSessionKey(oldKey, newKey);
-
-  // 4. 清理舊 key 的前端資料。
-  //    - 舊 xterm 實例已被搬到新 key，不可 dispose，故先把舊 key 的實例參照移除再清理。
-  if (keyChanged) {
-    if (ctx.term) {
-      // 移除舊 key 對 term 的參照，避免 cleanupFrontendSession 呼叫 dispose 誤殺我們沿用的實例。
-      terminalStore.getState().removeXtermInstance(oldKey);
-    }
-    // 不持久化日誌（避免斷線就產生一筆歷史紀錄；輸出鏡像已接續到新 session）。
-    cleanupFrontendSession(oldKey, { persistLog: false });
-  }
-
-  // 5. 遷移重連上下文到新 key（保留 pendingInput 供 UI 顯示待送出輸入）。
   reconnectContexts.delete(oldKey);
   reconnectingKeys.delete(oldKey);
-  const migratedCtx = { ...ctx, key: newKey, inFlight: false };
-  if (migratedCtx.pendingInput) {
-    // 仍保留待送出輸入；由 UI 呈現，等使用者確認。
-    reconnectContexts.set(newKey, migratedCtx);
-  }
+  const migratedCtx = { ...ctx, key: newKey, status: 'success', inFlight: false };
+  if (migratedCtx.pendingInput) reconnectContexts.set(newKey, migratedCtx);
+
+  // 一次發布完整遷移，避免重繪在 pane、session 與 xterm 綁定不同步時建立空白終端。
+  terminalStore.setState({
+    sessions, xtermInstances, sessionHistories, broadcastInputSessions,
+    workspaces: state.workspaces.map(ws => ({
+      ...ws,
+      columns: ws.columns.map(col => ({
+        ...col,
+        panes: col.panes.map(pane => pane.sessionKey === oldKey ? { ...pane, sessionKey: newKey } : pane)
+      }))
+    })),
+    activePaneSessionKey: state.activePaneSessionKey === oldKey ? newKey : state.activePaneSessionKey
+  });
 
   notify(migratedCtx, 'success', { oldKey, newKey });
 }
@@ -365,6 +346,7 @@ export function discardPendingInput(sessionKey) {
 }
 
 function notify(ctx, status, extra) {
+  ctx.status = status;
   const hook = ctx.hooks && ctx.hooks.onStatus;
   if (typeof hook === 'function') {
     try {

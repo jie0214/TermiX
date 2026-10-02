@@ -3,7 +3,8 @@ import { pickPrivateKey } from '../src/storage/privateKeyImport';
 import { testPrivateKey } from './fixtures';
 
 const mockCleanup = jest.fn();
-jest.mock('expo', () => ({ requireNativeModule: () => ({ clearSensitiveImportCopy: mockCleanup }) }));
+const mockStaleCleanup = jest.fn();
+jest.mock('expo', () => ({ requireNativeModule: () => ({ clearSensitiveImportCopy: mockCleanup, clearSensitiveImportCopies: mockStaleCleanup }) }));
 const mockFiles = new Map<string, { text: string; size: number; failRead?: boolean }>();
 jest.mock('expo-document-picker', () => ({ getDocumentAsync: jest.fn() }));
 jest.mock('expo-file-system', () => ({
@@ -22,7 +23,7 @@ jest.mock('expo-file-system', () => ({
   },
 }));
 
-beforeEach(() => { mockFiles.clear(); jest.clearAllMocks(); mockCleanup.mockResolvedValue(undefined); });
+beforeEach(() => { mockFiles.clear(); jest.clearAllMocks(); mockCleanup.mockResolvedValue(undefined); mockStaleCleanup.mockResolvedValue(undefined); });
 
 it('取消匯入不讀取或刪除來源檔案', async () => {
   mockFiles.set('file:///documents/key', { text: testPrivateKey, size: 500 });
@@ -49,3 +50,23 @@ it('不刪除快取以外的使用者原始檔案', async () => {
   await expect(pickPrivateKey()).rejects.toThrow();
   expect(mockFiles.has(uri)).toBe(true);
 });
+
+ it('殘留檔清理失敗時不開啟選擇器，重試成功後才能匯入', async () => {
+  mockStaleCleanup.mockRejectedValue(new Error('cleanup_failed'));
+  await expect(pickPrivateKey()).rejects.toThrow();
+  expect(DocumentPicker.getDocumentAsync).not.toHaveBeenCalled();
+  mockStaleCleanup.mockResolvedValue(undefined);
+  jest.mocked(DocumentPicker.getDocumentAsync).mockResolvedValue({ canceled: true, assets: null });
+  expect(await pickPrivateKey()).toBeNull();
+ });
+ it('同時匯入不能清除另一個進行中的副本', async () => {
+  let finish!: (value: { canceled: true; assets: null }) => void;
+  jest.mocked(DocumentPicker.getDocumentAsync).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  const first = pickPrivateKey();
+  await Promise.resolve();
+  await expect(pickPrivateKey()).rejects.toThrow('import_busy');
+  expect(mockStaleCleanup).toHaveBeenCalledTimes(1);
+  finish({ canceled: true, assets: null });
+  await first;
+  expect(mockStaleCleanup).toHaveBeenCalledTimes(2);
+ });

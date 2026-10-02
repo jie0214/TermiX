@@ -535,3 +535,13 @@ Android 未進行原生建置或實機驗收，本機缺少 Android SDK。未在
 - 在 iOS 模擬器重現深色模式白底，並以終端 UI 測試重現缺少背景色；補上 `colors.background` 後，淺色／深色切換斷言均通過。
 - TypeScript、ESLint、82 項測試、iOS／Android bundle 匯出、Xcode Release Simulator 建置與 `git diff --check` 通過。
 - 已安裝原本 iPhone 17 Pro／iOS 26.5 模擬器，目視確認未連線終端顯示深色背景。未改動 WebView、SSH session 或使用者外觀設定；本次未另外驗證真實遠端連線或 Android 原生畫面。
+
+## Kubernetes YAML 與 image 編輯
+
+- Log 每次手動更新完成後捲到最新行；仍可向上捲動閱讀舊內容。
+- Pod、Deployment、StatefulSet 的詳細頁提供「查看 YAML」及「變更 image」；ConfigMap 內容頁提供 YAML 入口。
+- YAML 只在記憶體保留，關閉、切換查詢範圍或 App 進入背景即清除。省略 `status`／`managedFields`；單一資源上限 512 KB，不接受別名、重複欄位及多份文件。
+- 使用具名 API 的條件式 PUT，保留 UID／resourceVersion，禁止變更資源身分；API 使用嚴格欄位驗證。409 必須重新讀取；網路中斷或無法驗證回應時不宣稱失敗且不自動重送。
+- image 可選一般或初始化容器。Deployment／StatefulSet 更新 Pod 範本；Pod 直接修改自身 image。實際重啟／更新行為由 Kubernetes 與工作負載策略決定。
+- 編輯需要原有帳號的 `get`／`update` 權限。未增加 RBAC 權限，也未對實際叢集執行測試寫入。
+- 驗證使用本機 HTTPS 測試伺服器，涵蓋資源路徑、YAML 往返、容器欄位保留、身分／版本衝突、權限拒絕與不重送；UI 驗證確認後才寫入及相同 Log 內容仍會捲到結尾。

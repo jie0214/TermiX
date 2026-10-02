@@ -28,7 +28,13 @@ export type ScalePanelState = {
 export type ContainerUsage = { name: string; cpuMilli: number; memoryMiB: number };
 export type PodMetrics = { timestamp: string; windowSeconds: number; cpuMilli: number; memoryMiB: number; containers: ContainerUsage[] };
 export type MetricsPanelState = { pod: string; status: 'loading' | 'ready' | 'error'; value?: PodMetrics; message: string };
+export type ImageField = {name:string; group:'containers'|'initContainers'; image:string};
+export type ResourceDocument = {yaml:string;uid:string;resourceVersion:string;containers:ImageField[]};
+export type DocumentChange = {uid:string;resourceVersion:string;yaml?:string;container?:ImageField};
+export type EditorState = {name:string;kind:ResourceKind;namespace:string;cluster:string;mode:'yaml'|'image';status:'loading'|'viewing'|'editing'|'confirming'|'submitting'|'success'|'error';value?:ResourceDocument;container?:ImageField;input:string;message:string};
 export interface KubeClient {
+ getDocument(raw:string,namespace:string,kind:ResourceKind,name:string):Promise<ResourceDocument>;
+ updateDocument(raw:string,namespace:string,kind:ResourceKind,name:string,change:DocumentChange):Promise<ResourceDocument>;
  listPodMetrics(raw:string,namespace:string):Promise<Record<string,PodMetrics>>;
  listNamespaces(raw: string, cursor: string): Promise<{items: string[]; cursor: string}>;
  listAWSProfiles(region: string): Promise<AwsProfile[]>;
@@ -45,9 +51,15 @@ export interface KubeClient {
   getConfigMap(raw: string, namespace: string, name: string): Promise<ConfigMapDetail>;
 }
 export interface KubeStorage { load(): Promise<string | null>; save(raw: string): Promise<void> }
-export type KubeState = { updatedAt?: number; listMetrics?: Record<string,PodMetrics>; listMetricsMessage?: string; namespaces?: {items:string[];cursor:string;status:"loading"|"ready"|"error";message:string}; configBusy?: boolean; metrics?: MetricsPanelState; scaleNotice?: string; scale?: ScalePanelState; logs?: LogPanelState; kind: ResourceKind; resources: ResourceSummary[]; detail?: ConfigMapDetail; detailName?: string; detailStatus: 'idle' | 'loading' | 'ready' | 'error'; detailMessage: string; profile?: KubeProfile; namespace: string; pods: PodSummary[]; hasMore: boolean; status: 'idle' | 'loading' | 'ready' | 'error'; message: string };
+export type KubeState = { editor?:EditorState; updatedAt?: number; listMetrics?: Record<string,PodMetrics>; listMetricsMessage?: string; namespaces?: {items:string[];cursor:string;status:"loading"|"ready"|"error";message:string}; configBusy?: boolean; metrics?: MetricsPanelState; scaleNotice?: string; scale?: ScalePanelState; logs?: LogPanelState; kind: ResourceKind; resources: ResourceSummary[]; detail?: ConfigMapDetail; detailName?: string; detailStatus: 'idle' | 'loading' | 'ready' | 'error'; detailMessage: string; profile?: KubeProfile; namespace: string; pods: PodSummary[]; hasMore: boolean; status: 'idle' | 'loading' | 'ready' | 'error'; message: string };
 
 const messages: Record<string, string> = {
+ invalid_yaml: 'YAML 格式無效：僅接受單一資源，不支援重複欄位或 YAML 別名。',
+ document_identity: '不可修改資源類型、名稱、namespace、UID 或 resourceVersion。',
+ document_too_large: '資源超過 512 KB，無法在手機編輯。',
+ invalid_image: '請輸入有效的容器 image，不可包含空白。',
+ document_unknown: '無法確認變更是否生效，請重新查詢；不會自動重送。',
+
  namespaces_forbidden: "沒有列出 namespace 的權限；仍可查詢 kubeconfig 指定的 namespace。",
  aws_profile_invalid: "此 AWS profile 無法用於目前叢集。",
   unsupported_eks_exec: '僅支援標準 aws eks get-token；請提供 Region，不接受自訂端點或其他 exec 指令。',
@@ -70,7 +82,7 @@ const messages: Record<string, string> = {
   certificate_not_yet_valid: '用戶端憑證尚未生效，請確認憑證日期與手機時間。',
   invalid_namespace: 'namespace 名稱無效。',
   unauthorized: '叢集拒絕登入，請確認驗證設定。',
-  forbidden: '此帳號沒有查看此資源的權限。',
+  forbidden: '此帳號沒有執行此資源操作的權限。',
   connection_failed: '無法連線，請確認網路、API 位址與 TLS 憑證。',
   api_failed: '叢集回應無效或暫時無法提供資源。',
   not_found: '資源不存在或 API 不支援，請重新查詢。',
@@ -90,7 +102,7 @@ export function kubeMessage(error: unknown) {
   return code ? messages[code] : '操作失敗，請檢查設定後重試。';
 }
 const emptyDetail = { detail: undefined, detailName: undefined, detailStatus: 'idle' as const, detailMessage: '' };
-const emptyResults = { listMetrics: undefined, listMetricsMessage: undefined, updatedAt: undefined, metrics: undefined, scaleNotice: undefined, scale: undefined, logs: undefined, pods: [], resources: [], hasMore: false, ...emptyDetail };
+const emptyResults = { editor: undefined, listMetrics: undefined, listMetricsMessage: undefined, updatedAt: undefined, metrics: undefined, scaleNotice: undefined, scale: undefined, logs: undefined, pods: [], resources: [], hasMore: false, ...emptyDetail };
 export class KubernetesWorkspace {
   private state: KubeState = { kind: 'pods', namespace: '', ...emptyResults, status: 'idle', message: '' };
   private listeners = new Set<() => void>();
@@ -101,6 +113,8 @@ export class KubernetesWorkspace {
   private importPending = false;
   private scaleEpoch = 0;
   private scalePending = false;
+  private documentPending = false;
+  private editorEpoch = 0;
   private client: KubeClient; private storage: KubeStorage;
   constructor(client: KubeClient, storage: KubeStorage) { this.client = client; this.storage = storage; }
   getSnapshot = () => this.state;
@@ -113,7 +127,7 @@ export class KubernetesWorkspace {
     return region ? this.client.listAWSProfiles(region) : [];
   }
   async refreshNamespaces(more = false) {
-    if (this.importPending || !this.state.profile || (more && !this.state.namespaces?.cursor)) return;
+    if (this.documentPending || this.importPending || !this.state.profile || (more && !this.state.namespaces?.cursor)) return;
     const previous = more ? this.state.namespaces : undefined;
     const id = ++this.namespaceEpoch;
     this.update({namespaces:{items:previous?.items ?? [],cursor:previous?.cursor ?? "",status:"loading",message:""}});
@@ -127,11 +141,11 @@ export class KubernetesWorkspace {
     } catch(error) { if(id === this.namespaceEpoch) this.update({namespaces:{items:previous?.items ?? [],cursor:previous?.cursor ?? "",status:"error",message:kubeMessage(error)}}); }
   }
   private invalidateReads() {
-    ++this.detailEpoch; ++this.logEpoch; ++this.scaleEpoch; ++this.metricsEpoch;
+    ++this.editorEpoch; ++this.detailEpoch; ++this.logEpoch; ++this.scaleEpoch; ++this.metricsEpoch;
     return ++this.epoch;
   }
   async load() {
-    if (this.scalePending || this.importPending) return;
+    if (this.documentPending || this.scalePending || this.importPending) return;
     this.resetNamespaces();
     const id = this.invalidateReads();
     this.update({ status: 'loading', message: '', ...emptyResults });
@@ -144,7 +158,7 @@ export class KubernetesWorkspace {
     } catch (error) { if (id === this.epoch) this.update({ status: 'error', message: kubeMessage(error) }); }
   }
   async import(raw: string): Promise<boolean> {
-    if (this.importPending || this.scalePending) return false;
+    if (this.documentPending || this.importPending || this.scalePending) return false;
     this.importPending = true;
     this.resetNamespaces();
     const id = this.invalidateReads();
@@ -161,11 +175,11 @@ export class KubernetesWorkspace {
     finally { this.importPending = false; this.update({ configBusy: false }); }
   }
   async selectContext(name: string): Promise<boolean> {
-    if (this.importPending || this.scalePending || this.state.profile?.context === name || !this.state.profile?.contexts?.some(item => item.context === name)) return false;
+    if (this.documentPending || this.importPending || this.scalePending || this.state.profile?.context === name || !this.state.profile?.contexts?.some(item => item.context === name)) return false;
     return this.changeSelection(raw => this.client.selectContext(raw, name));
   }
   async selectAWSProfile(name: string): Promise<boolean> {
-    if (this.importPending || this.scalePending || !this.state.profile?.eks) return false;
+    if (this.documentPending || this.importPending || this.scalePending || !this.state.profile?.eks) return false;
     return this.changeSelection(async raw => {
       if (name) {
         const profiles = await this.listAWSProfiles();
@@ -197,18 +211,18 @@ export class KubernetesWorkspace {
     } finally { this.importPending = false; this.update({ configBusy: false }); }
   }
   setNamespace(namespace: string) {
-    if (this.importPending || this.scalePending) return;
+    if (this.documentPending || this.importPending || this.scalePending) return;
     this.invalidateReads();
     this.update({ namespace, ...emptyResults, status: 'idle', message: '' });
   }
   setKind(kind: ResourceKind) {
-    if (this.importPending || this.scalePending || kind === this.state.kind) return;
+    if (this.documentPending || this.importPending || this.scalePending || kind === this.state.kind) return;
     this.invalidateReads();
     this.update({ kind, ...emptyResults, status: 'idle', message: '' });
   }
   closeMetrics() { ++this.metricsEpoch; this.update({ metrics: undefined }); }
   async openMetrics(pod: string) {
-    if (this.importPending || this.scalePending || this.state.kind !== 'pods' || this.state.status !== 'ready' || !this.state.pods.some(item => item.name === pod)) return;
+    if (this.documentPending || this.importPending || this.scalePending || this.state.kind !== 'pods' || this.state.status !== 'ready' || !this.state.pods.some(item => item.name === pod)) return;
     const id = ++this.metricsEpoch;
     const namespace = this.state.namespace.trim();
     this.update({ metrics: { pod, status: 'loading', message: '' } });
@@ -226,7 +240,7 @@ export class KubernetesWorkspace {
   }
   async openScale(name: string) {
     const { kind, profile, namespace } = this.state;
-    if (this.importPending || this.scalePending || !profile || (kind !== 'deployments' && kind !== 'statefulsets') || (this.state.scale?.name !== name && (this.state.status !== 'ready' || !this.state.resources.some(item => item.name === name)))) return;
+    if (this.documentPending || this.importPending || this.scalePending || !profile || (kind !== 'deployments' && kind !== 'statefulsets') || (this.state.scale?.name !== name && (this.state.status !== 'ready' || !this.state.resources.some(item => item.name === name)))) return;
     const id = ++this.scaleEpoch;
     const panel: ScalePanelState = { name, kind, namespace: namespace.trim(), cluster: profile.cluster, context: profile.context, input: '', message: '', status: 'loading' };
     this.update({ scale: panel });
@@ -259,7 +273,7 @@ export class KubernetesWorkspace {
   }
   async submitScale() {
     const panel = this.state.scale;
-    if (panel?.status !== 'confirming' || !panel.value || this.scalePending || this.importPending) return;
+    if (this.documentPending || panel?.status !== 'confirming' || !panel.value || this.scalePending || this.importPending) return;
     const id = this.scaleEpoch;
     this.scalePending = true;
     this.update({ scale: { ...panel, status: 'submitting' } });
@@ -288,9 +302,79 @@ export class KubernetesWorkspace {
       }
     }
   }
+  closeEditor() {
+    ++this.editorEpoch;
+    this.update({ editor: undefined });
+  }
+  async openEditor(name: string, mode: 'yaml' | 'image' = 'yaml') {
+    const {kind, namespace, profile} = this.state;
+    if (this.importPending || this.scalePending || this.documentPending || !profile || (mode === 'image' && kind === 'configmaps')) return;
+    if (this.state.status !== 'ready' || ![...this.state.pods, ...this.state.resources].some(item => item.name === name)) return;
+    this.closeDetail();
+    const id = ++this.editorEpoch;
+    const panel: EditorState = {name, kind, namespace: namespace.trim(), cluster: profile.cluster, mode, status: 'loading', input: '', message: ''};
+    this.update({editor:panel});
+    try {
+      const raw = await this.storage.load();
+      if (id !== this.editorEpoch) return;
+      if (!raw) throw new Error('config_invalid');
+      const value = await this.client.getDocument(raw,panel.namespace,kind,name);
+      if (id === this.editorEpoch) this.update({editor:{...panel,value,input:value.yaml,status:'viewing'}});
+    } catch(error) { if (id === this.editorEpoch) this.update({editor:{...panel,status:'error',message:kubeMessage(error)}}); }
+  }
+  editDocument() {
+    const p=this.state.editor;
+    if(p?.value && p.status==='viewing') this.update({editor:{...p,status:'editing'}});
+  }
+  setDocumentInput(input:string) {
+    const p=this.state.editor;
+    if(p?.status==='editing') this.update({editor:{...p,input,message:''}});
+  }
+  selectImage(container: ImageField) {
+    const p=this.state.editor;
+    if(p?.status==='viewing' && p.value?.containers.some(c=>c.name===container.name && c.group===container.group)) this.update({editor:{...p,container,input:container.image,status:'editing'}});
+  }
+  reviewDocument() {
+    const p=this.state.editor;
+    if(p?.status!=='editing' || !p.value) return;
+    const input=p.mode==='image'?p.input.trim():p.input;
+    if(!input || (p.mode==='image' && /\s/.test(input))) {this.update({editor:{...p,message:p.mode==='yaml'?messages.invalid_yaml:messages.invalid_image}});return;}
+    if(input===(p.mode==='yaml'?p.value.yaml:p.container?.image)) {this.update({editor:{...p,message:'內容沒有變更。'}});return;}
+    this.update({editor:{...p,input,status:'confirming',message:''}});
+  }
+  returnToEditor() {
+    const p=this.state.editor;
+    if(p?.status==='confirming') this.update({editor:{...p,status:'editing'}});
+  }
+  async submitDocument() {
+    const p=this.state.editor;
+    if(p?.status!=='confirming' || !p.value || this.documentPending || this.scalePending || this.importPending) return;
+    const id=this.editorEpoch;
+    this.documentPending=true;
+    this.update({editor:{...p,status:'submitting'}});
+    let sent=false; let outcome='';
+    try {
+      const raw=await this.storage.load();
+      if(id!==this.editorEpoch) return;
+      if(!raw) throw new Error('config_invalid');
+      const change: DocumentChange={uid:p.value.uid,resourceVersion:p.value.resourceVersion,...(p.mode==='yaml'?{yaml:p.input}:{container:{...p.container!,image:p.input}})};
+      sent=true;
+      await this.client.updateDocument(raw,p.namespace,p.kind,p.name,change);
+      outcome='叢集已接受變更，請重新查詢資源狀態。';
+      if(id===this.editorEpoch) this.update({editor:{...p,value:undefined,input:'',container:undefined,status:'success',message:outcome}});
+    } catch(error) {
+      outcome=kubeMessage(error);
+      if(sent && outcome==='操作失敗，請檢查設定後重試。') outcome=messages.document_unknown;
+      if(id===this.editorEpoch) this.update({editor:{...p,status:'error',message:outcome}});
+    } finally {
+      this.documentPending=false;
+      if(sent) {++this.epoch; this.update({pods:[],resources:[],listMetrics:undefined,hasMore:false,status:'idle',scaleNotice:outcome});}
+    }
+  }
+
   closeDetail() { ++this.detailEpoch; this.update(emptyDetail); }
   async openConfigMap(name: string) {
-    if (this.importPending || this.state.kind !== 'configmaps' || this.state.status !== 'ready' || !this.state.resources.some(item => item.name === name)) return;
+    if (this.documentPending || this.importPending || this.state.kind !== 'configmaps' || this.state.status !== 'ready' || !this.state.resources.some(item => item.name === name)) return;
     const id = ++this.detailEpoch;
     const { namespace } = this.state;
     this.update({ ...emptyDetail, detailName: name, detailStatus: 'loading' });
@@ -304,7 +388,7 @@ export class KubernetesWorkspace {
   }
   closeLogs() { ++this.logEpoch; this.update({ logs: undefined }); }
   async openPodLogs(pod: string) {
-    if (this.importPending || this.state.kind !== 'pods' || this.state.status !== 'ready' || !this.state.pods.some(item => item.name === pod)) return;
+    if (this.documentPending || this.importPending || this.state.kind !== 'pods' || this.state.status !== 'ready' || !this.state.pods.some(item => item.name === pod)) return;
     const id = ++this.logEpoch;
     const namespace = this.state.namespace.trim();
     this.update({ logs: { pod, containers: [], container: '', previous: false, text: '', truncated: false, optionsStatus: 'loading', status: 'idle', message: '' } });
@@ -358,7 +442,7 @@ export class KubernetesWorkspace {
     } catch { if(id===this.epoch) this.update({listMetrics:undefined,listMetricsMessage:'用量暫無資料'}); }
   }
   async refresh() {
-    if (this.importPending || this.scalePending) return;
+    if (this.documentPending || this.importPending || this.scalePending) return;
     const id = this.invalidateReads();
     const { profile, namespace, kind } = this.state;
     if (!profile) { this.update({ status: 'error', message: '請先在設定匯入 kubeconfig。' }); return; }

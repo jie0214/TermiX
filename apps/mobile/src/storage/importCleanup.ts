@@ -12,3 +12,7 @@ export async function clearImportCopies(file: File, name: string): Promise<void>
     }
   }
 }
+
+export async function clearStaleImportCopies(): Promise<void> {
+  await requireNativeModule<{ clearSensitiveImportCopies(): Promise<void> }>('TermixSSH').clearSensitiveImportCopies();
+}

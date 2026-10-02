@@ -1,9 +1,21 @@
 import * as DocumentPicker from 'expo-document-picker';
 import { File, Paths } from 'expo-file-system';
-import { clearImportCopies } from './importCleanup';
+import { clearImportCopies, clearStaleImportCopies } from './importCleanup';
 
 // 即使選錯含機密的檔案，也清除 App 快取與 iOS Inbox，不碰來源檔。
+let importing = false;
 export async function pickTextImport(maxBytes: number): Promise<string | null> {
+  if (importing) throw new Error('import_busy');
+  importing = true;
+  try {
+    await clearStaleImportCopies();
+    return await readImport(maxBytes);
+  } finally {
+    try { await clearStaleImportCopies(); }
+    finally { importing = false; }
+  }
+}
+async function readImport(maxBytes: number): Promise<string | null> {
   const result = await DocumentPicker.getDocumentAsync({ type: '*/*', multiple: false, copyToCacheDirectory: true });
   if (result.canceled) return null;
   const asset = result.assets[0];

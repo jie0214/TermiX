@@ -4,7 +4,7 @@ import { terminalStore } from './modules/terminal/TerminalStore';
 import { TerminalAPI } from './modules/terminal/TerminalAPI';
 import { cleanupFrontendSession, markSessionUserClosed, consumeUserClosed } from './modules/terminal/TerminalLifecycle';
 import { compactStoredSessionLogs } from './modules/terminal/SessionLogStore';
-import { isReconnectableSession, beginReconnect } from './modules/terminal/TerminalReconnect';
+import { isReconnectableSession, beginReconnect, bufferReconnectOutput, handleReconnectClosed, abortReconnect } from './modules/terminal/TerminalReconnect';
 import { executeFunctionBox } from './modules/controlpanel/ControlPanelRuntime';
 import { showToast } from './components/feedback/toast';
 import { confirmDialog } from './components/feedback/confirmDialog';
@@ -304,6 +304,7 @@ export class TermixApp extends HTMLElement {
       const state = terminalStore.getState();
       const sessionExists = !!state.sessions[data.key];
       if (!sessionExists) {
+        bufferReconnectOutput(data.key, data.chunk);
         return;
       }
       // 環形緩衝：限制前端鏡像的 outputHtml 上限，避免長時間運行 / 大量輸出造成記憶體無限成長 OOM。
@@ -329,11 +330,14 @@ export class TermixApp extends HTMLElement {
 
       // A. 使用者主動關閉 → 維持原本移除流程完全不變。
       if (wasUserClosed) {
+        abortReconnect(key);
         this.removeSessionFromWorkspaces(key);
         cleanupFrontendSession(key);
         this.routeAfterSessionRemoval();
         return;
       }
+
+      if (handleReconnectClosed(key)) return;
 
       // B. 異常斷線：若為可重連的遠端 SSH，就地在該 pane 啟動重連流程（不移除 pane）。
       const session = terminalStore.getState().sessions[key];

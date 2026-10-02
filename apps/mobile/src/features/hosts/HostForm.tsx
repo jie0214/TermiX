@@ -1,6 +1,6 @@
 import { useLanguage } from '../language/LanguageProvider';
-import { useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { AppState, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useTheme, useThemedStyles, type ThemeColors } from '../../components/theme';
 import { Button } from '../../components/Button';
@@ -33,6 +33,13 @@ export function HostForm({ onSaved, onCancel, existing, initialFolder = [] }: { 
   const [credentials, setCredentials] = useState<Credentials>({ type: 'password', password: '' });
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', status => {
+      if (status === 'background') setCredentials(current => current.type === 'password'
+        ? { type: 'password', password: '' } : { type: 'privateKey', privateKey: '', passphrase: '' });
+    });
+    return () => subscription.remove();
+  }, []);
   const submitting = useRef(false);
   const inputs = useRef<Partial<Record<keyof HostDraft, TextInput | null>>>({});
   const save = async () => {

@@ -6,7 +6,7 @@ import { HostList } from '../src/features/hosts/HostList';
 import { memoryVault, testPrivateKey } from './fixtures';
 import * as DocumentPicker from 'expo-document-picker';
 
-jest.mock('expo', () => ({ requireNativeModule: () => ({ clearSensitiveImportCopy: async () => {} }) }));
+jest.mock('expo', () => ({ requireNativeModule: () => ({ clearSensitiveImportCopies: async () => {}, clearSensitiveImportCopy: async () => {} }) }));
 jest.mock('expo-document-picker', () => ({ getDocumentAsync: jest.fn() }));
 jest.mock('expo-file-system', () => ({
   Paths: { cache: { uri: 'file:///cache/' } },

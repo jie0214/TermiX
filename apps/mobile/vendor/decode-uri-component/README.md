@@ -1,0 +1,1 @@
+上游 decode-uri-component 0.5.0 的 CommonJS 相容副本，保留 MIT 授權。僅將 default export 改為 module.exports，供 Expo Router 使用的 query-string 7 呼叫。上游來源：https://github.com/SamVerschueren/decode-uri-component/releases/tag/v0.5.0 。更新時須保留畸形 URL 回歸測試。

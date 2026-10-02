@@ -1,3 +1,4 @@
+import { patchKubernetesDOM } from './KubernetesDOM.js';
 import { kubernetesSessionStore } from './KubernetesSessionStore.js';
 import { KUBERNETES_CREATE_RESOURCE_GROUPS } from './KubernetesResourceTemplates.js';
 import { KubernetesAPI } from './KubernetesAPI.js';
@@ -312,6 +313,7 @@ function renderKubernetesIcon(name, size = 14) {
     close: '<path d="m5 5 14 14"></path><path d="m19 5-14 14"></path>',
     edit: '<path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"></path>',
     copy: '<rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path>',
+    terminal: '<path d="m4 5 6 7-6 7"></path><path d="M13 19h7"></path>',
     check: '<path d="M20 6 9 17l-5-5"></path>',
     alert: '<path d="M12 3 2.8 20h18.4L12 3z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path>',
     box: '<path d="M12 3 3 7.5v9L12 21l9-4.5v-9z"></path><path d="M3 7.5 12 12l9-4.5"></path><path d="M12 12v9"></path>'
@@ -324,6 +326,10 @@ export class KubernetesSessionPage extends HTMLElement {
   constructor() {
     super();
     this.unsubscribe = null;
+    this.liveStreamId = '';
+    this.liveConnectedAt = '';
+    this.liveAttemptAt = 0;
+    this.listenerController = new AbortController();
     this.detailReturnTarget = null;
     this.returnToCreateButton = false;
     this.createYAMLDraft = null;
@@ -636,13 +642,28 @@ export class KubernetesSessionPage extends HTMLElement {
       this.unsubscribe();
       this.unsubscribe = null;
     }
+    this.liveEventOff = onWailsEvent('kubernetes-live-update', batch => {
+      const state = kubernetesSessionStore.getState();
+      if (!this.isConnected || batch?.streamId !== this.liveStreamId || batch.connectedAt !== state.connectedCluster?.connectedAt) return;
+      this.reconcileLiveSelection(batch.changes || [], state.dashboard);
+      state.applyLiveBatch(batch);
+      this.scheduleLiveDetail(batch.changes || []);
+    });
     this.unsubscribe = kubernetesSessionStore.subscribe((nextState) => {
+      this.ensureLiveUpdates(nextState);
+      if (this.selectedEvent && nextState.dashboard?.events) {
+        const selected = this.selectedEvent;
+        const latest = nextState.dashboard.events.find(event => selected.uid
+          ? event.uid === selected.uid
+          : event.namespace === selected.namespace && event.object === selected.object && event.reason === selected.reason);
+        if (latest) this.selectedEvent = latest;
+      }
       const previousDrawer = this.querySelector('.kubernetes-detail-drawer, .kubernetes-create-drawer, .kubernetes-event-drawer');
       const hadDrawer = Boolean(previousDrawer);
       const previousFocus = previousDrawer?.contains(document.activeElement) ? document.activeElement : null;
       const previousFocusID = previousFocus?.id || '';
       const previousFocusWasClose = previousFocus?.classList.contains('kubernetes-drawer-close') === true;
-      // 保存捲動位置：render() 會重建 innerHTML，否則各捲動容器會被重置為 0（閒置時輪詢就回彈）。
+      // 保存捲動與可見列錨點，讓新增、刪除上方資源不推移閱讀位置。
       // 統一由 captureScrollState/restoreScrollState 處理所有容器（見該兩方法）。
       const scrollState = this.captureScrollState();
       this.render();
@@ -678,6 +699,12 @@ export class KubernetesSessionPage extends HTMLElement {
 
   disconnectedCallback() {
     this.unsubscribe?.();
+    this.liveEventOff?.();
+    this.stopLiveUpdates();
+    this.listenerController.abort();
+    clearTimeout(this.liveDetailTimer);
+    this.liveDetailTimer = null;
+    this.liveDetailDirty = false;
     this.removeEventListener('click', this.handlePageClick, true);
     this.removeEventListener('keydown', this.handlePageKeydown);
     clearInterval(this.dashboardTimer);
@@ -691,21 +718,105 @@ export class KubernetesSessionPage extends HTMLElement {
     this.runtimeEventOffs = [];
   }
 
+  stopLiveUpdates() {
+    const streamId = this.liveStreamId;
+    this.liveStopping = true;
+    this.liveStreamId = '';
+    this.liveConnectedAt = '';
+    this.liveAttemptAt = 0;
+    if (streamId) {
+      kubernetesSessionStore.getState().setLiveStream('');
+      KubernetesAPI.stopLiveUpdates(streamId).catch(() => {});
+    }
+    this.liveStopping = false;
+  }
+
+  ensureLiveUpdates(state = kubernetesSessionStore.getState()) {
+    if (this.liveStopping) return;
+    const connectedAt = state.connectedCluster?.connectedAt || '';
+    if (this.liveStreamId && (connectedAt !== this.liveConnectedAt || state.dashboardLoading)) this.stopLiveUpdates();
+    if (!this.isConnected || !connectedAt || !state.dashboard || state.dashboard.partial || state.dashboardLoading || this.liveStreamId) return;
+    if (this.liveAttemptAt && Date.now() - this.liveAttemptAt < 15000 && this.liveAttemptConnection === connectedAt) return;
+    this.liveAttemptAt = Date.now();
+    this.liveAttemptConnection = connectedAt;
+    const streamId = crypto.randomUUID();
+    this.liveStreamId = streamId;
+    this.liveConnectedAt = connectedAt;
+    state.setLiveStream(streamId);
+    // 序列化啟動：舊 Start 回應較慢時，先取消舊訂閱，再啟動新的訂閱。
+    this.liveStartQueue = (this.liveStartQueue || Promise.resolve()).catch(() => {}).then(async () => {
+      if (this.liveStreamId !== streamId) return;
+      await KubernetesAPI.startLiveUpdates(connectedAt, streamId);
+      if (this.liveStreamId !== streamId) await KubernetesAPI.stopLiveUpdates(streamId);
+    }).catch(() => {
+      if (this.liveStreamId !== streamId) return;
+      const failedAt = Date.now();
+      this.stopLiveUpdates();
+      this.liveAttemptAt = failedAt;
+      kubernetesSessionStore.setState({ liveErrors: { connection: t('k8s.live.reconnecting') } });
+    });
+  }
+
+  // 被刪除或同名重建的資源不沿用舊勾選，避免下一次批量操作作用於替代物件。
+  reconcileLiveSelection(changes, dashboard) {
+    for (const change of changes) {
+      const section = change.section === 'namespaceDetails' ? 'namespaces' : change.section === 'statefulSets' ? 'statefulsets' : change.section;
+      const kind = RESOURCE_META[section]?.kind;
+      if (!kind || !['reset', 'ADDED', 'MODIFIED', 'DELETED'].includes(change.type)) continue;
+      for (const [key, selected] of this.selectedRows) {
+        if (selected.kind !== kind) continue;
+        const matches = item => item.name === selected.name && (item.namespace || '') === (selected.namespace || '');
+        const previous = (dashboard?.[change.section] || []).find(matches);
+        const next = change.type === 'reset' ? (change.items || []).find(matches) : change.item;
+        if (change.type !== 'reset' && (!next || !matches(next))) continue;
+        if (!next || change.type === 'DELETED' || (previous?.uid && next.uid && previous.uid !== next.uid)) this.selectedRows.delete(key);
+      }
+    }
+  }
+
+  scheduleLiveDetail(changes) {
+    const state = kubernetesSessionStore.getState();
+    const selected = state.selectedResource;
+    if (!state.detailOpen || !selected) return;
+    const selectedSection = Object.entries(RESOURCE_META).find(([, meta]) => meta.kind === String(selected.kind).toLowerCase())?.[0];
+    const section = selectedSection === 'statefulsets' ? 'statefulSets' : selectedSection;
+    const affected = changes.some(change => change.type !== 'status' && (
+      change.section === 'events' || (change.section === (section === 'namespaces' ? 'namespaceDetails' : section) && (
+        change.type === 'reset' || (change.item?.name === selected.name && (change.item.namespace || '') === (selected.namespace || ''))
+      ))
+    ));
+    if (!affected) return;
+    this.liveDetailDirty = true;
+    if (this.liveDetailTimer || this.liveDetailBusy) return;
+    this.liveDetailTimer = setTimeout(async () => {
+      this.liveDetailTimer = null;
+      this.liveDetailDirty = false;
+      this.liveDetailBusy = true;
+      try { await kubernetesSessionStore.getState().refreshResourceDetail(); }
+      finally {
+        this.liveDetailBusy = false;
+        if (this.liveDetailDirty && this.isConnected) this.scheduleLiveDetail([{ section: 'events', type: 'reset' }]);
+      }
+    }, 400);
+  }
+
   startLiveUpdates() {
     clearInterval(this.dashboardTimer);
     clearInterval(this.logsTimer);
+    this.ensureLiveUpdates();
+    // Watch 失敗時重試訂閱並以低頻輪詢降級；搜尋與 drawer 不再暫停資料同步。
     this.dashboardTimer = setInterval(() => {
       const state = kubernetesSessionStore.getState();
-      if (!state.connectedCluster || state.dashboardLoading || state.detailOpen || state.createOpen || state.podActionView) return;
-      if (this.isNamespaceSelectActive()) return;
-      // 使用者正在清單搜尋框輸入時略過本次輪詢重繪，避免每 3 秒重建 DOM 打斷輸入 / 移動游標。
-      const activeId = document.activeElement?.id;
-      if (activeId === 'kubernetesPodSearch' || activeId === 'kubernetesSectionSearch') return;
-      state.refreshDashboard().catch(() => {});
-    }, 3000);
+      if (!state.connectedCluster || state.dashboardLoading) return;
+      if (!this.liveStreamId) {
+        this.liveAttemptAt = 0;
+        state.refreshDashboard().catch(() => {});
+      }
+    }, 15000);
     this.logsTimer = setInterval(() => {
       const state = kubernetesSessionStore.getState();
-      if (state.podActionView?.type !== 'logs' || state.logsLoading || this.logPaused) return;
+      const showingLogs = state.podActionView?.type === 'logs' || (state.detailOpen && state.detailTab === 'logs');
+      if (!showingLogs || state.logsLoading || this.logPaused) return;
       state.loadPodLogs(state.logOptions || {}).catch(() => {});
     }, 3000);
   }
@@ -1353,22 +1464,22 @@ export class KubernetesSessionPage extends HTMLElement {
 
   // 於每次 render 後（setupListeners 內）呼叫：在資源列表（.kubernetes-resource-table，
   // Events 表為 .kubernetes-eventlist-table 故不受影響）表頭最左注入全選框、每列最左注入列勾選框，
-  // 並綁定事件。因每次 render 皆重建 innerHTML，重繪後再注入不會重複；勾選態依 this.selectedRows 還原。
+  // 並重綁事件。既有勾選欄保留節點，勾選態依 this.selectedRows 還原。
   enhanceSelectionColumns() {
     this.querySelectorAll('.kubernetes-resource-table').forEach(table => {
       const headRow = table.querySelector('thead > tr');
       const bodyRows = [...table.querySelectorAll('tbody > tr.kubernetes-resource-row')];
-      if (!headRow || !bodyRows.length || headRow.querySelector('.kubernetes-select-th')) return;
+      if (!headRow) return;
 
-      const th = document.createElement('th');
+      const th = headRow.querySelector('.kubernetes-select-th') || document.createElement('th');
       th.className = 'kubernetes-select-th';
       th.setAttribute('scope', 'col');
-      const selectAll = document.createElement('input');
+      const selectAll = th.querySelector('input') || document.createElement('input');
       selectAll.type = 'checkbox';
       selectAll.className = 'kubernetes-select-all no-drag';
       selectAll.setAttribute('aria-label', t('k8s.select.selectAllAria'));
-      th.appendChild(selectAll);
-      headRow.insertBefore(th, headRow.firstChild);
+      if (!selectAll.parentNode) th.appendChild(selectAll);
+      if (!th.parentNode) headRow.insertBefore(th, headRow.firstChild);
 
       const metas = [];
       bodyRows.forEach(row => {
@@ -1379,15 +1490,15 @@ export class KubernetesSessionPage extends HTMLElement {
         if (!kind || !name) return;
         const key = this.selectionRowKey(kind, namespace, name);
         const meta = { kind, name, namespace, apiVersion };
-        const td = document.createElement('td');
+        const td = row.querySelector('.kubernetes-select-td') || document.createElement('td');
         td.className = 'kubernetes-select-td';
-        const cb = document.createElement('input');
+        const cb = td.querySelector('input') || document.createElement('input');
         cb.type = 'checkbox';
         cb.className = 'kubernetes-select-row no-drag';
         cb.checked = this.selectedRows.has(key);
         cb.setAttribute('aria-label', t('k8s.select.selectRowAria', { name }));
-        td.appendChild(cb);
-        row.insertBefore(td, row.firstChild);
+        if (!cb.parentNode) td.appendChild(cb);
+        if (!td.parentNode) row.insertBefore(td, row.firstChild);
         row.classList.toggle('kubernetes-row-selected', cb.checked);
         metas.push({ key, meta, cb, row });
 
@@ -1395,8 +1506,8 @@ export class KubernetesSessionPage extends HTMLElement {
         td.addEventListener('click', event => {
           event.stopPropagation();
           if (event.target !== cb) cb.click();
-        });
-        cb.addEventListener('click', event => event.stopPropagation());
+        }, { signal: this.listenerController.signal });
+        cb.addEventListener('click', event => event.stopPropagation(), { signal: this.listenerController.signal });
         // 增量更新（不整頁重繪）：更新選取集合、該列高亮、全選態、底部選取列（滑出/滑入動畫）。
         cb.addEventListener('change', event => {
           event.stopPropagation();
@@ -1405,7 +1516,7 @@ export class KubernetesSessionPage extends HTMLElement {
           row.classList.toggle('kubernetes-row-selected', cb.checked);
           this.updateSelectAllState(table);
           this.updateSelectionBar();
-        });
+        }, { signal: this.listenerController.signal });
       });
 
       const selectedCount = metas.filter(m => this.selectedRows.has(m.key)).length;
@@ -1420,7 +1531,7 @@ export class KubernetesSessionPage extends HTMLElement {
         });
         selectAll.indeterminate = false;
         this.updateSelectionBar();
-      });
+      }, { signal: this.listenerController.signal });
     });
   }
 
@@ -1612,7 +1723,7 @@ export class KubernetesSessionPage extends HTMLElement {
         this.namespaceDraft = [...set];
         const allCb = this.querySelector('[data-namespace-all]');
         if (allCb) allCb.checked = this.namespaceDraft.length === 0;
-      });
+      }, { signal: this.listenerController.signal });
     });
   }
 
@@ -1655,7 +1766,7 @@ export class KubernetesSessionPage extends HTMLElement {
       : '';
     return `<section class="kubernetes-pods-view">
       ${filterChip}
-      <div class="kubernetes-pods-toolbar"><div class="kubernetes-pod-filters">${filters.map(([id, label]) => `<button type="button" data-pod-filter="${id}" class="no-drag ${this.podFilter === id ? 'active' : ''} ui-button ui-button--choice">${label} ${counts[id]}</button>`).join('')}</div><div class="kubernetes-pod-tools"><input id="kubernetesPodSearch" class="no-drag" value="${escapeHtml(this.podSearch)}" placeholder="${t('k8s.pods.searchPlaceholder')}"><span class="kubernetes-watching">${t('k8s.pods.watching')}</span>${this.renderRefreshButton('refreshKubernetesPods')}</div></div>
+      <div class="kubernetes-pods-toolbar"><div class="kubernetes-pod-filters">${filters.map(([id, label]) => `<button type="button" data-pod-filter="${id}" class="no-drag ${this.podFilter === id ? 'active' : ''} ui-button ui-button--choice">${label} ${counts[id]}</button>`).join('')}</div><div class="kubernetes-pod-tools"><input id="kubernetesPodSearch" class="no-drag" value="${escapeHtml(this.podSearch)}" placeholder="${t('k8s.pods.searchPlaceholder')}">${this.renderRefreshButton('refreshKubernetesPods')}</div></div>
       <div class="kubernetes-resource-table-wrap kubernetes-pods-table-wrap"><table class="kubernetes-resource-table kubernetes-pods-table"><thead><tr>${this.sortableTh('pods', 'name', 'Name')}${this.sortableTh('pods', 'namespace', 'Namespace')}<th scope="col">Ready</th>${this.sortableTh('pods', 'status', 'Status')}${this.sortableTh('pods', 'restarts', 'Restarts', { type: 'number' })}<th scope="col">Node</th>${this.sortableTh('pods', 'creationTimestamp', 'Age', { type: 'time' })}${this.sortableTh('pods', 'cpuUsageMilli', 'CPU', { type: 'number' })}${this.sortableTh('pods', 'memoryUsageBytes', 'Memory', { type: 'number' })}<th scope="col">Actions</th></tr></thead><tbody>
       ${visible.map(pod => {
         const container = pod.containers?.[0]?.name || '';
@@ -2285,7 +2396,7 @@ export class KubernetesSessionPage extends HTMLElement {
     this.rerenderPreservingScroll();
   }
 
-  // 擷取所有可捲動容器目前位置（render() 重建 innerHTML 前呼叫）。
+  // 擷取可捲動容器位置及可見列錨點（局部更新前呼叫）。
   // 涵蓋：主內容（垂直＋水平，pod 等寬表格靠它水平捲動）、側欄（垂直）、
   // Events 列表（水平）、Detail Drawer 內文（垂直＋水平）。
   captureScrollState() {
@@ -2295,6 +2406,11 @@ export class KubernetesSessionPage extends HTMLElement {
       const pos = {};
       if (axes.includes('y')) pos.top = el.scrollTop;
       if (axes.includes('x')) pos.left = el.scrollLeft;
+      if (axes.includes('y') && el.getBoundingClientRect) {
+        const top = el.getBoundingClientRect().top;
+        const row = [...el.querySelectorAll('tr[data-resource-name], tr[data-event-row]')].find(item => item.getBoundingClientRect().bottom > top);
+        if (row) { pos.anchor = row; pos.offset = row.getBoundingClientRect().top - top; }
+      }
       return pos;
     };
     return {
@@ -2318,8 +2434,11 @@ export class KubernetesSessionPage extends HTMLElement {
         if (!pos) continue;
         const el = this.querySelector(sel);
         if (!el) continue;
-        if (pos.top !== undefined) el.scrollTop = pos.top;
+        if (pos.top !== undefined) el.scrollTop = sel === '#kubernetesLogOutput' && this.logStickBottom ? el.scrollHeight : pos.top;
         if (pos.left !== undefined) el.scrollLeft = pos.left;
+        if (pos.anchor?.isConnected && el.contains(pos.anchor)) {
+          el.scrollTop += pos.anchor.getBoundingClientRect().top - el.getBoundingClientRect().top - pos.offset;
+        }
       }
     });
   }
@@ -2351,6 +2470,13 @@ export class KubernetesSessionPage extends HTMLElement {
       const desired = Number((found && found.desiredReplicas) ?? detail?.desiredReplicas ?? 0);
       scaleBtnHtml = this.scaleButton(kind, selected.apiVersion || detail?.apiVersion || 'apps/v1', { name: selected.name, namespace, desiredReplicas: desired });
     }
+    // 沿用列表的 Shell 入口與第一個容器；明細尚未載入或 Pod 未執行時停用。
+    const shellContainer = isPod ? detail?.containers?.[0]?.name || '' : '';
+    const shellEnabled = Boolean(shellContainer && String(detail?.status || '').toLowerCase() === 'running');
+    const shellPod = { name: title, namespace };
+    const shellBtnHtml = isPod
+      ? `<button type="button" class="no-drag kubernetes-shell-btn ui-button ui-button--secondary" data-pod-action="shell" data-pod="${encodeURIComponent(JSON.stringify(shellPod))}" data-container="${escapeHtml(shellContainer)}" aria-label="Shell" ${shellEnabled ? '' : 'disabled'}>${renderKubernetesIcon('terminal', 13)}<span>Shell</span></button>`
+      : '';
     let body = '';
     if (state.detailLoading && !detail) {
       body = `<div class="kubernetes-drawer-state"><span class="kubernetes-spinner"></span><span>${t('k8s.detail.loading')}</span></div>`;
@@ -2363,8 +2489,8 @@ export class KubernetesSessionPage extends HTMLElement {
     }
     return `
       <div class="kubernetes-detail-backdrop no-drag" data-close-detail="true"></div>
-      <aside class="kubernetes-detail-drawer ${isPod ? 'kubernetes-pod-detail-drawer' : ''} no-drag" role="dialog" aria-modal="true" aria-labelledby="kubernetesDetailTitle">
-        <header><div><h2 id="kubernetesDetailTitle">${escapeHtml(title)}</h2><p><span class="kubernetes-detail-kind">${escapeHtml(selected.kind || detail?.kind || t('k8s.resource.genericName'))}</span>${namespace ? ` ${t('k8s.detail.inNamespace', { namespace: escapeHtml(namespace) })}` : ''}</p></div><div class="kubernetes-detail-header-actions">${scaleBtnHtml}<button type="button" class="kubernetes-drawer-close no-drag ui-button ui-button--quiet ui-button--icon" aria-label="${t('k8s.detail.closeAria')}">${renderKubernetesIcon('close', 22)}</button></div></header>
+      <aside data-live-key="${escapeHtml(`${kind}/${namespace}/${title}`)}" class="kubernetes-detail-drawer ${isPod ? 'kubernetes-pod-detail-drawer' : ''} no-drag" role="dialog" aria-modal="true" aria-labelledby="kubernetesDetailTitle">
+        <header><div><h2 id="kubernetesDetailTitle">${escapeHtml(title)}</h2><p><span class="kubernetes-detail-kind">${escapeHtml(selected.kind || detail?.kind || t('k8s.resource.genericName'))}</span>${namespace ? ` ${t('k8s.detail.inNamespace', { namespace: escapeHtml(namespace) })}` : ''}</p></div><div class="kubernetes-detail-header-actions">${scaleBtnHtml}${shellBtnHtml}<button type="button" class="kubernetes-drawer-close no-drag ui-button ui-button--quiet ui-button--icon" aria-label="${t('k8s.detail.closeAria')}">${renderKubernetesIcon('close', 22)}</button></div></header>
         ${state.detailError && detail ? `<div class="kubernetes-session-error compact"><strong>${t('k8s.detail.refreshFailedSnapshot')}</strong><span>${escapeHtml(state.detailError)}</span></div>` : ''}
         ${detail ? this.renderResourceDetailTabs(state.detailTab, isPod, isService, Array.isArray(detail.containers) && detail.containers.some(c => (Array.isArray(c.env) && c.env.length) || (Array.isArray(c.envFrom) && c.envFrom.length))) : ''}
         <div class="kubernetes-detail-body"${detail ? ` id="k8s-detail-panel" role="tabpanel" aria-labelledby="k8s-detail-tab-${escapeHtml(state.detailTab || 'overview')}"` : ''}>${body}</div>
@@ -2743,7 +2869,7 @@ export class KubernetesSessionPage extends HTMLElement {
   }
 
   // 綁定 log 輸出捲動：使用者離開底部時停止自動跟隨並累計未讀新行；回到底部即清零。
-  // 於 setupListeners 末端呼叫（每次重繪後 output 皆為新元素，舊監聽隨舊元素回收）。
+  // 於 setupListeners 末端呼叫；與其他互動共用 AbortController，避免保留 DOM 時累積監聽。
   bindLogOutput() {
     const output = this.querySelector('#kubernetesLogOutput');
     if (!output) {
@@ -2760,14 +2886,14 @@ export class KubernetesSessionPage extends HTMLElement {
       this.logStickBottom = atBottom;
       if (atBottom) this.logNewLines = 0;
       this.updateLogJump();
-    });
+    }, { signal: this.listenerController.signal });
     const jump = this.querySelector('#kubernetesLogJump');
     jump?.addEventListener('click', () => {
       output.scrollTop = output.scrollHeight;
       this.logStickBottom = true;
       this.logNewLines = 0;
       this.updateLogJump();
-    });
+    }, { signal: this.listenerController.signal });
     if (this.logStickBottom) {
       output.scrollTop = output.scrollHeight;
       this.logNewLines = 0;
@@ -3068,7 +3194,7 @@ export class KubernetesSessionPage extends HTMLElement {
     const state = kubernetesSessionStore.getState();
     const cluster = state.connectedCluster;
     if (!cluster) {
-      this.innerHTML = `<div class="kubernetes-session-empty"><div class="kubernetes-empty-icon">K8s</div><h1>${t('k8s.session.notConnectedTitle')}</h1><p>${t('k8s.session.notConnectedDetail')}</p></div>`;
+      patchKubernetesDOM(this, `<div class="kubernetes-session-empty"><div class="kubernetes-empty-icon">K8s</div><h1>${t('k8s.session.notConnectedTitle')}</h1><p>${t('k8s.session.notConnectedDetail')}</p></div>`);
       return;
     }
 
@@ -3101,7 +3227,7 @@ export class KubernetesSessionPage extends HTMLElement {
       }
     }
 
-    this.innerHTML = `
+    patchKubernetesDOM(this, `
       <div class="kubernetes-session-layout no-drag">
         <aside class="kubernetes-session-nav">
           <div class="kubernetes-session-cluster"><span class="kubernetes-session-status" aria-hidden="true"></span><span class="kubernetes-visually-hidden">${t('k8s.session.connected')}</span><div class="kubernetes-session-cluster-meta"><strong>${escapeHtml(clusterName)}</strong><small title="${escapeHtml(cluster.contextName || '')}">${escapeHtml(cluster.contextName || '')}</small></div><i class="ti ti-cloud kubernetes-session-cluster-icon" aria-hidden="true"></i></div>
@@ -3116,6 +3242,7 @@ export class KubernetesSessionPage extends HTMLElement {
         <main class="kubernetes-session-content">
           ${state.podActionView ? '' : `<header class="kubernetes-session-header"><div><span>${t('k8s.session.label')}</span><h1>${escapeHtml(sectionTitle)}</h1><p>${escapeHtml(cluster.server || cluster.clusterName || cluster.contextName)}${dashboard?.serverVersion ? ` · ${escapeHtml(dashboard.serverVersion)}` : ''}</p></div><div class="kubernetes-session-actions"><button type="button" id="openKubernetesCreateResource" class="no-drag kubernetes-primary-btn ui-button ui-button--primary">${t('k8s.session.createResource')}</button></div></header>`}
           <div class="kubernetes-session-scrollbody${!state.podActionView && this.selectedRows.size ? ' has-selection-bar' : ''}">
+          ${Object.keys(state.liveErrors || {}).length ? `<div class="kubernetes-live-status" role="status" title="${escapeHtml(Object.values(state.liveErrors).join(' · '))}">${t('k8s.live.reconnecting')}</div>` : ''}
           ${state.dashboardError && dashboard ? `<div class="kubernetes-session-error compact" role="status"><strong>${dashboardErrorTitle(state.dashboardError, true)}</strong><span>${escapeHtml(state.dashboardError)}</span></div>` : ''}
           ${content}
           </div>
@@ -3124,26 +3251,28 @@ export class KubernetesSessionPage extends HTMLElement {
         ${this.renderDetailDrawer(state)}
         ${this.renderCreateDrawer(state)}
         ${this.renderEventDrawer()}
-      </div>`;
+      </div>`);
   }
 
   setupListeners() {
+    this.listenerController.abort();
+    this.listenerController = new AbortController();
     const namespaceSelect = this.querySelector('#kubernetesNamespaceSelect');
-    namespaceSelect?.addEventListener('focus', () => this.markNamespaceSelectInteracting(true));
-    namespaceSelect?.addEventListener('pointerdown', () => this.markNamespaceSelectInteracting(true));
-    namespaceSelect?.addEventListener('mousedown', () => this.markNamespaceSelectInteracting(true));
-    namespaceSelect?.addEventListener('blur', () => this.markNamespaceSelectInteracting(false));
+    namespaceSelect?.addEventListener('focus', () => this.markNamespaceSelectInteracting(true), { signal: this.listenerController.signal });
+    namespaceSelect?.addEventListener('pointerdown', () => this.markNamespaceSelectInteracting(true), { signal: this.listenerController.signal });
+    namespaceSelect?.addEventListener('mousedown', () => this.markNamespaceSelectInteracting(true), { signal: this.listenerController.signal });
+    namespaceSelect?.addEventListener('blur', () => this.markNamespaceSelectInteracting(false), { signal: this.listenerController.signal });
     namespaceSelect?.addEventListener('change', (event) => {
       this.markNamespaceSelectInteracting(false);
       kubernetesSessionStore.getState().selectNamespace(event.target.value).catch(() => {});
-    });
+    }, { signal: this.listenerController.signal });
 
     // 多選下拉：切換面板開合。
     const namespaceToggle = this.querySelector('#kubernetesNamespaceToggle');
     namespaceToggle?.addEventListener('click', (event) => {
       event.stopPropagation();
       this.setNamespaceDropdownOpen(!this.namespaceDropdownOpen);
-    });
+    }, { signal: this.listenerController.signal });
     // 多選改為「草稿模式」：勾選期間只更新本地草稿，不重載 dashboard；
     // 待關閉下拉（選擇完畢）時才一次套用（commitNamespaceDraft），避免每勾一次就重載造成卡頓。
     this.querySelector('[data-namespace-all]')?.addEventListener('change', (event) => {
@@ -3155,7 +3284,7 @@ export class KubernetesSessionPage extends HTMLElement {
         // 空選即代表 All，不允許把 All 取消成「什麼都沒選」，維持勾選。
         event.target.checked = true;
       }
-    });
+    }, { signal: this.listenerController.signal });
     this.bindNamespaceOptionListeners();
     // 搜尋框：即時過濾 namespace，只重繪選項容器（不整頁重繪），輸入框本身不被替換故焦點不失。
     this.querySelector('#kubernetesNamespaceFilter')?.addEventListener('input', (event) => {
@@ -3166,62 +3295,59 @@ export class KubernetesSessionPage extends HTMLElement {
       const selected = kubernetesSessionStore.getState().selectedNamespaces || [];
       container.innerHTML = this.renderNamespaceOptionsHtml(this._nsSpecific || [], new Set(selected), '');
       this.bindNamespaceOptionListeners();
-    });
+    }, { signal: this.listenerController.signal });
 
-    this.querySelector('#refreshKubernetesSection')?.addEventListener('click', () => this.runManualRefresh());
-    this.querySelector('#refreshKubernetesPods')?.addEventListener('click', () => this.runManualRefresh());
+    this.querySelector('#refreshKubernetesSection')?.addEventListener('click', () => this.runManualRefresh(), { signal: this.listenerController.signal });
+    this.querySelector('#refreshKubernetesPods')?.addEventListener('click', () => this.runManualRefresh(), { signal: this.listenerController.signal });
     this.querySelectorAll('[data-pod-filter]').forEach(button => button.addEventListener('click', () => {
       this.podFilter = button.dataset.podFilter;
       this.render();
       this.setupListeners();
-    }));
+    }, { signal: this.listenerController.signal }));
     // 「檢視關聯 Pods」按鈕（列表 hover 圖示 + 抽屜 CTA 共用）：阻止冒泡（避免觸發列開啟），跳轉並過濾。
     this.querySelectorAll('[data-view-pods]').forEach(button => button.addEventListener('click', event => {
       event.stopPropagation();
       this.jumpToRelatedPods(button.dataset.viewPods);
-    }));
+    }, { signal: this.listenerController.signal }));
     // 清除 label 過濾 chip：歸零 podLabelFilter 後就地重繪。
     this.querySelector('[data-clear-pod-filter]')?.addEventListener('click', () => {
       this.podLabelFilter = null;
       this.render();
       this.setupListeners();
-    });
+    }, { signal: this.listenerController.signal });
     this.querySelector('#kubernetesPodSearch')?.addEventListener('input', event => {
       this.podSearch = event.target.value;
       const cursor = event.target.selectionStart;
-      this.render();
-      this.setupListeners();
+      this.rerenderPreservingScroll();
       const replacement = this.querySelector('#kubernetesPodSearch');
-      replacement?.focus();
+      replacement?.focus({ preventScroll: true });
       replacement?.setSelectionRange(cursor, cursor);
-    });
+    }, { signal: this.listenerController.signal });
     // 通用 section 搜尋：更新該 section 搜尋詞後重繪，並 refocus + 還原游標位置（同 pod search 做法）。
     this.querySelector('#kubernetesSectionSearch')?.addEventListener('input', event => {
       const section = event.target.dataset.sectionSearch;
       this.tableSearch[section] = event.target.value;
       const cursor = event.target.selectionStart;
-      this.render();
-      this.setupListeners();
+      this.rerenderPreservingScroll();
       const replacement = this.querySelector('#kubernetesSectionSearch');
-      replacement?.focus();
+      replacement?.focus({ preventScroll: true });
       replacement?.setSelectionRange(cursor, cursor);
-    });
+    }, { signal: this.listenerController.signal });
     // ② Events Type 篩選：切換後更新元件狀態並重繪（events 表存在於 Events 區段與 drawer Related Events）。
     this.querySelector('#kubernetesEventsTypeFilter')?.addEventListener('change', event => {
       this.eventsTypeFilter = event.target.value || 'all';
       this.render();
       this.setupListeners();
-    });
+    }, { signal: this.listenerController.signal });
     // Events 搜尋：更新搜尋詞後重繪，並 refocus + 還原游標位置（同 section search 做法）。
     this.querySelector('#kubernetesEventsSearch')?.addEventListener('input', event => {
       this.eventsSearch = event.target.value;
       const cursor = event.target.selectionStart;
-      this.render();
-      this.setupListeners();
+      this.rerenderPreservingScroll();
       const replacement = this.querySelector('#kubernetesEventsSearch');
-      replacement?.focus();
+      replacement?.focus({ preventScroll: true });
       replacement?.setSelectionRange(cursor, cursor);
-    });
+    }, { signal: this.listenerController.signal });
     // Events 列點擊 / Enter / Space：解析列上序列化事件並開啟 Drawer 看完整內容。
     this.querySelectorAll('[data-event-row]').forEach(row => {
       const open = () => {
@@ -3231,16 +3357,16 @@ export class KubernetesSessionPage extends HTMLElement {
           console.error('[Kubernetes][UI][Events] 解析事件資料失敗', error);
         }
       };
-      row.addEventListener('click', open);
+      row.addEventListener('click', open, { signal: this.listenerController.signal });
       row.addEventListener('keydown', event => {
         if (event.key !== 'Enter' && event.key !== ' ') return;
         event.preventDefault();
         open();
-      });
+      }, { signal: this.listenerController.signal });
     });
     // Events Drawer 關閉鈕 / backdrop。
-    this.querySelector('.kubernetes-event-drawer .kubernetes-drawer-close')?.addEventListener('click', () => this.closeEventDrawer());
-    this.querySelector('[data-close-event="true"]')?.addEventListener('click', () => this.closeEventDrawer());
+    this.querySelector('.kubernetes-event-drawer .kubernetes-drawer-close')?.addEventListener('click', () => this.closeEventDrawer(), { signal: this.listenerController.signal });
+    this.querySelector('[data-close-event="true"]')?.addEventListener('click', () => this.closeEventDrawer(), { signal: this.listenerController.signal });
     // 排序委派：點擊（或 Enter/Space）表頭 [data-sort-key] → 對該 section 切換 asc → desc → 無。
     const activeSectionForSort = kubernetesSessionStore.getState().activeSection || 'overview';
     const toggleSort = (th) => {
@@ -3259,12 +3385,12 @@ export class KubernetesSessionPage extends HTMLElement {
       this.setupListeners();
     };
     this.querySelectorAll('[data-sort-key]').forEach(th => {
-      th.addEventListener('click', () => toggleSort(th));
+      th.addEventListener('click', () => toggleSort(th), { signal: this.listenerController.signal });
       th.addEventListener('keydown', event => {
         if (event.key !== 'Enter' && event.key !== ' ') return;
         event.preventDefault();
         toggleSort(th);
-      });
+      }, { signal: this.listenerController.signal });
     });
     this.querySelectorAll('[data-pod-action]').forEach(button => button.addEventListener('click', event => {
       event.stopPropagation();
@@ -3273,22 +3399,22 @@ export class KubernetesSessionPage extends HTMLElement {
       if (button.dataset.podAction === 'logs') store.openPodLogsView(pod, button.dataset.container).catch(() => {});
       if (button.dataset.podAction === 'shell') this.openPodShellSession(pod, button.dataset.container);
       if (button.dataset.podAction === 'forward') store.openPodForwardFromSummary(pod).catch(() => {});
-    }));
+    }, { signal: this.listenerController.signal }));
     // Service 列表的 Forward action：開啟 detail drawer 的 Forward 頁籤。
     this.querySelectorAll('[data-service-action="forward"]').forEach(button => button.addEventListener('click', event => {
       event.stopPropagation();
       const service = JSON.parse(decodeURIComponent(button.dataset.service));
       kubernetesSessionStore.getState().openServiceForwardFromSummary(service).catch(() => {});
-    }));
+    }, { signal: this.listenerController.signal }));
     this.querySelector('#closeKubernetesPodAction')?.addEventListener('click', () => {
       kubernetesSessionStore.getState().closePodActionView();
-    });
+    }, { signal: this.listenerController.signal });
     this.querySelector('#openKubernetesCreateResource')?.addEventListener('click', () => {
       this.returnToCreateButton = true;
       this.detailReturnTarget = null;
       this.createYAMLDraft = null;
       kubernetesSessionStore.getState().openCreateResource();
-    });
+    }, { signal: this.listenerController.signal });
     this.querySelectorAll('.kubernetes-nav-heading[data-nav-group]').forEach((heading) => {
       heading.addEventListener('click', () => {
         const group = heading.dataset.navGroup;
@@ -3296,7 +3422,7 @@ export class KubernetesSessionPage extends HTMLElement {
         else this.collapsedNavGroups.add(group);
         this.render();
         this.setupListeners();
-      });
+      }, { signal: this.listenerController.signal });
     });
     this.querySelectorAll('.kubernetes-section-link').forEach((button) => {
       button.addEventListener('click', () => {
@@ -3305,20 +3431,20 @@ export class KubernetesSessionPage extends HTMLElement {
         // 切換 section 清空多選（避免跨資源類型誤刪）。
         this.clearSelection();
         kubernetesSessionStore.getState().selectSection(button.dataset.section);
-      });
+      }, { signal: this.listenerController.signal });
     });
     this.querySelectorAll('.kubernetes-nav-star').forEach((star) => {
       star.addEventListener('click', (event) => {
         event.stopPropagation();
         this.toggleQuickAccess(star.dataset.star);
-      });
+      }, { signal: this.listenerController.signal });
     });
     // 工作負載我的最愛：獨立於 Quick access（後者收藏的是區段），避免點星號觸發列的 Detail Drawer。
     this.querySelectorAll('[data-toggle-resource-favorite]').forEach((button) => {
       button.addEventListener('click', (event) => {
         event.stopPropagation();
         this.toggleFavoriteResource(button.dataset.toggleResourceFavorite);
-      });
+      }, { signal: this.listenerController.signal });
     });
     // 我的最愛頁面點列：先切換 namespace 與資源區段，再開啟相同 Kubernetes Session 內的 Detail Drawer。
     this.querySelectorAll('[data-open-resource-favorite]').forEach((row) => {
@@ -3337,12 +3463,12 @@ export class KubernetesSessionPage extends HTMLElement {
           apiVersion: favorite.apiVersion
         });
       };
-      row.addEventListener('click', () => { open().catch(() => {}); });
+      row.addEventListener('click', () => { open().catch(() => {}); }, { signal: this.listenerController.signal });
       row.addEventListener('keydown', event => {
         if (event.key !== 'Enter' && event.key !== ' ') return;
         event.preventDefault();
         open().catch(() => {});
-      });
+      }, { signal: this.listenerController.signal });
     });
     this.querySelectorAll('.kubernetes-resource-row').forEach((row) => {
       const open = () => {
@@ -3363,32 +3489,32 @@ export class KubernetesSessionPage extends HTMLElement {
           apiVersion: row.dataset.resourceApiversion || ''
         }).catch(() => {});
       };
-      row.addEventListener('click', open);
+      row.addEventListener('click', open, { signal: this.listenerController.signal });
       row.addEventListener('keydown', event => {
         if (event.key !== 'Enter' && event.key !== ' ') return;
         event.preventDefault();
         open();
-      });
+      }, { signal: this.listenerController.signal });
     });
     // 多選：注入勾選欄並綁定；工具列選取區的清除 / 批量刪除鍵。
     this.enhanceSelectionColumns();
     this.querySelector('#kubernetesClearSelection')?.addEventListener('click', () => {
       this.clearSelectionUI();
-    });
+    }, { signal: this.listenerController.signal });
     this.querySelector('#kubernetesBulkDelete')?.addEventListener('click', () => {
       this.handleBulkDelete().catch(error => console.error('[Kubernetes][UI][BulkDelete] 失敗', error));
-    });
+    }, { signal: this.listenerController.signal });
     // 調整副本數：列尾 / drawer 的 Scale 鈕 → 開步進器對話框（stopPropagation 避免開 detail drawer）。
     this.querySelectorAll('[data-scale]').forEach(btn => btn.addEventListener('click', event => {
       event.stopPropagation();
       try { this.openScaleDialog(JSON.parse(decodeURIComponent(btn.dataset.scale))); } catch (_) { /* noop */ }
-    }));
+    }, { signal: this.listenerController.signal }));
     // Detail drawer 關閉鈕 / backdrop：走未存變更守衛（YAML 編輯中有變更時先確認）。
-    this.querySelector('.kubernetes-detail-drawer .kubernetes-drawer-close')?.addEventListener('click', () => this.guardedCloseDetail());
-    this.querySelector('[data-close-detail="true"]')?.addEventListener('click', () => this.guardedCloseDetail());
+    this.querySelector('.kubernetes-detail-drawer .kubernetes-drawer-close')?.addEventListener('click', () => this.guardedCloseDetail(), { signal: this.listenerController.signal });
+    this.querySelector('[data-close-detail="true"]')?.addEventListener('click', () => this.guardedCloseDetail(), { signal: this.listenerController.signal });
     // Create drawer 關閉鈕 / backdrop：走未存變更守衛（YAML 有編輯時先確認）。
-    this.querySelector('.kubernetes-create-drawer .kubernetes-drawer-close')?.addEventListener('click', () => this.guardedCloseCreate());
-    this.querySelector('[data-close-create="true"]')?.addEventListener('click', () => this.guardedCloseCreate());
+    this.querySelector('.kubernetes-create-drawer .kubernetes-drawer-close')?.addEventListener('click', () => this.guardedCloseCreate(), { signal: this.listenerController.signal });
+    this.querySelector('[data-close-create="true"]')?.addEventListener('click', () => this.guardedCloseCreate(), { signal: this.listenerController.signal });
     this.querySelector('#kubernetesCreateResourceType')?.addEventListener('change', async event => {
       const select = event.target;
       const previousType = kubernetesSessionStore.getState().createResourceType;
@@ -3402,7 +3528,7 @@ export class KubernetesSessionPage extends HTMLElement {
       }
       this.createYAMLDraft = null;
       kubernetesSessionStore.getState().selectCreateResourceType(select.value);
-    });
+    }, { signal: this.listenerController.signal });
     this.querySelector('#applyKubernetesResource')?.addEventListener('click', async () => {
       const yaml = this.querySelector('#kubernetesCreateYAML')?.value || '';
       // 破壞性操作二次確認：套用 YAML 前明確標示目標 cluster / namespace，避免誤套用到錯誤環境。
@@ -3414,11 +3540,11 @@ export class KubernetesSessionPage extends HTMLElement {
         return;
       }
       kubernetesSessionStore.getState().applyCreateResource(yaml).catch(() => {});
-    });
+    }, { signal: this.listenerController.signal });
     this.querySelector('#saveKubernetesResourceYAML')?.addEventListener('click', () => {
       const yaml = this.querySelector('#kubernetesCreateYAML')?.value || '';
       kubernetesSessionStore.getState().saveCreateResourceYAML(yaml).catch(() => {});
-    });
+    }, { signal: this.listenerController.signal });
     const createEditor = this.querySelector('#kubernetesCreateYAML');
     const createLineNumbers = this.querySelector('#kubernetesCreateLineNumbers');
     createEditor?.addEventListener('input', () => {
@@ -3426,10 +3552,10 @@ export class KubernetesSessionPage extends HTMLElement {
       this.querySelector('.kubernetes-create-saved')?.remove();
       const count = Math.max(1, createEditor.value.split('\n').length);
       if (createLineNumbers) createLineNumbers.textContent = Array.from({ length: count }, (_, index) => index + 1).join('\n');
-    });
+    }, { signal: this.listenerController.signal });
     createEditor?.addEventListener('scroll', () => {
       if (createLineNumbers) createLineNumbers.scrollTop = createEditor.scrollTop;
-    });
+    }, { signal: this.listenerController.signal });
     createEditor?.addEventListener('keydown', event => {
       if (event.key !== 'Tab') return;
       event.preventDefault();
@@ -3437,66 +3563,65 @@ export class KubernetesSessionPage extends HTMLElement {
       const end = createEditor.selectionEnd;
       createEditor.setRangeText('  ', start, end, 'end');
       createEditor.dispatchEvent(new Event('input'));
-    });
+    }, { signal: this.listenerController.signal });
     this.querySelector('#reloadKubernetesPodLogs')?.addEventListener('click', () => {
       const container = this.querySelector('#kubernetesLogContainer')?.value || '';
       kubernetesSessionStore.getState().loadPodLogs({ container, previous: this.logPreviousLogs, tailLines: this.logTailLines }).catch(() => {});
-    });
+    }, { signal: this.listenerController.signal });
     // Tail lines / Previous logs 現位於 ⚙ 選單（可能未開啟）：值即時同步到元件狀態，供 Load 讀取。
     this.querySelector('#kubernetesLogTailLines')?.addEventListener('input', event => {
       this.logTailLines = Math.max(1, Math.min(1000, Number(event.target.value) || 200));
-    });
+    }, { signal: this.listenerController.signal });
     this.querySelector('#kubernetesLogPrevious')?.addEventListener('change', event => {
       this.logPreviousLogs = event.target.checked === true;
-    });
+    }, { signal: this.listenerController.signal });
     this.querySelector('#kubernetesLogSearch')?.addEventListener('input', event => {
       this.logSearch = event.target.value;
       const cursor = event.target.selectionStart;
-      this.render();
-      this.setupListeners();
+      this.rerenderPreservingScroll();
       const replacement = this.querySelector('#kubernetesLogSearch');
-      replacement?.focus();
+      replacement?.focus({ preventScroll: true });
       replacement?.setSelectionRange(cursor, cursor);
-    });
+    }, { signal: this.listenerController.signal });
     this.querySelector('#toggleKubernetesLogRegex')?.addEventListener('click', () => {
       this.logRegex = !this.logRegex;
       this.render();
       this.setupListeners();
-    });
+    }, { signal: this.listenerController.signal });
     this.querySelector('#kubernetesLogLevel')?.addEventListener('change', event => {
       this.logLevel = event.target.value || 'all';
       this.render();
       this.setupListeners();
-    });
+    }, { signal: this.listenerController.signal });
     this.querySelector('#toggleKubernetesLogsPause')?.addEventListener('click', () => {
       this.logPaused = !this.logPaused;
       this.render();
       this.setupListeners();
-    });
-    this.querySelector('#downloadKubernetesLogs')?.addEventListener('click', () => this.downloadVisiblePodLogs());
+    }, { signal: this.listenerController.signal });
+    this.querySelector('#downloadKubernetesLogs')?.addEventListener('click', () => this.downloadVisiblePodLogs(), { signal: this.listenerController.signal });
     this.querySelector('#toggleKubernetesLogOptions')?.addEventListener('click', () => {
       this.logDisplayOptionsOpen = !this.logDisplayOptionsOpen;
       this.render();
       this.setupListeners();
-    });
+    }, { signal: this.listenerController.signal });
     this.querySelector('#kubernetesLogLineWrap')?.addEventListener('change', event => {
       this.logLineWrap = event.target.checked === true;
       this.render();
       this.setupListeners();
-    });
+    }, { signal: this.listenerController.signal });
     this.querySelectorAll('[data-log-timestamp]').forEach(button => {
       button.addEventListener('click', () => {
         this.logTimestampMode = button.dataset.logTimestamp || 'off';
         this.render();
         this.setupListeners();
-      });
+      }, { signal: this.listenerController.signal });
     });
     this.querySelector('#clearKubernetesLogs')?.addEventListener('click', () => {
       kubernetesSessionStore.getState().clearPodLogs();
       this.logSearch = '';
       this.render();
       this.setupListeners();
-    });
+    }, { signal: this.listenerController.signal });
     // YAML 頁籤：複製目前 YAML（編輯中則複製草稿）。
     this.querySelector('#copyKubernetesYAML')?.addEventListener('click', () => {
       const editorValue = this.querySelector('#kubernetesYAMLEditor')?.value;
@@ -3505,7 +3630,7 @@ export class KubernetesSessionPage extends HTMLElement {
       navigator.clipboard?.writeText(yaml)
         .then(() => showToast(t('k8s.toast.copied'), { type: 'success' }))
         .catch(() => showToast(t('k8s.toast.copyFailed'), { type: 'error' }));
-    });
+    }, { signal: this.listenerController.signal });
     // YAML 頁籤：切換搜尋框；開啟後聚焦輸入。
     this.querySelector('#toggleKubernetesYAMLSearch')?.addEventListener('click', () => {
       this.yamlSearchOpen = !this.yamlSearchOpen;
@@ -3513,7 +3638,7 @@ export class KubernetesSessionPage extends HTMLElement {
       this.render();
       this.setupListeners();
       this.querySelector('#kubernetesYAMLSearch')?.focus();
-    });
+    }, { signal: this.listenerController.signal });
     // YAML 搜尋輸入：即時標記並捲動到第一個符合處（重繪後重綁，保留焦點與游標）。
     this.querySelector('#kubernetesYAMLSearch')?.addEventListener('input', event => {
       this.yamlSearchTerm = event.target.value;
@@ -3524,7 +3649,7 @@ export class KubernetesSessionPage extends HTMLElement {
       replacement?.focus();
       replacement?.setSelectionRange(cursor, cursor);
       this.querySelector('#kubernetesYAMLFirstMatch')?.scrollIntoView({ block: 'center' });
-    });
+    }, { signal: this.listenerController.signal });
     // YAML 頁籤：進入編輯模式（Secret/Pod 已停用按鈕，不會觸發）。
     this.querySelector('#editKubernetesYAML')?.addEventListener('click', () => {
       this.yamlEditing = true;
@@ -3535,11 +3660,11 @@ export class KubernetesSessionPage extends HTMLElement {
       this.render();
       this.setupListeners();
       this.querySelector('#kubernetesYAMLEditor')?.focus();
-    });
+    }, { signal: this.listenerController.signal });
     const yamlEditor = this.querySelector('#kubernetesYAMLEditor');
     yamlEditor?.addEventListener('input', () => {
       this.yamlEditDraft = yamlEditor.value;
-    });
+    }, { signal: this.listenerController.signal });
     yamlEditor?.addEventListener('keydown', event => {
       if (event.key !== 'Tab') return;
       event.preventDefault();
@@ -3547,7 +3672,7 @@ export class KubernetesSessionPage extends HTMLElement {
       const end = yamlEditor.selectionEnd;
       yamlEditor.setRangeText('  ', start, end, 'end');
       this.yamlEditDraft = yamlEditor.value;
-    });
+    }, { signal: this.listenerController.signal });
     // YAML 頁籤：套用編輯（呼叫 store applyResourceYAML；成功後自動重載 detail）。
     this.querySelector('#applyKubernetesYAML')?.addEventListener('click', async () => {
       const yaml = this.querySelector('#kubernetesYAMLEditor')?.value || '';
@@ -3569,7 +3694,7 @@ export class KubernetesSessionPage extends HTMLElement {
         this.setupListeners();
         this.querySelector('#kubernetesYAMLEditor')?.focus();
       }
-    });
+    }, { signal: this.listenerController.signal });
     // YAML 頁籤：套用失敗（尤其 409 Conflict）時，重新載入最新版本的 detail。
     // 退出編輯狀態並清掉草稿與 updateError，讓編輯器內容換成最新 YAML，
     // 使用者再依提示重新套用其變更（不做三方合併，行為誠實）。
@@ -3583,7 +3708,7 @@ export class KubernetesSessionPage extends HTMLElement {
         store.openResource(selected.kind, selected).catch(() => {});
       }
       showToast(t('k8s.toast.reloadedLatest'), { type: 'info', title: t('k8s.toast.yamlTitle') });
-    });
+    }, { signal: this.listenerController.signal });
     // YAML 頁籤：取消編輯，還原檢視模式。
     this.querySelector('#cancelKubernetesYAML')?.addEventListener('click', () => {
       this.yamlEditing = false;
@@ -3591,40 +3716,40 @@ export class KubernetesSessionPage extends HTMLElement {
       kubernetesSessionStore.getState().clearError();
       this.render();
       this.setupListeners();
-    });
+    }, { signal: this.listenerController.signal });
     this.querySelectorAll('.start-kubernetes-forward').forEach(button => {
       button.addEventListener('click', () => {
         kubernetesSessionStore.getState().startPodPortForward({ localPort: button.dataset.localPort, remotePort: button.dataset.remotePort }).catch(() => {});
-      });
+      }, { signal: this.listenerController.signal });
     });
     this.querySelector('#startKubernetesCustomForward')?.addEventListener('click', () => {
       kubernetesSessionStore.getState().startPodPortForward({
         localPort: this.querySelector('#kubernetesForwardCustomLocal')?.value,
         remotePort: this.querySelector('#kubernetesForwardCustomRemote')?.value
       }).catch(() => {});
-    });
+    }, { signal: this.listenerController.signal });
     this.querySelectorAll('.stop-kubernetes-forward').forEach(button => {
-      button.addEventListener('click', () => kubernetesSessionStore.getState().stopPodPortForward(button.dataset.forwardId).catch(() => {}));
+      button.addEventListener('click', () => kubernetesSessionStore.getState().stopPodPortForward(button.dataset.forwardId).catch(() => {}), { signal: this.listenerController.signal });
     });
     // Active Forward 卡片的 Open / Copy 動作（Pod / Service 共用）。
     this.querySelectorAll('.open-kubernetes-forward').forEach(button => {
-      button.addEventListener('click', () => this.openForwardUrl(button.dataset.forwardUrl));
+      button.addEventListener('click', () => this.openForwardUrl(button.dataset.forwardUrl), { signal: this.listenerController.signal });
     });
     this.querySelectorAll('.copy-kubernetes-forward').forEach(button => {
-      button.addEventListener('click', () => this.copyForwardAddress(button.dataset.forwardAddr));
+      button.addEventListener('click', () => this.copyForwardAddress(button.dataset.forwardAddr), { signal: this.listenerController.signal });
     });
     // Service Forward：每個 Service 連接埠一顆按鈕 + 自訂埠。停止沿用 .stop-kubernetes-forward。
     this.querySelectorAll('.start-kubernetes-service-forward').forEach(button => {
       button.addEventListener('click', () => {
         kubernetesSessionStore.getState().startServicePortForward({ localPort: button.dataset.localPort, remotePort: button.dataset.remotePort }).catch(() => {});
-      });
+      }, { signal: this.listenerController.signal });
     });
     this.querySelector('#startKubernetesServiceCustomForward')?.addEventListener('click', () => {
       kubernetesSessionStore.getState().startServicePortForward({
         localPort: this.querySelector('#kubernetesServiceForwardCustomLocal')?.value,
         remotePort: this.querySelector('#kubernetesServiceForwardCustomRemote')?.value
       }).catch(() => {});
-    });
+    }, { signal: this.listenerController.signal });
     this.bindLogOutput();
   }
 

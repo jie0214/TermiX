@@ -58,3 +58,10 @@ func ListKubeNamespaces(raw, cursor string) (string, error) {
 func ListKubePodMetrics(raw, namespace string) (string, error) {
 	return mobilekubernetes.ListPodMetrics(raw, namespace)
 }
+
+func GetKubeDocument(raw, namespace, kind, name string) (string, error) {
+	return mobilekubernetes.GetDocument(raw, namespace, kind, name)
+}
+func UpdateKubeDocument(raw, namespace, kind, name, payload string) (string, error) {
+	return mobilekubernetes.UpdateDocument(raw, namespace, kind, name, payload)
+}

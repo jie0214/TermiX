@@ -3,7 +3,7 @@ import { pickKubeconfig } from '../src/storage/kubeconfig';
 
 const mockCleanup = jest.fn();
 const mockFiles = new Map<string, { text: string; size: number; failRead?: boolean }>();
-jest.mock('expo', () => ({ requireNativeModule: () => ({ clearSensitiveImportCopy: mockCleanup }) }));
+jest.mock('expo', () => ({ requireNativeModule: () => ({ clearSensitiveImportCopies: async () => {}, clearSensitiveImportCopy: mockCleanup }) }));
 jest.mock('expo-crypto', () => ({}));
 jest.mock('expo-secure-store', () => ({ WHEN_UNLOCKED_THIS_DEVICE_ONLY: 1 }));
 jest.mock('expo-document-picker', () => ({ getDocumentAsync: jest.fn() }));

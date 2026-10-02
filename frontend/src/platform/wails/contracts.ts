@@ -169,6 +169,8 @@ export interface WailsAppContract {
   GetKubernetesDashboard(
     request: KubernetesDashboardRequest,
   ): Promise<KubernetesDashboardSnapshot>;
+  StartKubernetesLiveUpdates(connectedAt: string, streamId: string): Promise<void>;
+  StopKubernetesLiveUpdates(streamId: string): Promise<void>;
   GetKubernetesNamespaces(): Promise<string[]>;
   GetKubernetesResourceDetail(
     request: KubernetesResourceDetailRequest,

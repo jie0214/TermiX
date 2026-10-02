@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { KubernetesWorkspace } from '../src/features/kubernetes/workspace.ts';
 
 const unusedResources = {
+  getDocument: async () => { throw new Error('非預期 YAML 查詢'); },
+  updateDocument: async () => { throw new Error('非預期資源寫入'); },
   listPodMetrics:async()=>({}),
   listNamespaces: async () => ({items:["dev","staging","default"],cursor:""}),
   listAWSProfiles: async () => [],
@@ -143,7 +145,7 @@ test('ConfigMap 明細失敗可重試，內容關閉即清除，不寫入儲存'
   await workspace.load();workspace.setKind('configmaps');await workspace.refresh();
   await workspace.openConfigMap('settings');
   assert.equal(workspace.getSnapshot().detailStatus,'error');
-  assert.equal(workspace.getSnapshot().detailMessage,'此帳號沒有查看此資源的權限。');
+  assert.equal(workspace.getSnapshot().detailMessage,'此帳號沒有執行此資源操作的權限。');
   fail=false;await workspace.openConfigMap('settings');
   assert.equal(workspace.getSnapshot().detailStatus,'ready');
   workspace.closeDetail();assert.equal(workspace.getSnapshot().detail,undefined);
@@ -334,4 +336,32 @@ test('清單用量延遲回覆不污染新 namespace；用量失敗仍保留資�
  finish?.({web:{cpuMilli:24,memoryMiB:96,timestamp:'2026-09-25T00:00:00Z',windowSeconds:30,containers:[]}});await Promise.resolve();
  assert.equal(workspace.getSnapshot().listMetrics,undefined);
  fail=true;await workspace.refresh();await Promise.resolve();assert.equal(workspace.getSnapshot().status,'ready');assert.equal(workspace.getSnapshot().pods[0].namespace,'prod');assert.equal(workspace.getSnapshot().listMetrics,undefined);assert.equal(workspace.getSnapshot().listMetricsMessage,'用量暫無資料');
+});
+
+const resourceDocument = {yaml:'kind: Pod\n',uid:'id',resourceVersion:'7',containers:[{name:'app',group:'containers' as const,image:'nginx:old'}]};
+function editorClient() { return {...unusedResources,inspect:async()=>profile,getDocument:async()=>resourceDocument,
+ listPods:async()=>({items:[{name:'web',namespace:'dev',phase:'Running',ready:1,total:1}],hasMore:false})}; }
+test('YAML 需確認才寫入，保留版本；關閉後仍阻擋切換至寫入結束',async()=>{
+ let finish!: (v:typeof resourceDocument)=>void;const changes:unknown[]=[];
+ const ws=new KubernetesWorkspace({...editorClient(),updateDocument:async(raw,ns,kind,name,change)=>{changes.push([ns,kind,name,change]);return new Promise(resolve=>{finish=resolve;});}},{load:async()=>'config',save:async()=>{}});
+ await ws.load();await ws.refresh();await ws.openEditor('web');ws.editDocument();ws.setDocumentInput('kind: Pod\nmetadata: {}');
+ await ws.submitDocument();assert.equal(changes.length,0);ws.reviewDocument();const pending=ws.submitDocument();await Promise.resolve();
+ assert.equal(changes.length,1);ws.closeEditor();ws.setNamespace('staging');assert.equal(ws.getSnapshot().namespace,'dev');
+ finish(resourceDocument);await pending;assert.equal(ws.getSnapshot().editor,undefined);assert.equal(ws.getSnapshot().pods.length,0);
+ assert.deepEqual(changes[0],['dev','pods','web',{uid:'id',resourceVersion:'7',yaml:'kind: Pod\nmetadata: {}'}]);
+ ws.setNamespace('staging');assert.equal(ws.getSnapshot().namespace,'staging');
+});
+test('舊 YAML 回應不會覆蓋新 namespace',async()=>{
+ let finish!: (v:typeof resourceDocument)=>void;
+ const ws=new KubernetesWorkspace({...editorClient(),getDocument:async()=>new Promise(resolve=>{finish=resolve;})},{load:async()=>'config',save:async()=>{}});
+ await ws.load();await ws.refresh();const read=ws.openEditor('web');await Promise.resolve();ws.setNamespace('staging');finish(resourceDocument);await read;
+ assert.equal(ws.getSnapshot().editor,undefined);
+});
+test('image 只送選定容器；衝突不重送，關閉清除草稿',async()=>{
+ const calls:unknown[]=[];
+ const ws=new KubernetesWorkspace({...editorClient(),updateDocument:async(raw,ns,kind,name,change)=>{calls.push(change);throw new Error('scale_conflict private server body');}},{load:async()=>'config',save:async()=>{}});
+ await ws.load();await ws.refresh();await ws.openEditor('web','image');ws.selectImage(resourceDocument.containers[0]);ws.setDocumentInput('nginx:new');ws.reviewDocument();await ws.submitDocument();await ws.submitDocument();
+ assert.deepEqual(calls,[{uid:'id',resourceVersion:'7',container:{name:'app',group:'containers',image:'nginx:new'}}]);
+ assert.match(ws.getSnapshot().editor!.message,/資源已變更/);assert.equal(JSON.stringify(ws.getSnapshot()).includes('private server body'),false);
+ ws.closeEditor();assert.equal(ws.getSnapshot().editor,undefined);
 });
