@@ -1,3 +1,4 @@
+import './modules/ai/AIConnectionElements.ts';
 import './modules/sftp/SFTPPage';
 import { SFTP_TAB_ID } from './modules/sftp/SFTPService';
 import { terminalStore } from './modules/terminal/TerminalStore';
@@ -509,6 +510,7 @@ export class TermixApp extends HTMLElement {
               <button type="button" class="settings-tab no-drag ui-button ui-button--tab" data-settings-tab="terminal" role="tab" aria-selected="false"><i class="ti ti-terminal-2" aria-hidden="true"></i><span>${t('app.settings.tab.terminal')}</span></button>
               <button type="button" class="settings-tab no-drag ui-button ui-button--tab" data-settings-tab="shortcuts" role="tab" aria-selected="false"><i class="ti ti-keyboard" aria-hidden="true"></i><span>${t('app.settings.tab.shortcuts')}</span></button>
               <button type="button" class="settings-tab no-drag ui-button ui-button--tab" data-settings-tab="kubernetes" role="tab" aria-selected="false"><i class="ti ti-cloud" aria-hidden="true"></i><span>${t('app.settings.tab.kubernetes')}</span></button>
+              <button type="button" class="settings-tab no-drag ui-button ui-button--tab" data-settings-tab="ai" role="tab" aria-selected="false"><i class="ti ti-plug" aria-hidden="true"></i><span>AI Connection</span></button>
               <button type="button" class="settings-tab no-drag ui-button ui-button--tab" data-settings-tab="general" role="tab" aria-selected="false"><i class="ti ti-settings" aria-hidden="true"></i><span>${t('app.settings.tab.general')}</span></button>
               <button type="button" class="settings-tab no-drag ui-button ui-button--tab" data-settings-tab="advanced" role="tab" aria-selected="false"><i class="ti ti-tool" aria-hidden="true"></i><span>${t('app.settings.tab.advanced')}</span></button>
             </nav>
@@ -564,6 +566,7 @@ export class TermixApp extends HTMLElement {
               <section data-settings-panel="shortcuts" role="tabpanel" hidden>
                 ${this.renderShortcutsPanel()}
               </section>
+              <section data-settings-panel="ai" role="tabpanel" hidden><termix-ai-connections></termix-ai-connections></section>
               <section data-settings-panel="general" role="tabpanel" hidden>
                 <label style="display: flex; flex-direction: column; text-align: left; gap: 6px; font-size: 12px; color: var(--color-subtext);">
                   ${t('app.settings.language')}
@@ -1152,6 +1155,10 @@ export class TermixApp extends HTMLElement {
   }
 
   setupSettingsListeners() {
+    this.addEventListener('open-ai-settings', () => {
+      themeStore.getState().setSettingsModalOpen(true);
+      this.showSettingsTab('ai');
+    });
     const closeBtn = this.querySelector('#closeGlobalSettings');
     const cancelBtn = this.querySelector('#cancelGlobalSettings');
     const saveBtn = this.querySelector('#saveGlobalSettings');
@@ -1307,6 +1314,7 @@ export class TermixApp extends HTMLElement {
   // 切換設定視窗的頁籤面板
   showSettingsTab(name) {
     if (!name) return;
+    if (name === 'ai') this.querySelector('termix-ai-connections')?.refresh();
     this.querySelectorAll('[data-settings-tab]').forEach((btn) => {
       const on = btn.getAttribute('data-settings-tab') === name;
       btn.classList.toggle('active', on);

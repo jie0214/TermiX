@@ -33,17 +33,59 @@ type documentChange struct {
 
 func documentRoute(kind string) (string, string) {
 	switch kind {
+	case "horizontalpodautoscalers":
+		return "apis/autoscaling/v2", "HorizontalPodAutoscaler"
+	case "poddisruptionbudgets":
+		return "apis/policy/v1", "PodDisruptionBudget"
+	case "networkpolicies":
+		return "apis/networking.k8s.io/v1", "NetworkPolicy"
+	case "endpointslices":
+		return "apis/discovery.k8s.io/v1", "EndpointSlice"
+	case "serviceaccounts":
+		return "api/v1", "ServiceAccount"
+	case "roles":
+		return "apis/rbac.authorization.k8s.io/v1", "Role"
+	case "rolebindings":
+		return "apis/rbac.authorization.k8s.io/v1", "RoleBinding"
+	case "resourcequotas":
+		return "api/v1", "ResourceQuota"
+	case "limitranges":
+		return "api/v1", "LimitRange"
 	case "pods":
 		return "api/v1", "Pod"
 	case "configmaps":
 		return "api/v1", "ConfigMap"
 	case "deployments":
 		return "apis/apps/v1", "Deployment"
+	case "daemonsets":
+		return "apis/apps/v1", "DaemonSet"
+	case "replicasets":
+		return "apis/apps/v1", "ReplicaSet"
+	case "jobs":
+		return "apis/batch/v1", "Job"
+	case "cronjobs":
+		return "apis/batch/v1", "CronJob"
+	case "services":
+		return "api/v1", "Service"
+	case "secrets":
+		return "api/v1", "Secret"
+	case "persistentvolumeclaims":
+		return "api/v1", "PersistentVolumeClaim"
+	case "ingresses":
+		return "apis/networking.k8s.io/v1", "Ingress"
 	case "statefulsets":
 		return "apis/apps/v1", "StatefulSet"
 	}
 	return "", ""
 }
+func readOnlyResource(kind string) bool {
+	switch kind {
+	case "horizontalpodautoscalers", "poddisruptionbudgets", "networkpolicies", "endpointslices", "serviceaccounts", "roles", "rolebindings", "resourcequotas", "limitranges":
+		return true
+	}
+	return false
+}
+
 func object(v any) map[string]any                   { m, _ := v.(map[string]any); return m }
 func stringField(m map[string]any, k string) string { s, _ := m[k].(string); return s }
 func checkDocument(doc map[string]any, namespace, kind, name string) bool {
@@ -55,7 +97,10 @@ func checkDocument(doc map[string]any, namespace, kind, name string) bool {
 }
 func containerSpec(doc map[string]any, kind string) map[string]any {
 	spec := object(doc["spec"])
-	if kind == "deployments" || kind == "statefulsets" {
+	if kind == "cronjobs" {
+		spec = object(object(spec["jobTemplate"])["spec"])
+	}
+	if kind == "deployments" || kind == "statefulsets" || kind == "replicasets" || kind == "daemonsets" || kind == "jobs" || kind == "cronjobs" {
 		return object(object(spec["template"])["spec"])
 	}
 	if kind == "pods" {
@@ -65,7 +110,14 @@ func containerSpec(doc map[string]any, kind string) map[string]any {
 }
 func documentResult(doc map[string]any, kind string) (string, error) {
 	// 隱藏伺服器狀態及欄位管理資訊；使用者內容僅存在記憶體。
-	delete(doc, "status")
+	if kind == "secrets" {
+		delete(doc, "data")
+		delete(doc, "stringData")
+		delete(object(doc["metadata"]), "annotations")
+	}
+	if !readOnlyResource(kind) {
+		delete(doc, "status")
+	}
 	meta := object(doc["metadata"])
 	delete(meta, "managedFields")
 	body, err := yaml.Marshal(doc)
@@ -149,6 +201,9 @@ func parseDocument(input string) (map[string]any, error) {
 
 // UpdateDocument 使用原始 UID／resourceVersion，遇衝突不重送，也不建立新資源。
 func UpdateDocument(raw, namespace, kind, name, payload string) (string, error) {
+	if kind == "secrets" || readOnlyResource(kind) {
+		return "", errors.New("api_rejected")
+	}
 	var change documentChange
 	if len(payload) > documentLimit*6 || json.Unmarshal([]byte(payload), &change) != nil || change.UID == "" || change.ResourceVersion == "" || (change.YAML == nil) == (change.Container == nil) {
 		return "", errors.New("invalid_yaml")

@@ -6,7 +6,7 @@ const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 function mergeItem(previous, incoming, section) {
   if (!previous || (previous.uid && incoming.uid && previous.uid !== incoming.uid)) return incoming;
   const merged = (section === 'pods' || section === 'nodes')
-    ? { ...incoming, cpuUsageMilli: previous.cpuUsageMilli || 0, memoryUsageBytes: previous.memoryUsageBytes || 0 }
+    ? { ...incoming, ...(section === 'nodes' ? { metricsAvailable: previous.metricsAvailable === true } : {}), cpuUsageMilli: previous.cpuUsageMilli || 0, memoryUsageBytes: previous.memoryUsageBytes || 0 }
     : incoming;
   return equal(previous, merged) ? previous : merged;
 }
@@ -24,7 +24,7 @@ export function applyKubernetesChanges(current, changes) {
         for (const [name, kind] of [['pods', 'pod'], ['nodes', 'node']]) {
           dashboard[name] = (dashboard[name] || []).map(previous => {
             const value = values.get(`${kind}/${key(previous)}`);
-            const next = { ...previous, cpuUsageMilli: value?.cpuUsageMilli || 0, memoryUsageBytes: value?.memoryUsageBytes || 0 };
+            const next = { ...previous, ...(kind === 'node' ? { metricsAvailable: value?.metricsAvailable === true } : {}), cpuUsageMilli: value?.cpuUsageMilli || 0, memoryUsageBytes: value?.memoryUsageBytes || 0 };
             return equal(previous, next) ? previous : next;
           });
         }

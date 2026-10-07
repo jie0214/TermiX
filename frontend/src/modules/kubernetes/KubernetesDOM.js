@@ -38,6 +38,8 @@ function patchNode(target, source, active) {
   for (const attr of [...source.attributes]) {
     if (target.getAttribute(attr.name) !== attr.value) target.setAttribute(attr.name, attr.value);
   }
+  // AI 面板由自己的 Store 維護；只同步目標屬性，背景 Watch 不重建其互動內容。
+  if (target.tagName === 'TERMIX-POD-ANALYSIS') return;
   if (target.tagName === 'INPUT') {
     if (!editing && oldValue !== source.getAttribute('value')) target.value = source.value;
     if (target.type === 'checkbox' || target.type === 'radio') target.checked = source.checked;

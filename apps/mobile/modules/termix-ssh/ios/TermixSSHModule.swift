@@ -101,6 +101,12 @@ public class TermixSSHModule: Module {
       if let error { throw error }
       return result
     }.runOnQueue(.global(qos: .userInitiated))
+    AsyncFunction("deleteKubeResource") { (raw: String, namespace: String, kind: String, name: String, payload: String) -> String in
+      var error: NSError?
+      let result = MobilesshDeleteKubeResource(raw, namespace, kind, name, payload, &error)
+      if let error { throw error }
+      return result
+    }.runOnQueue(.global(qos: .userInitiated))
     AsyncFunction("getKubeDocument") { (raw: String, namespace: String, kind: String, name: String) -> String in
       var error: NSError?
       let result = MobilesshGetKubeDocument(raw, namespace, kind, name, &error)

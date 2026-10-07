@@ -6,10 +6,14 @@ export type LimitValue = {value?:number|null;state:'set'|'unset'|'unknown';scope
 export type PodLimits = {cpu:LimitValue;memory:LimitValue;containers:{name:string;cpu:LimitValue;memory:LimitValue}[]};
 export type PodSummary = { limits?:PodLimits; reason?: string; health?: Health; name: string; namespace: string; phase: string; ready: number; total: number };
 export type PodList = { items: PodSummary[]; hasMore: boolean };
-export type ResourceKind = 'pods' | 'deployments' | 'statefulsets' | 'configmaps';
+export type ResourceKind = 'pods' | 'deployments' | 'statefulsets' | 'configmaps' | 'replicasets' | 'daemonsets' | 'jobs' | 'cronjobs' | 'services' | 'ingresses' | 'secrets' | 'persistentvolumeclaims' | 'horizontalpodautoscalers' | 'poddisruptionbudgets' | 'networkpolicies' | 'endpointslices' | 'serviceaccounts' | 'roles' | 'rolebindings' | 'resourcequotas' | 'limitranges';
 export type ExtraResourceKind = Exclude<ResourceKind, 'pods'>;
-export const resourceLabels: Record<ResourceKind, string> = { pods: 'Pod', deployments: 'Deployment', statefulsets: 'StatefulSet', configmaps: 'ConfigMap' };
-export type ResourceSummary = { health?: Health; name: string; namespace: string; ready: number; desired: number; updated: number; keyCount: number; immutable: boolean };
+export const resourceLabels: Record<ResourceKind, string> = { pods: 'Pod', deployments: 'Deployment', statefulsets: 'StatefulSet', configmaps: 'ConfigMap', replicasets:'ReplicaSet', daemonsets:'DaemonSet', jobs:'Job', cronjobs:'CronJob', services:'Service', ingresses:'Ingress', secrets:'Secret', persistentvolumeclaims:'PersistentVolumeClaim', horizontalpodautoscalers:'HorizontalPodAutoscaler', poddisruptionbudgets:'PodDisruptionBudget', networkpolicies:'NetworkPolicy', endpointslices:'EndpointSlice', serviceaccounts:'ServiceAccount', roles:'Role', rolebindings:'RoleBinding', resourcequotas:'ResourceQuota', limitranges:'LimitRange' };
+export const resourceGroups: Record<string, ResourceKind[]> = { Workloads:['pods','deployments','statefulsets','daemonsets','replicasets','jobs','cronjobs','poddisruptionbudgets'], Networking:['services','ingresses','networkpolicies','endpointslices'], Configuration:['configmaps','secrets','resourcequotas','limitranges'], Storage:['persistentvolumeclaims'], Autoscaling:['horizontalpodautoscalers'], 'Access Control':['serviceaccounts','roles','rolebindings'] };
+export function isReadOnlyResource(kind:ResourceKind) {return ['horizontalpodautoscalers','poddisruptionbudgets','networkpolicies','endpointslices','serviceaccounts','roles','rolebindings','resourcequotas','limitranges'].includes(kind);}
+export function canScale(kind: ResourceKind): kind is WorkloadKind { return kind==='deployments' || kind==='statefulsets' || kind==='replicasets'; }
+export function hasContainers(kind: ResourceKind) {return ['pods','deployments','statefulsets','daemonsets','replicasets','jobs','cronjobs'].includes(kind);}
+export type ResourceSummary = { detail?:string; health?: Health; name: string; namespace: string; ready: number; desired: number; updated: number; keyCount: number; immutable: boolean };
 export type ResourceList = { items: ResourceSummary[]; hasMore: boolean };
 export type ConfigMapDetail = { name: string; namespace: string; immutable: boolean; entries: { key: string; value: string; binary: boolean; bytes: number; truncated: boolean }[]; truncated: boolean };
 export type PodContainers = { containers: { name: string; kind: 'regular' | 'init' | 'ephemeral' }[] };
@@ -18,7 +22,7 @@ export type LogPanelState = PodLog & PodContainers & {
   pod: string; container: string; previous: boolean;
   optionsStatus: 'loading' | 'ready' | 'error'; status: 'idle' | 'loading' | 'ready' | 'error'; message: string;
 };
-export type WorkloadKind = 'deployments' | 'statefulsets';
+export type WorkloadKind = 'deployments' | 'statefulsets' | 'replicasets';
 export type ScaleValue = { uid: string; resourceVersion: string; replicas: number };
 export type ScalePanelState = {
   name: string; kind: WorkloadKind; namespace: string; cluster: string; context: string;
@@ -32,7 +36,9 @@ export type ImageField = {name:string; group:'containers'|'initContainers'; imag
 export type ResourceDocument = {yaml:string;uid:string;resourceVersion:string;containers:ImageField[]};
 export type DocumentChange = {uid:string;resourceVersion:string;yaml?:string;container?:ImageField};
 export type EditorState = {name:string;kind:ResourceKind;namespace:string;cluster:string;mode:'yaml'|'image';status:'loading'|'viewing'|'editing'|'confirming'|'submitting'|'success'|'error';value?:ResourceDocument;container?:ImageField;input:string;message:string};
+export type DeleteState = {name:string;kind:ResourceKind;namespace:string;cluster:string;status:'loading'|'confirming'|'submitting'|'success'|'error';identity?:{uid:string;resourceVersion:string};message:string};
 export interface KubeClient {
+ deleteResource(raw:string,namespace:string,kind:ResourceKind,name:string,identity:{uid:string;resourceVersion:string}):Promise<void>;
  getDocument(raw:string,namespace:string,kind:ResourceKind,name:string):Promise<ResourceDocument>;
  updateDocument(raw:string,namespace:string,kind:ResourceKind,name:string,change:DocumentChange):Promise<ResourceDocument>;
  listPodMetrics(raw:string,namespace:string):Promise<Record<string,PodMetrics>>;
@@ -51,9 +57,10 @@ export interface KubeClient {
   getConfigMap(raw: string, namespace: string, name: string): Promise<ConfigMapDetail>;
 }
 export interface KubeStorage { load(): Promise<string | null>; save(raw: string): Promise<void> }
-export type KubeState = { editor?:EditorState; updatedAt?: number; listMetrics?: Record<string,PodMetrics>; listMetricsMessage?: string; namespaces?: {items:string[];cursor:string;status:"loading"|"ready"|"error";message:string}; configBusy?: boolean; metrics?: MetricsPanelState; scaleNotice?: string; scale?: ScalePanelState; logs?: LogPanelState; kind: ResourceKind; resources: ResourceSummary[]; detail?: ConfigMapDetail; detailName?: string; detailStatus: 'idle' | 'loading' | 'ready' | 'error'; detailMessage: string; profile?: KubeProfile; namespace: string; pods: PodSummary[]; hasMore: boolean; status: 'idle' | 'loading' | 'ready' | 'error'; message: string };
+export type KubeState = { refreshMessage?:string; deletion?:DeleteState; editor?:EditorState; updatedAt?: number; listMetrics?: Record<string,PodMetrics>; listMetricsMessage?: string; namespaces?: {items:string[];cursor:string;status:"loading"|"ready"|"error";message:string}; configBusy?: boolean; metrics?: MetricsPanelState; scaleNotice?: string; scale?: ScalePanelState; logs?: LogPanelState; kind: ResourceKind; resources: ResourceSummary[]; detail?: ConfigMapDetail; detailName?: string; detailStatus: 'idle' | 'loading' | 'ready' | 'error'; detailMessage: string; profile?: KubeProfile; namespace: string; pods: PodSummary[]; hasMore: boolean; status: 'idle' | 'loading' | 'ready' | 'error'; message: string };
 
 const messages: Record<string, string> = {
+ delete_unknown:'無法確認刪除是否生效，請重新查詢；不會自動重送。',
  invalid_yaml: 'YAML 格式無效：僅接受單一資源，不支援重複欄位或 YAML 別名。',
  document_identity: '不可修改資源類型、名稱、namespace、UID 或 resourceVersion。',
  document_too_large: '資源超過 512 KB，無法在手機編輯。',
@@ -102,11 +109,12 @@ export function kubeMessage(error: unknown) {
   return code ? messages[code] : '操作失敗，請檢查設定後重試。';
 }
 const emptyDetail = { detail: undefined, detailName: undefined, detailStatus: 'idle' as const, detailMessage: '' };
-const emptyResults = { editor: undefined, listMetrics: undefined, listMetricsMessage: undefined, updatedAt: undefined, metrics: undefined, scaleNotice: undefined, scale: undefined, logs: undefined, pods: [], resources: [], hasMore: false, ...emptyDetail };
+const emptyResults = { refreshMessage:undefined, deletion:undefined, editor: undefined, listMetrics: undefined, listMetricsMessage: undefined, updatedAt: undefined, metrics: undefined, scaleNotice: undefined, scale: undefined, logs: undefined, pods: [], resources: [], hasMore: false, ...emptyDetail };
 export class KubernetesWorkspace {
   private state: KubeState = { kind: 'pods', namespace: '', ...emptyResults, status: 'idle', message: '' };
   private listeners = new Set<() => void>();
   private epoch = 0;
+  private refreshRequestEpoch?: number;
   private detailEpoch = 0;
   private logEpoch = 0;
   private metricsEpoch = 0;
@@ -114,6 +122,8 @@ export class KubernetesWorkspace {
   private scaleEpoch = 0;
   private scalePending = false;
   private documentPending = false;
+ private deleteEpoch = 0;
+ private deletePending = false;
   private editorEpoch = 0;
   private client: KubeClient; private storage: KubeStorage;
   constructor(client: KubeClient, storage: KubeStorage) { this.client = client; this.storage = storage; }
@@ -127,7 +137,7 @@ export class KubernetesWorkspace {
     return region ? this.client.listAWSProfiles(region) : [];
   }
   async refreshNamespaces(more = false) {
-    if (this.documentPending || this.importPending || !this.state.profile || (more && !this.state.namespaces?.cursor)) return;
+    if (this.deletePending || this.documentPending || this.importPending || !this.state.profile || (more && !this.state.namespaces?.cursor)) return;
     const previous = more ? this.state.namespaces : undefined;
     const id = ++this.namespaceEpoch;
     this.update({namespaces:{items:previous?.items ?? [],cursor:previous?.cursor ?? "",status:"loading",message:""}});
@@ -141,11 +151,11 @@ export class KubernetesWorkspace {
     } catch(error) { if(id === this.namespaceEpoch) this.update({namespaces:{items:previous?.items ?? [],cursor:previous?.cursor ?? "",status:"error",message:kubeMessage(error)}}); }
   }
   private invalidateReads() {
-    ++this.editorEpoch; ++this.detailEpoch; ++this.logEpoch; ++this.scaleEpoch; ++this.metricsEpoch;
+    ++this.deleteEpoch; ++this.editorEpoch; ++this.detailEpoch; ++this.logEpoch; ++this.scaleEpoch; ++this.metricsEpoch;
     return ++this.epoch;
   }
   async load() {
-    if (this.documentPending || this.scalePending || this.importPending) return;
+    if (this.deletePending || this.documentPending || this.scalePending || this.importPending) return;
     this.resetNamespaces();
     const id = this.invalidateReads();
     this.update({ status: 'loading', message: '', ...emptyResults });
@@ -158,7 +168,7 @@ export class KubernetesWorkspace {
     } catch (error) { if (id === this.epoch) this.update({ status: 'error', message: kubeMessage(error) }); }
   }
   async import(raw: string): Promise<boolean> {
-    if (this.documentPending || this.importPending || this.scalePending) return false;
+    if (this.deletePending || this.documentPending || this.importPending || this.scalePending) return false;
     this.importPending = true;
     this.resetNamespaces();
     const id = this.invalidateReads();
@@ -175,11 +185,11 @@ export class KubernetesWorkspace {
     finally { this.importPending = false; this.update({ configBusy: false }); }
   }
   async selectContext(name: string): Promise<boolean> {
-    if (this.documentPending || this.importPending || this.scalePending || this.state.profile?.context === name || !this.state.profile?.contexts?.some(item => item.context === name)) return false;
+    if (this.deletePending || this.documentPending || this.importPending || this.scalePending || this.state.profile?.context === name || !this.state.profile?.contexts?.some(item => item.context === name)) return false;
     return this.changeSelection(raw => this.client.selectContext(raw, name));
   }
   async selectAWSProfile(name: string): Promise<boolean> {
-    if (this.documentPending || this.importPending || this.scalePending || !this.state.profile?.eks) return false;
+    if (this.deletePending || this.documentPending || this.importPending || this.scalePending || !this.state.profile?.eks) return false;
     return this.changeSelection(async raw => {
       if (name) {
         const profiles = await this.listAWSProfiles();
@@ -211,18 +221,18 @@ export class KubernetesWorkspace {
     } finally { this.importPending = false; this.update({ configBusy: false }); }
   }
   setNamespace(namespace: string) {
-    if (this.documentPending || this.importPending || this.scalePending) return;
+    if (this.deletePending || this.documentPending || this.importPending || this.scalePending) return;
     this.invalidateReads();
     this.update({ namespace, ...emptyResults, status: 'idle', message: '' });
   }
   setKind(kind: ResourceKind) {
-    if (this.documentPending || this.importPending || this.scalePending || kind === this.state.kind) return;
+    if (this.deletePending || this.documentPending || this.importPending || this.scalePending || kind === this.state.kind) return;
     this.invalidateReads();
     this.update({ kind, ...emptyResults, status: 'idle', message: '' });
   }
   closeMetrics() { ++this.metricsEpoch; this.update({ metrics: undefined }); }
   async openMetrics(pod: string) {
-    if (this.documentPending || this.importPending || this.scalePending || this.state.kind !== 'pods' || this.state.status !== 'ready' || !this.state.pods.some(item => item.name === pod)) return;
+    if (this.deletePending || this.documentPending || this.importPending || this.scalePending || this.state.kind !== 'pods' || this.state.status !== 'ready' || !this.state.pods.some(item => item.name === pod)) return;
     const id = ++this.metricsEpoch;
     const namespace = this.state.namespace.trim();
     this.update({ metrics: { pod, status: 'loading', message: '' } });
@@ -240,7 +250,7 @@ export class KubernetesWorkspace {
   }
   async openScale(name: string) {
     const { kind, profile, namespace } = this.state;
-    if (this.documentPending || this.importPending || this.scalePending || !profile || (kind !== 'deployments' && kind !== 'statefulsets') || (this.state.scale?.name !== name && (this.state.status !== 'ready' || !this.state.resources.some(item => item.name === name)))) return;
+    if (this.deletePending || this.documentPending || this.importPending || this.scalePending || !profile || !canScale(kind) || (this.state.scale?.name !== name && (this.state.status !== 'ready' || !this.state.resources.some(item => item.name === name)))) return;
     const id = ++this.scaleEpoch;
     const panel: ScalePanelState = { name, kind, namespace: namespace.trim(), cluster: profile.cluster, context: profile.context, input: '', message: '', status: 'loading' };
     this.update({ scale: panel });
@@ -273,7 +283,7 @@ export class KubernetesWorkspace {
   }
   async submitScale() {
     const panel = this.state.scale;
-    if (this.documentPending || panel?.status !== 'confirming' || !panel.value || this.scalePending || this.importPending) return;
+    if (this.deletePending || this.documentPending || panel?.status !== 'confirming' || !panel.value || this.scalePending || this.importPending) return;
     const id = this.scaleEpoch;
     this.scalePending = true;
     this.update({ scale: { ...panel, status: 'submitting' } });
@@ -285,7 +295,7 @@ export class KubernetesWorkspace {
       if (!raw) throw new Error('config_invalid');
       sent = true;
       const value = await this.client.updateScale(raw, panel.namespace, panel.kind, panel.name, { ...panel.value, replicas: Number(panel.input) });
-      outcome = `叢集已接受期望副本數 ${value.replicas}，不代表已就緒；請重新查詢。`;
+      outcome = '副本數已更新。';
       if (id === this.scaleEpoch) this.update({ scale: { ...panel, value, status: 'success', message: outcome } });
     } catch (error) {
       outcome = error instanceof Error && /(?:^|[^a-z_])forbidden(?:$|[^a-z_])/.test(error.message)
@@ -299,8 +309,58 @@ export class KubernetesWorkspace {
       if (sent) {
         ++this.epoch;
         this.update({ resources: [], hasMore: false, status: 'idle', scaleNotice: outcome });
+        await this.reloadResourceList();
       }
     }
+  }
+  private async reloadResourceList() {
+    const {kind,namespace,profile}=this.state;
+    const id=++this.epoch;
+    try {
+      const raw=await this.storage.load();
+      if(!raw || !profile || id!==this.epoch) return;
+      const result=kind==='pods'?await this.client.listPods(raw,namespace.trim()):await this.client.listResources(raw,namespace.trim(),kind);
+      if(id!==this.epoch) return;
+      this.update({status:'ready',message:'',hasMore:result.hasMore,updatedAt:Date.now(),...(kind==='pods'?{pods:(result as PodList).items}:{resources:(result as ResourceList).items})});
+    } catch(error) {if(id===this.epoch)this.update({status:'error',message:kubeMessage(error)});}
+  }
+  stepScale(delta: number) {
+    const p=this.state.scale;
+    if(p?.status!=='editing') return;
+    const value=/^\d+$/.test(p.input)?Number(p.input):0;
+    this.setScaleReplicas(String(Math.max(0,Math.min(2147483647,value+delta))));
+  }
+  closeDelete() {++this.deleteEpoch;this.update({deletion:undefined});}
+  async openDelete(name:string) {
+    const {kind,namespace,profile}=this.state;
+    if(isReadOnlyResource(kind) || this.deletePending || this.documentPending || this.scalePending || this.importPending || !profile || this.state.status!=='ready' || ![...this.state.pods,...this.state.resources].some(r=>r.name===name)) return;
+    this.closeDetail();
+    const id=++this.deleteEpoch;
+    const p:DeleteState={name,kind,namespace:namespace.trim(),cluster:profile.cluster,status:'loading',message:''};
+    this.update({deletion:p});
+    try {
+      const raw=await this.storage.load();
+      if(id!==this.deleteEpoch)return;
+      if(!raw)throw new Error('config_invalid');
+      const value=await this.client.getDocument(raw,p.namespace,kind,name);
+      if(id===this.deleteEpoch)this.update({deletion:{...p,status:'confirming',identity:{uid:value.uid,resourceVersion:value.resourceVersion}}});
+    }catch(error){if(id===this.deleteEpoch)this.update({deletion:{...p,status:'error',message:kubeMessage(error)}});}
+  }
+  async submitDelete(){
+    const p=this.state.deletion;
+    if(p?.status!=='confirming' || !p.identity || this.deletePending || this.documentPending || this.scalePending || this.importPending)return;
+    const id=this.deleteEpoch;this.deletePending=true;
+    this.update({deletion:{...p,status:'submitting'}});
+    let sent=false;
+    try {
+      const raw=await this.storage.load();
+      if(id!==this.deleteEpoch)return;
+      if(!raw)throw new Error('config_invalid');
+      sent=true;
+      await this.client.deleteResource(raw,p.namespace,p.kind,p.name,p.identity);
+      if(id===this.deleteEpoch)this.update({deletion:{...p,status:'success',message:'已送出刪除要求。'}});
+    }catch(error){if(id===this.deleteEpoch)this.update({deletion:{...p,status:'error',message:kubeMessage(error)}});}
+    finally {this.deletePending=false;if(sent){this.update({pods:[],resources:[],listMetrics:undefined,status:'idle'});await this.reloadResourceList();}}
   }
   closeEditor() {
     ++this.editorEpoch;
@@ -308,7 +368,7 @@ export class KubernetesWorkspace {
   }
   async openEditor(name: string, mode: 'yaml' | 'image' = 'yaml') {
     const {kind, namespace, profile} = this.state;
-    if (this.importPending || this.scalePending || this.documentPending || !profile || (mode === 'image' && kind === 'configmaps')) return;
+    if (this.importPending || this.scalePending || this.deletePending || this.documentPending || !profile || (mode === 'image' && !hasContainers(kind))) return;
     if (this.state.status !== 'ready' || ![...this.state.pods, ...this.state.resources].some(item => item.name === name)) return;
     this.closeDetail();
     const id = ++this.editorEpoch;
@@ -324,7 +384,7 @@ export class KubernetesWorkspace {
   }
   editDocument() {
     const p=this.state.editor;
-    if(p?.value && p.status==='viewing') this.update({editor:{...p,status:'editing'}});
+    if(p && !isReadOnlyResource(p.kind) && p.kind!=='secrets' && p.value && p.status==='viewing') this.update({editor:{...p,status:'editing'}});
   }
   setDocumentInput(input:string) {
     const p=this.state.editor;
@@ -348,7 +408,7 @@ export class KubernetesWorkspace {
   }
   async submitDocument() {
     const p=this.state.editor;
-    if(p?.status!=='confirming' || !p.value || this.documentPending || this.scalePending || this.importPending) return;
+    if(p?.status!=='confirming' || !p.value || this.deletePending || this.documentPending || this.scalePending || this.importPending) return;
     const id=this.editorEpoch;
     this.documentPending=true;
     this.update({editor:{...p,status:'submitting'}});
@@ -374,7 +434,7 @@ export class KubernetesWorkspace {
 
   closeDetail() { ++this.detailEpoch; this.update(emptyDetail); }
   async openConfigMap(name: string) {
-    if (this.documentPending || this.importPending || this.state.kind !== 'configmaps' || this.state.status !== 'ready' || !this.state.resources.some(item => item.name === name)) return;
+    if (this.deletePending || this.documentPending || this.importPending || this.state.kind !== 'configmaps' || this.state.status !== 'ready' || !this.state.resources.some(item => item.name === name)) return;
     const id = ++this.detailEpoch;
     const { namespace } = this.state;
     this.update({ ...emptyDetail, detailName: name, detailStatus: 'loading' });
@@ -388,7 +448,7 @@ export class KubernetesWorkspace {
   }
   closeLogs() { ++this.logEpoch; this.update({ logs: undefined }); }
   async openPodLogs(pod: string) {
-    if (this.documentPending || this.importPending || this.state.kind !== 'pods' || this.state.status !== 'ready' || !this.state.pods.some(item => item.name === pod)) return;
+    if (this.deletePending || this.documentPending || this.importPending || this.state.kind !== 'pods' || this.state.status !== 'ready' || !this.state.pods.some(item => item.name === pod)) return;
     const id = ++this.logEpoch;
     const namespace = this.state.namespace.trim();
     this.update({ logs: { pod, containers: [], container: '', previous: false, text: '', truncated: false, optionsStatus: 'loading', status: 'idle', message: '' } });
@@ -439,28 +499,46 @@ export class KubernetesWorkspace {
     try {
       const metrics=await this.client.listPodMetrics(raw,namespace);
       if(id===this.epoch) this.update({listMetrics:metrics,listMetricsMessage:Object.keys(metrics).length?'':'用量暫無資料'});
-    } catch { if(id===this.epoch) this.update({listMetrics:undefined,listMetricsMessage:'用量暫無資料'}); }
+    } catch {
+      if(id===this.epoch) this.update({listMetricsMessage:this.state.listMetrics && Object.keys(this.state.listMetrics).length?'用量更新失敗，顯示上次資料。':'用量暫無資料'});
+    }
   }
-  async refresh() {
-    if (this.documentPending || this.importPending || this.scalePending) return;
-    const id = this.invalidateReads();
+  cancelListRefresh() {
+    if(this.refreshRequestEpoch!==this.epoch) return;
+    ++this.epoch;
+    if(this.state.status==='loading') this.update({status:'idle'});
+  }
+  async refresh({background=false}: {background?:boolean} = {}) {
+    if (this.deletePending || this.documentPending || this.importPending || this.scalePending || this.refreshRequestEpoch===this.epoch) return;
+    if(background && (this.state.editor || this.state.scale || this.state.deletion || this.state.detailName || this.state.logs || this.state.metrics)) return;
+    const preserve=this.state.status==='ready';
+    // 同一範圍的刷新保留列表與面板，不經過空白／載入狀態。
+    const id = preserve || background ? ++this.epoch : this.invalidateReads();
     const { profile, namespace, kind } = this.state;
-    if (!profile) { this.update({ status: 'error', message: '請先在設定匯入 kubeconfig。' }); return; }
-    this.update({ status: 'loading', ...emptyResults, message: '' });
+    if (!profile) { if(!background)this.update({ status: 'error', message: '請先在設定匯入 kubeconfig。' }); return; }
+    this.refreshRequestEpoch=id;
+    if(!preserve && !background) this.update({ status: 'loading', ...emptyResults, message: '' });
     try {
       const raw = await this.storage.load();
       if (!raw) throw new Error('config_invalid');
       if (id !== this.epoch) return;
       if (kind === 'pods') {
         const result = await this.client.listPods(raw, namespace.trim());
-        if (id === this.epoch) {
- this.update({ status: 'ready', pods: result.items, hasMore: result.hasMore, updatedAt: Date.now() });
- if (result.items.length) void this.loadListMetrics(raw,namespace.trim(),id);
- }
+        if (id !== this.epoch) return;
+        this.update({ status: 'ready', message:'', refreshMessage:undefined, pods: result.items, hasMore: result.hasMore, updatedAt: Date.now() });
+        // 同一輪包含用量查詢，避免慢速連線下累積重疊請求。
+        if (result.items.length) await this.loadListMetrics(raw,namespace.trim(),id);
+        else this.update({listMetrics:undefined,listMetricsMessage:undefined});
       } else {
         const result = await this.client.listResources(raw, namespace.trim(), kind);
-        if (id === this.epoch) this.update({ status: 'ready', resources: result.items, hasMore: result.hasMore, updatedAt: Date.now() });
+        if (id === this.epoch) this.update({ status: 'ready', message:'', refreshMessage:undefined, resources: result.items, hasMore: result.hasMore, updatedAt: Date.now() });
       }
-    } catch (error) { if (id === this.epoch) this.update({ status: 'error', message: kubeMessage(error) }); }
+    } catch (error) {
+      if (id === this.epoch) this.update(preserve
+        ? {refreshMessage:kubeMessage(error)}
+        : {status:'error',message:kubeMessage(error)});
+    } finally {
+      if(this.refreshRequestEpoch===id) this.refreshRequestEpoch=undefined;
+    }
   }
 }

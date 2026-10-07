@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { KubernetesWorkspace } from '../src/features/kubernetes/workspace.ts';
 
 const unusedResources = {
+ deleteResource: async()=>{throw new Error('非預期刪除');},
   getDocument: async () => { throw new Error('非預期 YAML 查詢'); },
   updateDocument: async () => { throw new Error('非預期資源寫入'); },
   listPodMetrics:async()=>({}),
@@ -208,7 +209,7 @@ test('縮放必須確認後才寫入，零副本成功不宣稱已就緒', async
  workspace.reviewScale();assert.equal(workspace.getSnapshot().scale?.status,'confirming');
  await workspace.submitScale();assert.equal(writes.length,1);
  assert.equal(workspace.getSnapshot().scale?.status,'success');
- assert.match(workspace.getSnapshot().scale!.message,/不代表已就緒/);
+ assert.match(workspace.getSnapshot().scale!.message,/副本數已更新/);
  await workspace.submitScale();assert.equal(writes.length,1);
 });
 
@@ -222,7 +223,7 @@ test('縮放衝突與結果不明必須重新讀取並再次確認，不自動�
   },{load:async()=>raw,save:async()=>{}});
   await workspace.load();workspace.setKind('statefulsets');await workspace.refresh();await workspace.openScale('web');
   workspace.setScaleReplicas('2');workspace.reviewScale();await workspace.submitScale();
-  assert.equal(workspace.getSnapshot().scale?.status,'error');assert.deepEqual(workspace.getSnapshot().resources,[]);
+  assert.equal(workspace.getSnapshot().scale?.status,'error');assert.equal(workspace.getSnapshot().resources[0]?.name,'web');
   await workspace.submitScale();assert.equal(writes,1);
   await workspace.openScale('web');assert.equal(reads,2);assert.equal(workspace.getSnapshot().scale?.status,'editing');
   await workspace.submitScale();assert.equal(writes,1);
@@ -243,7 +244,7 @@ test('送出途中關閉不重送，不切換叢集；完成後保留結果提�
  assert.equal(await workspace.import('other'),false);await workspace.refresh();
  assert.equal(workspace.getSnapshot().namespace,'dev');assert.equal(workspace.getSnapshot().kind,'deployments');assert.equal(writes,1);
  finish?.({uid:'id',resourceVersion:'2',replicas:2});await pending;
- assert.equal(workspace.getSnapshot().scale,undefined);assert.match(workspace.getSnapshot().scaleNotice!,/已接受/);
+ assert.equal(workspace.getSnapshot().scale,undefined);assert.match(workspace.getSnapshot().scaleNotice!,/副本數已更新/);
  workspace.setNamespace('prod');assert.equal(workspace.getSnapshot().scaleNotice,undefined);
 });
 
@@ -332,8 +333,10 @@ test('清單用量延遲回覆不污染新 namespace；用量失敗仍保留資�
  listPods:async(_,namespace)=>({items:[{name:'web',namespace,phase:'Running',ready:1,total:1}],hasMore:false}),
  listPodMetrics:async()=>{if(fail)throw new Error('metrics_missing');return new Promise(resolve=>{finish=resolve;});}},
  {load:async()=>raw,save:async()=>{}});
- await workspace.load();await workspace.refresh();workspace.setNamespace('prod');
- finish?.({web:{cpuMilli:24,memoryMiB:96,timestamp:'2026-09-25T00:00:00Z',windowSeconds:30,containers:[]}});await Promise.resolve();
+ await workspace.load();const pending=workspace.refresh();
+ while(!finish) await Promise.resolve();
+ workspace.setNamespace('prod');
+ finish?.({web:{cpuMilli:24,memoryMiB:96,timestamp:'2026-09-25T00:00:00Z',windowSeconds:30,containers:[]}});await pending;
  assert.equal(workspace.getSnapshot().listMetrics,undefined);
  fail=true;await workspace.refresh();await Promise.resolve();assert.equal(workspace.getSnapshot().status,'ready');assert.equal(workspace.getSnapshot().pods[0].namespace,'prod');assert.equal(workspace.getSnapshot().listMetrics,undefined);assert.equal(workspace.getSnapshot().listMetricsMessage,'用量暫無資料');
 });
@@ -364,4 +367,62 @@ test('image 只送選定容器；衝突不重送，關閉清除草稿',async()=>
  assert.deepEqual(calls,[{uid:'id',resourceVersion:'7',container:{name:'app',group:'containers',image:'nginx:new'}}]);
  assert.match(ws.getSnapshot().editor!.message,/資源已變更/);assert.equal(JSON.stringify(ws.getSnapshot()).includes('private server body'),false);
  ws.closeEditor();assert.equal(ws.getSnapshot().editor,undefined);
+});
+
+test('零副本且沒有 Pod 可使用上下鍵恢復，更新後保留操作入口', async()=>{
+ let replicas=0;
+ const ws=new KubernetesWorkspace({...unusedResources,inspect:async()=>profile,listPods:async()=>({items:[],hasMore:false}),
+ listResources:async()=>({items:[{name:'web',namespace:'dev',ready:0,desired:replicas,updated:0,keyCount:0,immutable:false}],hasMore:false}),
+ getScale:async()=>({uid:'id',resourceVersion:'7',replicas}),updateScale:async(_,ns,kind,name,value)=>{replicas=value.replicas;return value;}},{load:async()=>raw,save:async()=>{}});
+ await ws.load();ws.setKind('deployments');await ws.refresh();await ws.openScale('web');
+ ws.stepScale(-1);assert.equal(ws.getSnapshot().scale?.input,'0');
+ ws.stepScale(1);ws.reviewScale();await ws.submitScale();
+ assert.equal(replicas,1);assert.equal(ws.getSnapshot().resources[0].desired,1);
+ ws.closeScale();await ws.openScale('web');assert.equal(ws.getSnapshot().scale?.status,'editing');
+});
+test('刪除必須再次確認，送出期間阻擋重複刪除與切換目標',async()=>{
+ let writes=0;let finish:()=>void=()=>{};
+ const ws=new KubernetesWorkspace({...editorClient(),deleteResource:async(_,ns,kind,name,identity)=>{writes++;assert.equal(ns,'dev');assert.equal(name,'web');assert.deepEqual(identity,{uid:resourceDocument.uid,resourceVersion:resourceDocument.resourceVersion});await new Promise<void>(r=>{finish=r;});}},{load:async()=>raw,save:async()=>{}});
+ await ws.load();await ws.refresh();
+ await ws.submitDelete();assert.equal(writes,0);
+ await ws.openDelete('web');assert.equal(writes,0);
+ const pending=ws.submitDelete();await Promise.resolve();
+ ws.setNamespace('prod');ws.setKind('deployments');await ws.submitDelete();
+ assert.equal(writes,1);assert.equal(ws.getSnapshot().namespace,'dev');
+ ws.closeDelete();finish();await pending;assert.equal(ws.getSnapshot().deletion,undefined);
+});
+
+test('背景刷新保留列表與用量，慢速請求不重疊且完成後才替換資料',async()=>{
+ let calls=0;
+ let finish!:(value:import('../src/features/kubernetes/workspace.ts').PodList)=>void;
+ const pod={name:'web',namespace:'dev',phase:'Running',ready:1,total:1};
+ const metrics={web:{cpuMilli:25,memoryMiB:64,timestamp:'2026-10-05T00:00:00Z',windowSeconds:30,containers:[]}};
+ const ws=new KubernetesWorkspace({...unusedResources,inspect:async()=>profile,
+ listPods:async()=>{calls++;return calls===1?{items:[pod],hasMore:false}:new Promise(resolve=>{finish=resolve;});},listPodMetrics:async()=>metrics},{load:async()=>raw,save:async()=>{}});
+ await ws.load();await ws.refresh();const previous=ws.getSnapshot();
+ const states:ReturnType<typeof ws.getSnapshot>[]=[];const unsubscribe=ws.subscribe(()=>states.push(ws.getSnapshot()));
+ const pending=ws.refresh({background:true});await Promise.resolve();
+ await ws.refresh({background:true});await ws.refresh();
+ assert.equal(calls,2);assert.equal(ws.getSnapshot().pods,previous.pods);assert.equal(ws.getSnapshot().listMetrics,previous.listMetrics);assert.equal(ws.getSnapshot().updatedAt,previous.updatedAt);
+ finish({items:[{...pod,ready:0}],hasMore:false});await pending;
+ assert.equal(ws.getSnapshot().pods[0].ready,0);assert.ok(states.every(s=>s.status==='ready' && s.pods.length===1));unsubscribe();
+});
+
+test('背景刷新失敗保留上次資料及時間，成功後清除過期提示',async()=>{
+ let fail=false;
+ const ws=new KubernetesWorkspace({...editorClient(),listPods:async()=>{if(fail)throw new Error('connection_failed');return {items:[{name:'web',namespace:'dev',phase:'Running',ready:1,total:1}],hasMore:false};}},{load:async()=>raw,save:async()=>{}});
+ await ws.load();await ws.refresh();const previous=ws.getSnapshot();fail=true;
+ await ws.refresh({background:true});assert.equal(ws.getSnapshot().status,'ready');assert.equal(ws.getSnapshot().pods,previous.pods);assert.equal(ws.getSnapshot().updatedAt,previous.updatedAt);assert.ok(ws.getSnapshot().refreshMessage);
+ fail=false;await ws.refresh({background:true});assert.equal(ws.getSnapshot().refreshMessage,undefined);
+});
+
+test('背景刷新不干擾編輯面板，離頁取消後忽略舊回應並可重新查詢',async()=>{
+ let calls=0;let delay=false;let finish!:(value:import('../src/features/kubernetes/workspace.ts').PodList)=>void;
+ const pod={name:'web',namespace:'dev',phase:'Running',ready:1,total:1};
+ const ws=new KubernetesWorkspace({...editorClient(),listPods:async()=>{calls++;return delay?new Promise(resolve=>{finish=resolve;}):{items:[pod],hasMore:false};}},{load:async()=>raw,save:async()=>{}});
+ await ws.load();await ws.refresh();await ws.openEditor('web');ws.editDocument();ws.setDocumentInput('edited YAML');
+ await ws.refresh({background:true});assert.equal(calls,1);assert.equal(ws.getSnapshot().editor?.input,'edited YAML');
+ ws.closeEditor();delay=true;const pending=ws.refresh({background:true});await Promise.resolve();ws.cancelListRefresh();
+ delay=false;await ws.refresh({background:true});finish({items:[],hasMore:false});await pending;
+ assert.equal(ws.getSnapshot().pods[0].name,'web');assert.equal(calls,3);
 });

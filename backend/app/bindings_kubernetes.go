@@ -56,10 +56,17 @@ func (a *App) ConnectKubernetesCluster(request KubernetesConnectRequest) (Kubern
 			request.Namespace = ns
 		}
 	}
-	return a.kubernetes.Connect(request)
+	session, err := a.kubernetes.Connect(request)
+	if err == nil && a.aiAgent != nil {
+		a.aiAgent.Close()
+	}
+	return session, err
 }
 
 func (a *App) DisconnectKubernetesCluster() {
+	if a.aiAgent != nil {
+		a.aiAgent.Close()
+	}
 	a.kubernetes.Disconnect()
 }
 

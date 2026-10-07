@@ -104,3 +104,37 @@ func TestScaleResponseMustMatchConfirmedUID(t *testing.T) {
 		t.Fatal("不同 UID 不得宣稱成功", err)
 	}
 }
+
+// Kubernetes 的 ScaleSpec 會省略值為 0 的 replicas。
+func TestScaleZeroOmittedReplicasCanReadAndRestore(t *testing.T) {
+	current := int32(0)
+	raw := resourceServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "PUT" {
+			var doc scaleDocument
+			if json.NewDecoder(r.Body).Decode(&doc) != nil || doc.Spec.Replicas == nil {
+				t.Fatal("缺少更新值")
+			}
+			current = *doc.Spec.Replicas
+		}
+		spec := map[string]int32{}
+		if current != 0 {
+			spec["replicas"] = current
+		}
+		json.NewEncoder(w).Encode(map[string]any{"apiVersion": "autoscaling/v1", "kind": "Scale", "metadata": map[string]string{"name": "web", "namespace": "dev", "uid": "uid-1", "resourceVersion": "42"}, "spec": spec})
+	})
+	value, err := GetScale(raw, "dev", "deployments", "web")
+	if err != nil {
+		t.Fatalf("零副本應可讀取：%v", err)
+	}
+	var got scaleValue
+	json.Unmarshal([]byte(value), &got)
+	if got.Replicas == nil || *got.Replicas != 0 {
+		t.Fatal(value)
+	}
+	if _, err = UpdateScale(raw, "dev", "deployments", "web", `{"uid":"uid-1","resourceVersion":"42","replicas":1}`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = UpdateScale(raw, "dev", "deployments", "web", `{"uid":"uid-1","resourceVersion":"42","replicas":0}`); err != nil {
+		t.Fatal(err)
+	}
+}

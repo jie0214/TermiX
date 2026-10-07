@@ -13,6 +13,7 @@ import { hostvault } from './dict/hostvault.ts';
 import { kubernetes } from './dict/kubernetes.ts';
 import { terminal } from './dict/terminal.ts';
 import { controlpanel } from './dict/controlpanel.ts';
+import { ai } from './dict/ai.ts';
 import { misc } from './dict/misc.ts';
 
 export const LOCALES = ['en', 'zh-Hant', 'ja'] as const;
@@ -25,7 +26,7 @@ export interface DictBundle {
   ja: Record<string, string>;
 }
 
-const BUNDLES: DictBundle[] = [common, app, hostvault, kubernetes, terminal, controlpanel, misc];
+const BUNDLES: DictBundle[] = [common, app, hostvault, kubernetes, terminal, controlpanel, misc, ai];
 
 function assemble(key: keyof DictBundle): Record<string, string> {
   return Object.assign({}, ...BUNDLES.map((b) => b[key]));

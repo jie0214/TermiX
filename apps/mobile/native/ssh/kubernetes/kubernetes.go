@@ -319,7 +319,7 @@ func requestAPI(raw, namespace string, options apiRequest) ([]byte, error) {
 	if response.StatusCode == http.StatusUnprocessableEntity || response.StatusCode == http.StatusBadRequest {
 		return nil, errors.New("api_rejected")
 	}
-	if response.StatusCode != http.StatusOK {
+	if response.StatusCode != http.StatusOK && !(method == http.MethodDelete && (response.StatusCode == http.StatusAccepted || response.StatusCode == http.StatusNoContent)) {
 		return nil, errors.New("api_failed")
 	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, options.maxBytes+1))

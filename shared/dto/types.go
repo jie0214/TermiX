@@ -441,6 +441,8 @@ type KubernetesOwnerReference struct {
 }
 
 type KubernetesEventSummary struct {
+	Name      string `json:"name"`
+	UID       string `json:"uid"`
 	Type      string `json:"type"`
 	Reason    string `json:"reason"`
 	Message   string `json:"message"`
@@ -500,6 +502,7 @@ type KubernetesPodLogs struct {
 }
 
 type KubernetesNodeSummary struct {
+	MetricsAvailable    bool   `json:"metricsAvailable"`
 	Name                string `json:"name"`
 	Status              string `json:"status"`
 	Roles               string `json:"roles"`

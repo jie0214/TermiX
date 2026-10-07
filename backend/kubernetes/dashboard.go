@@ -1049,6 +1049,9 @@ func loadMetrics(ctx context.Context, clients *clusterClients, namespace string,
 		if !found {
 			continue
 		}
+		_, hasCPU := metric.Usage[corev1.ResourceCPU]
+		_, hasMemory := metric.Usage[corev1.ResourceMemory]
+		snapshot.Nodes[index].MetricsAvailable = hasCPU && hasMemory
 		snapshot.Nodes[index].CPUUsageMilli = metric.Usage.Cpu().MilliValue()
 		snapshot.Nodes[index].MemoryUsageBytes = metric.Usage.Memory().Value()
 		snapshot.Metrics.CPUUsageMilli += snapshot.Nodes[index].CPUUsageMilli

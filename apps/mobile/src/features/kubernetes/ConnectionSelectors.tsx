@@ -1,7 +1,7 @@
+import { KubernetesModal } from './KubernetesModal';
 import { useEffect, useRef, useState } from 'react';
-import { FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { SettingsRow } from '../../components/SettingsList';
 import { Button } from '../../components/Button';
@@ -13,7 +13,7 @@ import { kubeMessage } from './workspace';
 
 export function ConnectionSelectors({ mode = 'namespace' }: { mode?: 'namespace' | 'aws' }) {
   const { workspace, state } = useKubernetes();
-  const { colors } = useTheme(); const styles = useThemedStyles(createStyles); const { t } = useLanguage(); const insets = useSafeAreaInsets();
+  const { colors } = useTheme(); const styles = useThemedStyles(createStyles); const { t } = useLanguage();
   const [sheet,setSheet] = useState<'aws'|'namespace'|null>(null); const [query,setQuery] = useState('');
   const [profiles,setProfiles] = useState<AwsProfile[]>([]); const [awsStatus,setAwsStatus] = useState(''); const [awsBusy,setAwsBusy] = useState(false);
   const request = useRef(0);
@@ -41,8 +41,8 @@ export function ConnectionSelectors({ mode = 'namespace' }: { mode?: 'namespace'
     {state.namespaces?.status==='loading' && <Text style={styles.note}>{t('讀取 namespace 中…')}</Text>}
     {state.namespaces?.status==='error' && <Text accessibilityRole="alert" style={styles.error}>{t(state.namespaces.message)}</Text>}
     </>}
-    <Modal visible={sheet!==null && !state.configBusy} presentationStyle="pageSheet" animationType="slide" onRequestClose={close}>
-      <View style={[styles.page,{paddingTop:Math.max(insets.top,16),paddingBottom:Math.max(insets.bottom,16)}]}>
+    <KubernetesModal visible={sheet!==null && !state.configBusy} animationType="slide" onRequestClose={close}>
+      <View style={[styles.page,{paddingTop:16,paddingBottom:16}]}>
         <View style={styles.header}><Text style={styles.value}>{t(sheet==='aws'?'選擇雲端帳號':'選擇 namespace')}</Text><Button label={t('關閉')} variant="secondary" onPress={close}/></View>
         <TextInput accessibilityLabel={t('搜尋選項')} placeholder={t('搜尋選項')} placeholderTextColor={colors.muted} style={styles.search} value={query} onChangeText={setQuery} autoCapitalize="none" autoCorrect={false}/>
         {!!(sheet==='aws'?awsStatus:state.namespaces?.message) && <Text accessibilityRole="alert" style={styles.error}>{t(sheet==='aws'?awsStatus:state.namespaces!.message)}</Text>}
@@ -59,7 +59,7 @@ export function ConnectionSelectors({ mode = 'namespace' }: { mode?: 'namespace'
           <Button label={t('重新讀取 namespace')} variant="secondary" disabled={state.namespaces?.status==='loading'} onPress={()=>void workspace.refreshNamespaces()}/>
         </>}</View>
       </View>
-    </Modal>
+    </KubernetesModal>
   </>;
 }
 const createStyles = (colors:ThemeColors)=>StyleSheet.create({

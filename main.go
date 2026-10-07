@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jie0214/TermiX/backend/aiagent"
 	termixapp "github.com/jie0214/TermiX/backend/app"
 	"github.com/jie0214/TermiX/backend/controlpanel"
 	"github.com/jie0214/TermiX/backend/hostvault"
@@ -84,6 +85,7 @@ func main() {
 		snippets.Module,
 		hostvault.Module,
 		kubernetes.Module,
+		aiagent.Module,
 		keychain.Module,
 		fx.Provide(termixapp.NewApp),
 		fx.Populate(&app),
@@ -127,7 +129,12 @@ func main() {
 			}
 			return finishNativeQuit()
 		},
-		OnShutdown: func(context.Context) { stopStatusBar(); termixapp.ShutdownMobileSync(app); termixapp.ShutdownSFTP(app) },
+		OnShutdown: func(context.Context) {
+			stopStatusBar()
+			termixapp.ShutdownMobileSync(app)
+			termixapp.ShutdownSFTP(app)
+			termixapp.ShutdownAI(app)
+		},
 		OnDomReady: func(context.Context) {
 			startNativeUpdater(app)
 			// 視窗加入 AppKit 視窗集合後再次裁切，避免啟動時序略過主視窗。

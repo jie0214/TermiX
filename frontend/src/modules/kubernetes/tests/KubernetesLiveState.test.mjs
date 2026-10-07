@@ -76,3 +76,13 @@ test('背景明細更新保留目前頁籤，舊回應不可覆蓋已關閉 draw
   await stale;
   assert.equal(store.getState().resourceDetail, null);
 });
+
+test('Node 樣本可用狀態跨 Watch 保留，缺少樣本時清除，零值仍可用', () => {
+  const sample = { kind: 'node', name: 'node', metricsAvailable: true, cpuUsageMilli: 0, memoryUsageBytes: 0 };
+  const sampled = applyKubernetesChanges(initial(), [{ section: 'metrics', type: 'metrics', items: [sample] }]).dashboard;
+  assert.equal(sampled.nodes[0].metricsAvailable, true);
+  const watched = applyKubernetesChanges(sampled, [reset('nodes', [{ ...sampled.nodes[0], status: 'NotReady', metricsAvailable: false }])]).dashboard;
+  assert.equal(watched.nodes[0].metricsAvailable, true);
+  const missing = applyKubernetesChanges(watched, [{ section: 'metrics', type: 'metrics', items: [] }]).dashboard;
+  assert.equal(missing.nodes[0].metricsAvailable, false);
+});

@@ -101,6 +101,9 @@ func (a *App) prepareCloseWithPrompts(confirm func(string) bool, pendingPrompt f
 		a.updateMu.Unlock()
 		return false
 	}
+	if a.aiAgent != nil {
+		a.aiAgent.Close()
+	}
 	ShutdownSFTP(a)
 	if a.terminal != nil {
 		a.terminal.CloseAll()

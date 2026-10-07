@@ -383,3 +383,21 @@ func TestSummaryShowsTerminatingWhenDeletionTimestampSet(t *testing.T) {
 		t.Errorf("Expected PV status to be Terminating, got %s", pvSum.Status)
 	}
 }
+
+func TestNodeMetricsAvailability(t *testing.T) {
+	metricsClient := metricsfake.NewSimpleClientset()
+	metricsClient.PrependReactor("list", "nodes", func(clienttesting.Action) (bool, runtime.Object, error) {
+		return true, &metricsv1beta1.NodeMetricsList{Items: []metricsv1beta1.NodeMetrics{
+			{ObjectMeta: metav1.ObjectMeta{Name: "zero"}, Usage: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("0"), corev1.ResourceMemory: resource.MustParse("0")}},
+			{ObjectMeta: metav1.ObjectMeta{Name: "incomplete"}, Usage: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("10m")}},
+		}}, nil
+	})
+	metricsClient.PrependReactor("list", "pods", func(clienttesting.Action) (bool, runtime.Object, error) {
+		return true, &metricsv1beta1.PodMetricsList{}, nil
+	})
+	snapshot := dto.KubernetesDashboardSnapshot{Nodes: []dto.KubernetesNodeSummary{{Name: "zero"}, {Name: "missing"}, {Name: "incomplete"}}}
+	loadMetrics(context.Background(), &clusterClients{metrics: metricsClient}, "", &snapshot)
+	if !snapshot.Metrics.Available || !snapshot.Nodes[0].MetricsAvailable || snapshot.Nodes[1].MetricsAvailable || snapshot.Nodes[2].MetricsAvailable {
+		t.Fatalf("Node 樣本可用狀態錯誤：%+v", snapshot.Nodes)
+	}
+}

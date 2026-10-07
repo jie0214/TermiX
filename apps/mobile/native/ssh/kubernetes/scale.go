@@ -29,7 +29,7 @@ func validScale(value scaleValue) bool {
 	return value.UID != "" && len(value.UID) <= 256 && value.ResourceVersion != "" && len(value.ResourceVersion) <= 256 && value.Replicas != nil && *value.Replicas >= 0
 }
 func scaleRequest(raw, namespace, kind, name string, body []byte) (string, error) {
-	if (kind != "deployments" && kind != "statefulsets") || !validResourceName(name) {
+	if (kind != "deployments" && kind != "statefulsets" && kind != "replicasets") || !validResourceName(name) {
 		return "", errors.New("invalid_resource")
 	}
 	options := apiRequest{apiPath: "apis/apps/v1", resource: kind, name: name, subresource: "scale", maxBytes: 65536, body: body}
@@ -47,6 +47,11 @@ func scaleRequest(raw, namespace, kind, name string, body []byte) (string, error
 	var doc scaleDocument
 	value := scaleValue{}
 	if len(result) <= 65536 && json.Unmarshal(result, &doc) == nil {
+		// ScaleSpec 的 replicas 使用 omitempty，零副本會省略此欄位。
+		if doc.Spec.Replicas == nil {
+			zero := int32(0)
+			doc.Spec.Replicas = &zero
+		}
 		value = scaleValue{doc.Metadata.UID, doc.Metadata.ResourceVersion, doc.Spec.Replicas}
 	}
 	if doc.APIVersion != "autoscaling/v1" || doc.Kind != "Scale" || doc.Metadata.Name != name || doc.Metadata.Namespace != namespace || !validScale(value) {

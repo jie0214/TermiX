@@ -1,3 +1,4 @@
+import type { AIConnection, AIModel, EventAnalysisRequest, PodAnalysisRequest, PodAnalysisResult } from '../../modules/ai/types';
 import type { SFTPSession, SFTPListing, SFTPTransfer, SFTPLocalListing } from '../../modules/sftp/types';
 import type {
   AWSIntegration,
@@ -49,6 +50,13 @@ import type {
 } from '../../domain';
 
 export interface WailsAppContract {
+  ListAIConnections(): Promise<AIConnection[]>;
+  SetAIConnection(id: string, connected: boolean): Promise<void>;
+  TestAIConnection(id: string): Promise<void>;
+  ListAIModels(id: string): Promise<AIModel[]>;
+  AnalyzeKubernetesPod(request: PodAnalysisRequest): Promise<PodAnalysisResult>;
+  AnalyzeKubernetesEvent(request: EventAnalysisRequest): Promise<PodAnalysisResult>;
+  CancelPodAnalysis(requestId: string): Promise<void>;
   ExportMobileSettings(): Promise<OperationResult>;
   GetMobileSyncStatus(): Promise<OperationResult>;
   SetMobileCloudEnabled(enabled: boolean): Promise<OperationResult>;

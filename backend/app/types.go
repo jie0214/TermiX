@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"github.com/jie0214/TermiX/backend/aiagent"
 	"github.com/jie0214/TermiX/backend/mobilecloud"
 	sftpservice "github.com/jie0214/TermiX/backend/sftp"
 	"sync"
@@ -17,6 +18,7 @@ import (
 )
 
 type App struct {
+	aiAgent              *aiagent.Service
 	mobileCloud          *mobilecloud.Service
 	mobileCloudCancel    context.CancelFunc
 	sftp                 *sftpservice.Manager

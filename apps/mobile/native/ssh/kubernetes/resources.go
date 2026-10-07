@@ -3,8 +3,10 @@ package mobilekubernetes
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"regexp"
 	"sort"
+	"strings"
 )
 
 var configKeyPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
@@ -22,6 +24,7 @@ type resourceMetadata struct {
 	Namespace         string  `json:"namespace"`
 }
 type resourceSummary struct {
+	Detail    string `json:"detail,omitempty"`
 	Health    string `json:"health,omitempty"`
 	Name      string `json:"name"`
 	Namespace string `json:"namespace"`
@@ -34,28 +37,76 @@ type resourceSummary struct {
 type resourceItem struct {
 	Metadata resourceMetadata `json:"metadata"`
 	Spec     struct {
-		Replicas *int `json:"replicas"`
+		MinReplicas    *int `json:"minReplicas"`
+		MaxReplicas    int  `json:"maxReplicas"`
+		ScaleTargetRef struct {
+			Kind string `json:"kind"`
+			Name string `json:"name"`
+		} `json:"scaleTargetRef"`
+		PolicyTypes []string          `json:"policyTypes"`
+		Hard        map[string]string `json:"hard"`
+		Limits      []struct {
+			Type string `json:"type"`
+		} `json:"limits"`
+		Replicas    *int   `json:"replicas"`
+		Type        string `json:"type"`
+		ClusterIP   string `json:"clusterIP"`
+		Schedule    string `json:"schedule"`
+		Suspend     bool   `json:"suspend"`
+		Completions *int   `json:"completions"`
+		Ports       []struct {
+			Port     int    `json:"port"`
+			Protocol string `json:"protocol"`
+		} `json:"ports"`
+		Rules []struct {
+			Host string `json:"host"`
+		} `json:"rules"`
 	} `json:"spec"`
 	Status struct {
+		CurrentReplicas    int               `json:"currentReplicas"`
+		DesiredReplicas    int               `json:"desiredReplicas"`
+		CurrentHealthy     int               `json:"currentHealthy"`
+		DesiredHealthy     int               `json:"desiredHealthy"`
+		DisruptionsAllowed int               `json:"disruptionsAllowed"`
+		Hard               map[string]string `json:"hard"`
+		Used               map[string]string `json:"used"`
+		Phase              string            `json:"phase"`
+		Capacity           map[string]string `json:"capacity"`
+		Succeeded          int               `json:"succeeded"`
+		Failed             int               `json:"failed"`
+		Active             json.RawMessage   `json:"active"`
+		DesiredScheduled   int               `json:"desiredNumberScheduled"`
+		NumberReady        int               `json:"numberReady"`
 		ObservedGeneration *int64            `json:"observedGeneration"`
 		Available          int               `json:"availableReplicas"`
 		Conditions         []healthCondition `json:"conditions"`
 		Ready              int               `json:"readyReplicas"`
 		Updated            int               `json:"updatedReplicas"`
 	} `json:"status"`
-	Data       map[string]string `json:"data"`
-	BinaryData map[string][]byte `json:"binaryData"`
-	Immutable  bool              `json:"immutable"`
+	AddressType string `json:"addressType"`
+	Endpoints   []struct {
+		Addresses  []string `json:"addresses"`
+		Conditions struct {
+			Ready *bool `json:"ready"`
+		} `json:"conditions"`
+	} `json:"endpoints"`
+	Rules    []json.RawMessage `json:"rules"`
+	Subjects []json.RawMessage `json:"subjects"`
+	RoleRef  struct {
+		Kind string `json:"kind"`
+		Name string `json:"name"`
+	} `json:"roleRef"`
+	AutomountServiceAccountToken *bool             `json:"automountServiceAccountToken"`
+	ImagePullSecrets             []json.RawMessage `json:"imagePullSecrets"`
+	Data                         map[string]string `json:"data"`
+	BinaryData                   map[string][]byte `json:"binaryData"`
+	Immutable                    bool              `json:"immutable"`
 }
 
-// ListResources 只允許本票支援的唯讀資源，不回傳 ConfigMap 值。
+// ListResources 使用允許的資源路徑，清單不回傳 ConfigMap 或 Secret 值。
 func ListResources(raw, namespace, kind string) (string, error) {
-	apiPath := "apis/apps/v1"
-	switch kind {
-	case "deployments", "statefulsets":
-	case "configmaps":
-		apiPath = "api/v1"
-	default:
+	apiPath, _ := documentRoute(kind)
+	if apiPath == "" || kind == "pods" {
 		return "", errors.New("invalid_resource")
 	}
 	body, err := getResource(raw, namespace, apiPath, kind, "")
@@ -80,10 +131,14 @@ func ListResources(raw, namespace, kind string) (string, error) {
 			return "", errors.New("api_failed")
 		}
 		s := resourceSummary{Name: item.Metadata.Name, Namespace: namespace}
-		if kind == "configmaps" {
+		if kind == "configmaps" || kind == "secrets" {
 			s.KeyCount = len(item.Data) + len(item.BinaryData)
 			s.Immutable = item.Immutable
-		} else {
+		} else if kind == "deployments" || kind == "statefulsets" || kind == "replicasets" || kind == "daemonsets" {
+			if kind == "daemonsets" {
+				item.Spec.Replicas = &item.Status.DesiredScheduled
+				item.Status.Ready = item.Status.NumberReady
+			}
 			s.Desired = 1
 			if item.Spec.Replicas != nil {
 				s.Desired = *item.Spec.Replicas
@@ -94,6 +149,89 @@ func ListResources(raw, namespace, kind string) (string, error) {
 			if s.Desired < 0 || s.Ready < 0 || s.Updated < 0 {
 				return "", errors.New("api_failed")
 			}
+		}
+		switch kind {
+		case "horizontalpodautoscalers":
+			minimum := 1
+			if item.Spec.MinReplicas != nil {
+				minimum = *item.Spec.MinReplicas
+			}
+			s.Detail = fmt.Sprintf("%s/%s · Replicas %d → %d · Min %d / Max %d", item.Spec.ScaleTargetRef.Kind, item.Spec.ScaleTargetRef.Name, item.Status.CurrentReplicas, item.Status.DesiredReplicas, minimum, item.Spec.MaxReplicas)
+		case "poddisruptionbudgets":
+			s.Detail = fmt.Sprintf("Healthy %d / Desired %d · Disruptions allowed %d", item.Status.CurrentHealthy, item.Status.DesiredHealthy, item.Status.DisruptionsAllowed)
+		case "networkpolicies":
+			types := item.Spec.PolicyTypes
+			s.Detail = "Policy types: " + strings.Join(types, ", ")
+		case "endpointslices":
+			ready, unknown := 0, 0
+			for _, endpoint := range item.Endpoints {
+				if endpoint.Conditions.Ready == nil {
+					unknown++
+				} else if *endpoint.Conditions.Ready {
+					ready++
+				}
+			}
+			s.Detail = fmt.Sprintf("%s · Endpoints %d · Ready %d · Unknown %d", item.AddressType, len(item.Endpoints), ready, unknown)
+		case "serviceaccounts":
+			automount := "Default"
+			if item.AutomountServiceAccountToken != nil {
+				automount = fmt.Sprint(*item.AutomountServiceAccountToken)
+			}
+			s.Detail = fmt.Sprintf("Token automount %s · Image pull secrets %d", automount, len(item.ImagePullSecrets))
+		case "roles":
+			s.Detail = fmt.Sprintf("Rules %d", len(item.Rules))
+		case "rolebindings":
+			s.Detail = fmt.Sprintf("%s/%s · Subjects %d", item.RoleRef.Kind, item.RoleRef.Name, len(item.Subjects))
+		case "resourcequotas":
+			hard := item.Status.Hard
+			if len(hard) == 0 {
+				hard = item.Spec.Hard
+			}
+			keys := make([]string, 0, len(hard))
+			for key := range hard {
+				keys = append(keys, key)
+			}
+			sort.Strings(keys)
+			values := []string{}
+			for _, key := range keys {
+				used := item.Status.Used[key]
+				if used == "" {
+					used = "Unknown"
+				}
+				values = append(values, key+" "+used+" / "+hard[key])
+			}
+			s.Detail = strings.Join(values, " · ")
+		case "limitranges":
+			types := []string{}
+			for _, limit := range item.Spec.Limits {
+				types = append(types, limit.Type)
+			}
+			s.Detail = "Limits: " + strings.Join(types, ", ")
+		case "services":
+			ports := []string{}
+			for _, p := range item.Spec.Ports {
+				ports = append(ports, fmt.Sprintf("%d/%s", p.Port, p.Protocol))
+			}
+			s.Detail = strings.Join([]string{item.Spec.Type, item.Spec.ClusterIP, strings.Join(ports, ", ")}, " · ")
+		case "ingresses":
+			hosts := []string{}
+			for _, r := range item.Spec.Rules {
+				hosts = append(hosts, r.Host)
+			}
+			s.Detail = strings.Join(hosts, ", ")
+		case "persistentvolumeclaims":
+			s.Detail = item.Status.Phase + " · " + item.Status.Capacity["storage"]
+		case "cronjobs":
+			s.Detail = item.Spec.Schedule
+			if item.Spec.Suspend {
+				s.Detail += " · Suspended"
+			}
+		case "jobs":
+			var active int
+			if len(item.Status.Active) > 0 && json.Unmarshal(item.Status.Active, &active) != nil {
+				return "", errors.New("api_failed")
+			}
+			s.Detail = fmt.Sprintf("Active %d · Succeeded %d · Failed %d", active, item.Status.Succeeded, item.Status.Failed)
 		}
 		result.Items = append(result.Items, s)
 	}

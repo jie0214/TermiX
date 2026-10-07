@@ -544,6 +544,7 @@ func eventSummary(item corev1.Event) dto.KubernetesEventSummary {
 		timestamp = item.CreationTimestamp.Time
 	}
 	return dto.KubernetesEventSummary{
+		Name: item.Name, UID: string(item.UID),
 		Type: item.Type, Reason: item.Reason, Message: limitedText(item.Message),
 		Object:    item.InvolvedObject.Kind + "/" + item.InvolvedObject.Name,
 		Namespace: item.Namespace, Count: item.Count, Timestamp: timestamp.UTC().Format(time.RFC3339),

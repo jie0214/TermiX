@@ -1,3 +1,6 @@
+import '../ai/AIConnectionElements.ts';
+import { eventFilterCounts, filterKubernetesEvents } from './KubernetesEventFilters.js';
+import { renderNodeUsage } from './KubernetesNodeUsage.js';
 import { patchKubernetesDOM } from './KubernetesDOM.js';
 import { kubernetesSessionStore } from './KubernetesSessionStore.js';
 import { KUBERNETES_CREATE_RESOURCE_GROUPS } from './KubernetesResourceTemplates.js';
@@ -354,6 +357,7 @@ export class KubernetesSessionPage extends HTMLElement {
     this.eventsSearch = '';
     // 目前於 Drawer 開啟檢視的事件（純前端本地狀態，點列開啟、關閉歸零）；null＝未開。
     this.selectedEvent = null;
+    this.eventDrawerTab = 'details';
     // 資源清單排序狀態（純前端、存元件上，輪詢重繪保留）：
     // { [section]: { key, dir: 'asc' | 'desc' } }；無此鍵＝該 section 無排序（原序）。
     this.tableSort = {};
@@ -651,6 +655,7 @@ export class KubernetesSessionPage extends HTMLElement {
     });
     this.unsubscribe = kubernetesSessionStore.subscribe((nextState) => {
       this.ensureLiveUpdates(nextState);
+      if (this.selectedEvent && this.eventConnectedAt !== nextState.connectedCluster?.connectedAt) this.selectedEvent = null;
       if (this.selectedEvent && nextState.dashboard?.events) {
         const selected = this.selectedEvent;
         const latest = nextState.dashboard.events.find(event => selected.uid
@@ -960,6 +965,21 @@ export class KubernetesSessionPage extends HTMLElement {
   }
 
   handlePageClick(event) {
+    const eventFilter = event.target.closest?.('[data-event-filter]');
+    if (eventFilter && this.contains(eventFilter)) {
+      event.preventDefault();
+      this.eventsTypeFilter = eventFilter.dataset.eventFilter;
+      this.rerenderPreservingScroll();
+      this.querySelector(`[data-event-filter="${this.eventsTypeFilter}"]`)?.focus({ preventScroll: true });
+      return;
+    }
+    const eventTab = event.target.closest?.('[data-event-tab]');
+    if (eventTab && this.contains(eventTab)) {
+      event.preventDefault();
+      this.eventDrawerTab = eventTab.dataset.eventTab === 'ai' ? 'ai' : 'details';
+      this.rerenderPreservingScroll();
+      return;
+    }
     const detailTab = event.target.closest?.('[data-detail-tab]');
     if (detailTab && this.contains(detailTab)) {
       const store = kubernetesSessionStore.getState();
@@ -1271,7 +1291,7 @@ export class KubernetesSessionPage extends HTMLElement {
     const definitions = {
       nodes: {
         items: dashboard.nodes || [],
-        columns: [['name', 'Name'], ['status', 'Status', statusBadge], ['roles', 'Roles'], ['version', 'Version'], ['cpuUsageMilli', 'CPU Usage', cpuUsage], ['memoryUsageBytes', 'Memory Usage', memoryUsage], ['creationTimestamp', 'Age', formatAge]]
+        columns: [['name', 'Name'], ['status', 'Status', statusBadge], ['roles', 'Roles'], ['version', 'Version'], ['cpuUsageMilli', 'CPU Usage', (value, node) => renderNodeUsage(value, node.cpuCapacityMilli, metricsAvailable && node.metricsAvailable, formatCPU)], ['memoryUsageBytes', 'Memory Usage', (value, node) => renderNodeUsage(value, node.memoryCapacityBytes, metricsAvailable && node.metricsAvailable, formatBytes)], ['creationTimestamp', 'Age', formatAge]]
       },
       pods: {
         items: dashboard.pods || [],
@@ -1360,7 +1380,7 @@ export class KubernetesSessionPage extends HTMLElement {
           <caption class="kubernetes-table-caption">${escapeHtml(SECTIONS.find(([id]) => id === section)?.[1] || t('k8s.resource.fallback'))}</caption>
           <thead><tr>${definition.columns.map(([key, label]) => this.sortableTh(section, key, label, { type: sortTypeForKey(key) })).join('')}${withActions ? '<th></th>' : ''}</tr></thead>
           <tbody>${items.map(item => `
-            <tr class="kubernetes-resource-row" tabindex="0" role="button"${namespaced && item.namespace ? ` style="border-left-color:${this.namespaceColor(item.namespace)}"` : ''} data-resource-kind="${RESOURCE_KINDS[section]}" data-resource-name="${escapeHtml(item.name)}" data-resource-namespace="${escapeHtml(item.namespace || '')}" data-resource-apiversion="${escapeHtml(RESOURCE_META[section]?.apiVersion || '')}" aria-label="${t('k8s.row.viewDetailAria', { name: escapeHtml(item.name) })}">${definition.columns.map(([key, , formatter]) => (!formatter && ELLIPSIS_KEYS.has(key)) ? this.ellipsisCell(item[key]) : `<td>${formatter ? formatter(item[key]) : escapeHtml(item[key] ?? '-')}</td>`).join('')}${withActions ? `<td class="kubernetes-pod-actions kubernetes-row-actions">${this.favoriteResourceButton(section, item)}${(section === 'deployments' || section === 'statefulsets') ? this.scaleButton(RESOURCE_KINDS[section], RESOURCE_META[section]?.apiVersion || '', item) : ''}${withServiceForward ? `<button class="ui-button ui-button--secondary" data-service-action="forward" data-service="${encodeURIComponent(JSON.stringify(item))}" ${(Array.isArray(item.portNumbers) && item.portNumbers.length) ? '' : 'disabled'}>Forward</button>` : ''}${this.viewPodsIconButton(RESOURCE_KINDS[section], item)}</td>` : ''}</tr>
+            <tr class="kubernetes-resource-row" tabindex="0" role="button"${namespaced && item.namespace ? ` style="border-left-color:${this.namespaceColor(item.namespace)}"` : ''} data-resource-kind="${RESOURCE_KINDS[section]}" data-resource-name="${escapeHtml(item.name)}" data-resource-namespace="${escapeHtml(item.namespace || '')}" data-resource-apiversion="${escapeHtml(RESOURCE_META[section]?.apiVersion || '')}" aria-label="${t('k8s.row.viewDetailAria', { name: escapeHtml(item.name) })}">${definition.columns.map(([key, , formatter]) => (!formatter && ELLIPSIS_KEYS.has(key)) ? this.ellipsisCell(item[key]) : `<td>${formatter ? formatter(item[key], item) : escapeHtml(item[key] ?? '-')}</td>`).join('')}${withActions ? `<td class="kubernetes-pod-actions kubernetes-row-actions">${this.favoriteResourceButton(section, item)}${(section === 'deployments' || section === 'statefulsets') ? this.scaleButton(RESOURCE_KINDS[section], RESOURCE_META[section]?.apiVersion || '', item) : ''}${withServiceForward ? `<button class="ui-button ui-button--secondary" data-service-action="forward" data-service="${encodeURIComponent(JSON.stringify(item))}" ${(Array.isArray(item.portNumbers) && item.portNumbers.length) ? '' : 'disabled'}>Forward</button>` : ''}${this.viewPodsIconButton(RESOURCE_KINDS[section], item)}</td>` : ''}</tr>
           `).join('')}</tbody>
         </table>
       </div>`;
@@ -1766,7 +1786,7 @@ export class KubernetesSessionPage extends HTMLElement {
       : '';
     return `<section class="kubernetes-pods-view">
       ${filterChip}
-      <div class="kubernetes-pods-toolbar"><div class="kubernetes-pod-filters">${filters.map(([id, label]) => `<button type="button" data-pod-filter="${id}" class="no-drag ${this.podFilter === id ? 'active' : ''} ui-button ui-button--choice">${label} ${counts[id]}</button>`).join('')}</div><div class="kubernetes-pod-tools"><input id="kubernetesPodSearch" class="no-drag" value="${escapeHtml(this.podSearch)}" placeholder="${t('k8s.pods.searchPlaceholder')}">${this.renderRefreshButton('refreshKubernetesPods')}</div></div>
+      <div class="kubernetes-pods-toolbar"><div class="kubernetes-pod-filters">${filters.map(([id, label]) => `<button type="button" data-pod-filter="${id}" aria-pressed="${this.podFilter === id}" class="no-drag ${this.podFilter === id ? 'active' : ''} ui-button ${id === 'all' ? 'ui-button--choice' : 'ui-button--state'}">${label} ${counts[id]}</button>`).join('')}</div><div class="kubernetes-pod-tools"><input id="kubernetesPodSearch" class="no-drag" value="${escapeHtml(this.podSearch)}" placeholder="${t('k8s.pods.searchPlaceholder')}">${this.renderRefreshButton('refreshKubernetesPods')}</div></div>
       <div class="kubernetes-resource-table-wrap kubernetes-pods-table-wrap"><table class="kubernetes-resource-table kubernetes-pods-table"><thead><tr>${this.sortableTh('pods', 'name', 'Name')}${this.sortableTh('pods', 'namespace', 'Namespace')}<th scope="col">Ready</th>${this.sortableTh('pods', 'status', 'Status')}${this.sortableTh('pods', 'restarts', 'Restarts', { type: 'number' })}<th scope="col">Node</th>${this.sortableTh('pods', 'creationTimestamp', 'Age', { type: 'time' })}${this.sortableTh('pods', 'cpuUsageMilli', 'CPU', { type: 'number' })}${this.sortableTh('pods', 'memoryUsageBytes', 'Memory', { type: 'number' })}<th scope="col">Actions</th></tr></thead><tbody>
       ${visible.map(pod => {
         const container = pod.containers?.[0]?.name || '';
@@ -1801,7 +1821,7 @@ export class KubernetesSessionPage extends HTMLElement {
   // options.interactive=false 時（如 Detail Drawer 的 Related Events）不加點列開 Drawer 與工具列。
   renderEventsTable(events, options = {}) {
     const interactive = options.interactive !== false;
-    if (!events.length) return `<div class="kubernetes-resource-empty">${t('k8s.empty.noEvents')}</div>`;
+    if (!events.length && !interactive) return `<div class="kubernetes-resource-empty">${t('k8s.empty.noEvents')}</div>`;
     // 統一事件時間欄位（後端可能給 timestamp / time / lastTimestamp / eventTime）；
     // 後端一律輸出 UTC RFC3339（尾碼 Z），故字串比較即等同時間先後，供排序與 Age 顯示共用。
     const withTime = events.map(event => ({
@@ -1809,13 +1829,8 @@ export class KubernetesSessionPage extends HTMLElement {
       _eventTime: event.timestamp || event.time || event.lastTimestamp || event.eventTime || ''
     }));
     // ② Type 篩選（All / Warning / Normal）＋ 搜尋（reason / namespace / object / message）。
-    const typeFilter = this.eventsTypeFilter || 'all';
-    const search = (this.eventsSearch || '').trim().toLowerCase();
-    const filtered = withTime.filter(event => {
-      if (typeFilter !== 'all' && String(event.type || '') !== typeFilter) return false;
-      if (!search) return true;
-      return `${event.reason || ''} ${event.namespace || ''} ${event.object || event.involvedObject || ''} ${event.message || ''}`.toLowerCase().includes(search);
-    });
+    const typeFilter = interactive ? this.eventsTypeFilter || 'all' : 'all';
+    const filtered = filterKubernetesEvents(withTime, typeFilter, interactive ? this.eventsSearch || '' : '');
     // 不分組：Warning 優先，其次依時間新到舊。
     const sorted = filtered.slice().sort((a, b) => {
       const aw = this.eventSeverity(a.type) === 'warning';
@@ -1826,7 +1841,7 @@ export class KubernetesSessionPage extends HTMLElement {
     const colspan = interactive ? 8 : 7;
     const rows = sorted.length
       ? sorted.map(event => this.renderEventRow(event, interactive)).join('')
-      : `<tr><td colspan="${colspan}" class="kubernetes-events-empty">${t('k8s.empty.noMatchingEvents')}</td></tr>`;
+      : `<tr><td colspan="${colspan}" class="kubernetes-events-empty">${t(events.length ? 'k8s.empty.noMatchingEvents' : 'k8s.empty.noEvents')}</td></tr>`;
     const table = `
       <div class="kubernetes-eventlist-scroll">
         <table class="kubernetes-eventlist-table${interactive ? '' : ' kubernetes-eventlist-static'}">
@@ -1845,16 +1860,13 @@ export class KubernetesSessionPage extends HTMLElement {
         </table>
       </div>`;
     if (!interactive) return table;
-    const filterOption = (value, label) => `<option value="${value}"${typeFilter === value ? ' selected' : ''}>${label}</option>`;
+    const counts = eventFilterCounts(events);
     return `
       <div class="kubernetes-events-toolbar">
+        <div class="kubernetes-pod-filters kubernetes-event-filters" role="group" aria-label="${t('k8s.events.filterAria')}">
+          ${[['all', t('k8s.events.typeAll')], ['Warning', t('k8s.events.typeWarning')], ['Normal', t('k8s.events.typeNormal')]].map(([value, label]) => `<button type="button" class="no-drag ui-button ${value === 'all' ? 'ui-button--choice' : 'ui-button--state'} ${typeFilter === value ? 'active' : ''}" data-event-filter="${value}" aria-pressed="${typeFilter === value}">${label} <span>${counts[value]}</span></button>`).join('')}
+        </div>
         <div class="kubernetes-section-search no-drag"><span class="kubernetes-section-search-icon" aria-hidden="true">${renderKubernetesIcon('search', 14)}</span><input id="kubernetesEventsSearch" class="no-drag" value="${escapeHtml(this.eventsSearch || '')}" placeholder="${t('k8s.events.searchPlaceholder')}" aria-label="${t('k8s.events.searchAria')}"></div>
-        <label class="kubernetes-events-filter no-drag">
-          <span>${t('k8s.events.type')}</span>
-          <select id="kubernetesEventsTypeFilter" class="no-drag" aria-label="${t('k8s.events.filterAria')}">
-            ${filterOption('all', t('k8s.events.typeAll'))}${filterOption('Warning', t('k8s.events.typeWarning'))}${filterOption('Normal', t('k8s.events.typeNormal'))}
-          </select>
-        </label>
       </div>
       ${table}`;
   }
@@ -1871,7 +1883,7 @@ export class KubernetesSessionPage extends HTMLElement {
     const count = Number(event.count) || 1;
     const chevron = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
     const payload = encodeURIComponent(JSON.stringify({
-      type: event.type || '', reason, namespace, object: obj, message: event.message || '', count, timestamp: event._eventTime || ''
+      name: event.name || '', uid: event.uid || '', type: event.type || '', reason, namespace, object: obj, message: event.message || '', count, timestamp: event._eventTime || ''
     }));
     const rowAttrs = interactive
       ? ` role="button" tabindex="0" data-event-row data-event="${payload}" aria-label="${t('k8s.events.viewDetailAria', { reason: escapeHtml(reason) })}"`
@@ -2364,6 +2376,8 @@ export class KubernetesSessionPage extends HTMLElement {
     const ev = this.selectedEvent;
     if (!ev) return '';
     const sev = this.eventSeverity(ev.type);
+    const target = { connectedAt: this.eventConnectedAt, namespace: ev.namespace, eventName: ev.name, eventUid: ev.uid };
+    const activeTab = this.eventDrawerTab || 'details';
     const count = Number(ev.count) || 1;
     const fields = [
       [t('k8s.events.colNamespace'), ev.namespace || '—'],
@@ -2376,9 +2390,11 @@ export class KubernetesSessionPage extends HTMLElement {
       <div class="kubernetes-detail-backdrop no-drag" data-close-event="true"></div>
       <aside class="kubernetes-detail-drawer kubernetes-event-drawer no-drag" role="dialog" aria-modal="true" aria-labelledby="kubernetesEventTitle">
         <header><div><h2 id="kubernetesEventTitle">${escapeHtml(ev.reason || '-')}</h2><p><span class="kubernetes-detail-kind kubernetes-event-drawer-sev kubernetes-event--${sev}">${escapeHtml(ev.type || 'Normal')}</span></p></div><button type="button" class="kubernetes-drawer-close no-drag ui-button ui-button--quiet ui-button--icon" aria-label="${t('k8s.events.drawerCloseAria')}">${renderKubernetesIcon('close', 22)}</button></header>
-        <div class="kubernetes-detail-body">
+        <nav class="kubernetes-pod-detail-tabs" aria-label="Event 分頁" role="tablist">${[['details', 'Details'], ['ai', 'AI 分析']].map(([id, label]) => `<button type="button" id="k8s-event-tab-${id}" class="no-drag ui-button ui-button--tab ${activeTab === id ? 'active' : ''}" data-event-tab="${id}" role="tab" aria-selected="${activeTab === id}" aria-controls="k8s-event-panel">${label}</button>`).join('')}</nav>
+        <div id="k8s-event-panel" class="kubernetes-detail-body" role="tabpanel" aria-labelledby="k8s-event-tab-${activeTab}">
+          ${activeTab === 'ai' ? `<termix-pod-analysis id="kubernetes-event-ai" data-target="${escapeHtml(JSON.stringify(target))}"></termix-pod-analysis>` : `
           <section class="kubernetes-detail-section"><dl class="kubernetes-detail-fields kubernetes-detail-fields--striped">${fields.map(([key, value]) => `<div><dt>${escapeHtml(key)}</dt><dd>${escapeHtml(String(value))}</dd></div>`).join('')}</dl></section>
-          <section class="kubernetes-detail-section"><h3>${t('k8s.events.message')}</h3><div class="kubernetes-event-drawer-message">${escapeHtml(ev.message || '-')}</div></section>
+          <section class="kubernetes-detail-section"><h3>${t('k8s.events.message')}</h3><div class="kubernetes-event-drawer-message">${escapeHtml(ev.message || '-')}</div></section>`}
         </div>
       </aside>`;
   }
@@ -2386,6 +2402,8 @@ export class KubernetesSessionPage extends HTMLElement {
   // 點事件列開啟 Drawer：解析列上序列化的事件資料存為本地狀態並重繪（保存捲動避免回彈）。
   openEventDrawer(event) {
     this.selectedEvent = event;
+    this.eventDrawerTab = 'details';
+    this.eventConnectedAt = kubernetesSessionStore.getState().connectedCluster?.connectedAt || '';
     this.rerenderPreservingScroll();
     this.querySelector('.kubernetes-event-drawer .kubernetes-drawer-close')?.focus();
   }
@@ -2503,7 +2521,7 @@ export class KubernetesSessionPage extends HTMLElement {
     const tabs = [['overview', 'Overview']];
     if (hasEnv) tabs.push(['env', 'ENV']);
     tabs.push(['yaml', 'YAML']);
-    if (isPod) tabs.push(['logs', 'Logs']);
+    if (isPod) tabs.push(['logs', 'Logs'], ['ai', 'AI Analysis']);
     if (isPod || isService) tabs.push(['forward', 'Forward']);
     tabs.push(['delete', 'Delete']);
     // 內容面板 id 固定為 k8s-detail-panel；各 tab id 為 k8s-detail-tab-${id}。
@@ -2516,6 +2534,11 @@ export class KubernetesSessionPage extends HTMLElement {
     const isPod = kind === 'pod';
     const isService = kind === 'service';
     switch (state.detailTab) {
+    case 'ai': {
+      if (!isPod) return this.renderDetailContent(detail, selected, state);
+      const target = { connectedAt: state.connectedCluster?.connectedAt || '', namespace: detail.namespace, podName: detail.name, podUid: detail.uid, containers: (detail.containers || []).map(container => container.name) };
+      return `<termix-pod-analysis id="kubernetes-pod-ai" data-target="${escapeHtml(JSON.stringify(target))}"></termix-pod-analysis>`;
+    }
     case 'env':
       return this.renderEnvTab(detail);
     case 'yaml':
@@ -3332,12 +3355,6 @@ export class KubernetesSessionPage extends HTMLElement {
       const replacement = this.querySelector('#kubernetesSectionSearch');
       replacement?.focus({ preventScroll: true });
       replacement?.setSelectionRange(cursor, cursor);
-    }, { signal: this.listenerController.signal });
-    // ② Events Type 篩選：切換後更新元件狀態並重繪（events 表存在於 Events 區段與 drawer Related Events）。
-    this.querySelector('#kubernetesEventsTypeFilter')?.addEventListener('change', event => {
-      this.eventsTypeFilter = event.target.value || 'all';
-      this.render();
-      this.setupListeners();
     }, { signal: this.listenerController.signal });
     // Events 搜尋：更新搜尋詞後重繪，並 refocus + 還原游標位置（同 section search 做法）。
     this.querySelector('#kubernetesEventsSearch')?.addEventListener('input', event => {

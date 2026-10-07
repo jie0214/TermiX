@@ -1,3 +1,4 @@
+import { clearAnalysisSessionCache } from '../ai/AnalysisSessionCache.ts';
 import { createStore } from 'zustand/vanilla';
 import { applyKubernetesChanges } from './KubernetesLiveState.js';
 import { KubernetesAPI } from './KubernetesAPI.js';
@@ -655,7 +656,7 @@ export function createKubernetesSessionStore(api = KubernetesAPI) {
     },
 
     selectDetailTab: (tab) => {
-      const allowed = new Set(['overview', 'env', 'yaml', 'logs', 'forward', 'delete']);
+      const allowed = new Set(['overview', 'env', 'yaml', 'logs', 'ai', 'forward', 'delete']);
       const value = String(tab || '').toLowerCase();
       set({ detailTab: allowed.has(value) ? value : 'overview' });
     },
@@ -1163,3 +1164,8 @@ export function createKubernetesSessionStore(api = KubernetesAPI) {
 }
 
 export const kubernetesSessionStore = createKubernetesSessionStore();
+
+// 以連線生命週期為界，Drawer 卸載不影響已完成的 AI 分析。
+kubernetesSessionStore.subscribe((state, previous) => {
+  if (state.connectedCluster?.connectedAt !== previous.connectedCluster?.connectedAt) clearAnalysisSessionCache();
+});

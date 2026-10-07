@@ -1,6 +1,7 @@
+import { KubernetesModal } from './KubernetesModal';
 import { PodUsage, UsageMeter } from './ResourceUsage';
 import { useLanguage } from '../language/LanguageProvider';
-import { Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Button } from '../../components/Button';
 import { useThemedStyles, type ThemeColors } from '../../components/theme';
 import { useKubernetes } from './KubernetesProvider';
@@ -15,7 +16,7 @@ export function MetricsPanel() {
   const { workspace, state } = useKubernetes();
   const panel = state.metrics;
   const limits=state.pods.find(pod=>pod.name===panel?.pod)?.limits;
-  return <Modal visible={!!panel} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => workspace.closeMetrics()}>
+  return <KubernetesModal visible={!!panel} animationType="slide" onRequestClose={() => workspace.closeMetrics()}>
     {panel && <ScrollView style={styles.page} contentContainerStyle={styles.content}>
       <Button variant="secondary" label={t("關閉用量")} onPress={() => workspace.closeMetrics()} />
       <Text style={styles.name}>{panel.pod}</Text>
@@ -33,7 +34,7 @@ export function MetricsPanel() {
         <Text style={styles.note}>{t("CPU 為採樣區間平均值，1000 m = 1 核心。記憶體為 working set；非即時資料，不含未回報容器。")}</Text>
       </>}
     </ScrollView>}
-  </Modal>;
+  </KubernetesModal>;
 }
 const createStyles = (colors: ThemeColors) => StyleSheet.create({
   page: { flex: 1, backgroundColor: colors.background }, content: { padding: 20, paddingTop: 32, paddingBottom: 40, gap: 14 },

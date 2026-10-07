@@ -2,7 +2,7 @@
 # 發佈前檢查已知依賴漏洞與原生匯入清理邊界。
 set -euo pipefail
 cd "$(dirname "$0")/.."
-npm audit --audit-level=moderate
+node scripts/check-npm-security.mjs
 (cd native/ssh && go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...)
 if [[ "$(uname -s)" == Darwin ]]; then
   test_dir="$(mktemp -d)"

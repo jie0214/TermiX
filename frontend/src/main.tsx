@@ -4,8 +4,12 @@ import { createRoot } from 'react-dom/client';
 import './assets/tabler-icons.css';
 import './app.css';
 import { App } from './ReactApp';
+import { installPlainTextInputs } from './runtime/plainTextInputs';
 import { initializeApplication } from './runtime/initializeApplication';
 import { t } from './i18n/index.ts';
+
+const disposePlainTextInputs = installPlainTextInputs();
+import.meta.hot?.dispose(disposePlainTextInputs);
 
 await initializeApplication();
 

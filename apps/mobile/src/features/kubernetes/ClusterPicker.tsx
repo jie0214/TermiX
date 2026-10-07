@@ -1,7 +1,7 @@
+import { KubernetesModal } from './KubernetesModal';
 import { useState } from 'react';
-import { FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SettingsRow } from '../../components/SettingsList';
 import { Button } from '../../components/Button';
 import { useTheme, useThemedStyles, type ThemeColors } from '../../components/theme';
@@ -10,7 +10,7 @@ import { useKubernetes } from './KubernetesProvider';
 import { kubeMessage } from './workspace';
 export function ClusterPicker({ presentation = 'button' }: { presentation?: 'button' | 'row' }) {
   const { colors } = useTheme(); const styles = useThemedStyles(createStyles); const { t } = useLanguage();
-  const { workspace, state } = useKubernetes(); const insets = useSafeAreaInsets();
+  const { workspace, state } = useKubernetes();
   const [open, setOpen] = useState(false); const [query, setQuery] = useState('');
   const profile = state.profile;
   if (!profile) return null;
@@ -25,8 +25,8 @@ export function ClusterPicker({ presentation = 'button' }: { presentation?: 'but
       <Feather name="chevron-down" size={20} color={colors.accent} />
     </Pressable>}
     {!!profile.issue && <Text accessibilityRole="alert" style={styles.error}>{t(kubeMessage(new Error(profile.issue)))}</Text>}
-    <Modal visible={open} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setOpen(false)}>
-      <View style={[styles.page, { paddingTop: Math.max(insets.top, 16), paddingBottom: Math.max(insets.bottom, 16) }]}>
+    <KubernetesModal visible={open} animationType="slide" onRequestClose={() => setOpen(false)}>
+      <View style={[styles.page, { paddingTop: 16, paddingBottom: 16 }]}>
         <View style={styles.header}><Text style={styles.title}>{t('選擇叢集')}</Text><Button variant="secondary" label={t('關閉')} onPress={() => setOpen(false)} /></View>
         <TextInput accessibilityLabel={t('搜尋叢集')} placeholder={t('搜尋叢集')} placeholderTextColor={colors.muted}
           value={query} onChangeText={setQuery} autoCapitalize="none" autoCorrect={false} style={styles.search} />
@@ -44,7 +44,7 @@ export function ClusterPicker({ presentation = 'button' }: { presentation?: 'but
             {item.context === profile.context && <Feather name="check" size={20} color={colors.accent} />}
           </Pressable>} />
       </View>
-    </Modal>
+    </KubernetesModal>
   </>;
 }
 const createStyles = (colors: ThemeColors) => StyleSheet.create({

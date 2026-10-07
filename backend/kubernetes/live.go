@@ -6,6 +6,7 @@ import (
 	"errors"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -303,7 +304,9 @@ func streamMetrics(ctx context.Context, clients *clusterClients, send func(LiveC
 			change.Error = metricsError(nodeErr, podErr)
 			if change.Error == "" {
 				for _, node := range nodes.Items {
-					change.Items = append(change.Items, map[string]interface{}{"kind": "node", "name": node.Name, "cpuUsageMilli": node.Usage.Cpu().MilliValue(), "memoryUsageBytes": node.Usage.Memory().Value()})
+					_, hasCPU := node.Usage[corev1.ResourceCPU]
+					_, hasMemory := node.Usage[corev1.ResourceMemory]
+					change.Items = append(change.Items, map[string]interface{}{"kind": "node", "name": node.Name, "metricsAvailable": hasCPU && hasMemory, "cpuUsageMilli": node.Usage.Cpu().MilliValue(), "memoryUsageBytes": node.Usage.Memory().Value()})
 				}
 				for _, pod := range pods.Items {
 					var cpu, memory int64

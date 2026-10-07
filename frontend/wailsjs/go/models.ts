@@ -39,6 +39,56 @@ export namespace app {
 
 export namespace dto {
 	
+	export class AIAnalysisMessage {
+	    role: string;
+	    content: string;
+
+	    static createFrom(source: any = {}) {
+	        return new AIAnalysisMessage(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.role = source["role"];
+	        this.content = source["content"];
+	    }
+	}
+	export class AIConnection {
+	    id: string;
+	    name: string;
+	    path: string;
+	    installed: boolean;
+	    connected: boolean;
+
+	    static createFrom(source: any = {}) {
+	        return new AIConnection(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.path = source["path"];
+	        this.installed = source["installed"];
+	        this.connected = source["connected"];
+	    }
+	}
+	export class AIModel {
+	    id: string;
+	    name: string;
+	    description: string;
+
+	    static createFrom(source: any = {}) {
+	        return new AIModel(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.description = source["description"];
+	    }
+	}
 	export class AWSIntegration {
 	    groupId: string;
 	    name: string;
@@ -148,6 +198,52 @@ export namespace dto {
 	        this.lastWord = source["lastWord"];
 	        this.isPath = source["isPath"];
 	    }
+	}
+	export class EventAnalysisRequest {
+	    locale?: string;
+	    messages?: AIAnalysisMessage[];
+	    requestId: string;
+	    agentId: string;
+	    modelId: string;
+	    connectedAt: string;
+	    namespace: string;
+	    eventName: string;
+	    eventUid: string;
+
+	    static createFrom(source: any = {}) {
+	        return new EventAnalysisRequest(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.locale = source["locale"];
+	        this.messages = this.convertValues(source["messages"], AIAnalysisMessage);
+	        this.requestId = source["requestId"];
+	        this.agentId = source["agentId"];
+	        this.modelId = source["modelId"];
+	        this.connectedAt = source["connectedAt"];
+	        this.namespace = source["namespace"];
+	        this.eventName = source["eventName"];
+	        this.eventUid = source["eventUid"];
+	    }
+
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class SSHConfig {
 	    alias: string;
@@ -932,6 +1028,8 @@ export namespace dto {
 	    }
 	}
 	export class KubernetesEventSummary {
+	    name: string;
+	    uid: string;
 	    type: string;
 	    reason: string;
 	    message: string;
@@ -946,6 +1044,8 @@ export namespace dto {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.uid = source["uid"];
 	        this.type = source["type"];
 	        this.reason = source["reason"];
 	        this.message = source["message"];
@@ -1396,6 +1496,7 @@ export namespace dto {
 		}
 	}
 	export class KubernetesNodeSummary {
+	    metricsAvailable: boolean;
 	    name: string;
 	    status: string;
 	    roles: string;
@@ -1412,6 +1513,7 @@ export namespace dto {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.metricsAvailable = source["metricsAvailable"];
 	        this.name = source["name"];
 	        this.status = source["status"];
 	        this.roles = source["roles"];
@@ -2186,6 +2288,155 @@ export namespace dto {
 	    }
 	}
 	
+	export class PodAnalysisEvidence {
+	    title: string;
+	    content: string;
+	    truncated: boolean;
+
+	    static createFrom(source: any = {}) {
+	        return new PodAnalysisEvidence(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.title = source["title"];
+	        this.content = source["content"];
+	        this.truncated = source["truncated"];
+	    }
+	}
+	export class PodAnalysisRequest {
+	    locale?: string;
+	    messages?: AIAnalysisMessage[];
+	    requestId: string;
+	    agentId: string;
+	    modelId: string;
+	    connectedAt: string;
+	    namespace: string;
+	    podName: string;
+	    podUid: string;
+	    container: string;
+	    includeLogs: boolean;
+	    includeEvents: boolean;
+
+	    static createFrom(source: any = {}) {
+	        return new PodAnalysisRequest(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.locale = source["locale"];
+	        this.messages = this.convertValues(source["messages"], AIAnalysisMessage);
+	        this.requestId = source["requestId"];
+	        this.agentId = source["agentId"];
+	        this.modelId = source["modelId"];
+	        this.connectedAt = source["connectedAt"];
+	        this.namespace = source["namespace"];
+	        this.podName = source["podName"];
+	        this.podUid = source["podUid"];
+	        this.container = source["container"];
+	        this.includeLogs = source["includeLogs"];
+	        this.includeEvents = source["includeEvents"];
+	    }
+
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class PodAnalysisSnapshot {
+	    eventName?: string;
+	    eventUid?: string;
+	    namespace: string;
+	    podName: string;
+	    podUid: string;
+	    capturedAt: string;
+	    evidence: PodAnalysisEvidence[];
+	    warnings: string[];
+
+	    static createFrom(source: any = {}) {
+	        return new PodAnalysisSnapshot(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.eventName = source["eventName"];
+	        this.eventUid = source["eventUid"];
+	        this.namespace = source["namespace"];
+	        this.podName = source["podName"];
+	        this.podUid = source["podUid"];
+	        this.capturedAt = source["capturedAt"];
+	        this.evidence = this.convertValues(source["evidence"], PodAnalysisEvidence);
+	        this.warnings = source["warnings"];
+	    }
+
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class PodAnalysisResult {
+	    agentId: string;
+	    modelId: string;
+	    text: string;
+	    snapshot: PodAnalysisSnapshot;
+
+	    static createFrom(source: any = {}) {
+	        return new PodAnalysisResult(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.agentId = source["agentId"];
+	        this.modelId = source["modelId"];
+	        this.text = source["text"];
+	        this.snapshot = this.convertValues(source["snapshot"], PodAnalysisSnapshot);
+	    }
+
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
 	
 	
 	export class Snippet {

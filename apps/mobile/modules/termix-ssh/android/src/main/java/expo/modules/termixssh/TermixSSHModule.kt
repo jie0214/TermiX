@@ -54,6 +54,7 @@ class TermixSSHModule : Module() {
     AsyncFunction("getKubeConfigMap") Coroutine { raw: String, namespace: String, name: String -> withContext(Dispatchers.IO) { Mobilessh.getKubeConfigMap(raw, namespace, name) } }
     AsyncFunction("listKubePodMetrics") Coroutine { raw: String, namespace: String -> withContext(Dispatchers.IO) { Mobilessh.listKubePodMetrics(raw, namespace) } }
     AsyncFunction("getKubePodMetrics") Coroutine { raw: String, namespace: String, name: String -> withContext(Dispatchers.IO) { Mobilessh.getKubePodMetrics(raw, namespace, name) } }
+    AsyncFunction("deleteKubeResource") Coroutine { raw: String, namespace: String, kind: String, name: String, payload: String -> withContext(Dispatchers.IO) { Mobilessh.deleteKubeResource(raw, namespace, kind, name, payload) } }
     AsyncFunction("getKubeDocument") Coroutine { raw: String, namespace: String, kind: String, name: String -> withContext(Dispatchers.IO) { Mobilessh.getKubeDocument(raw, namespace, kind, name) } }
     AsyncFunction("updateKubeDocument") Coroutine { raw: String, namespace: String, kind: String, name: String, payload: String -> withContext(Dispatchers.IO) { Mobilessh.updateKubeDocument(raw, namespace, kind, name, payload) } }
     AsyncFunction("getKubeScale") Coroutine { raw: String, namespace: String, kind: String, name: String -> withContext(Dispatchers.IO) { Mobilessh.getKubeScale(raw, namespace, kind, name) } }

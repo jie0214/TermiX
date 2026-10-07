@@ -1,0 +1,128 @@
+{
+  "packages": [
+    {
+      "name": "braces",
+      "version": "3.0.3",
+      "advisory": "GHSA-vfj7-8cjw-p6xm",
+      "source": "https://github.com/micromatch/braces/pull/75",
+      "integrity": "sha512-yQbXgO/OSZVD2IsiLlro+7Hf6Q18EJrKSEsdoMzKePKXct3gvD8oLcOQdIzGupr5Fj+EDe8gO/lxc1BzfMpxvA==",
+      "files": [
+        {
+          "path": "lib/utils.js",
+          "originalSha256": "b5a7596aa67730412b3c029ef09e84e6b67b8e445cffd35d1d295549c89066c7",
+          "patchedSha256": "5a000afce9fdbf6fe0aac7dd624f68a5067e9a9336ad7b9f6e65ca0228ca89c6",
+          "edits": [
+            {
+              "before": "'use strict';",
+              "after": "'use strict';\n\n// 本機安全修補：所有遞迴入口共用不可停用的深度上限。\nexports.checkDepth = depth => {\n  if (depth > 64) throw new RangeError('TermiX: braces nesting exceeds 64 levels');\n};"
+            },
+            {
+              "before": "const flat = arr => {",
+              "after": "const flat = (arr, depth = 0) => {\n    exports.checkDepth(depth);"
+            },
+            {
+              "before": "flat(ele);",
+              "after": "flat(ele, depth + 1);"
+            }
+          ]
+        },
+        {
+          "path": "lib/parse.js",
+          "originalSha256": "e572166565f15fa6ad9865ae49d678218e32aabfd1b3720f6d0d43d39800d310",
+          "patchedSha256": "1aaace3abd8a66247aef790606abf06772401ea326da132d38e76f692a2cef6b",
+          "edits": [
+            {
+              "before": "const stringify = require('./stringify');",
+              "after": "const stringify = require('./stringify');\nconst utils = require('./utils');"
+            },
+            {
+              "before": "if (value === CHAR_LEFT_PARENTHESES) {",
+              "after": "if (value === CHAR_LEFT_PARENTHESES) {\n      utils.checkDepth(stack.length);"
+            },
+            {
+              "before": "if (value === CHAR_LEFT_CURLY_BRACE) {",
+              "after": "if (value === CHAR_LEFT_CURLY_BRACE) {\n      utils.checkDepth(stack.length);"
+            }
+          ]
+        },
+        {
+          "path": "lib/compile.js",
+          "originalSha256": "dc98f22eee3d511785d92a00758d5f0d48efed5f5813bdecc2de430c529b5c9f",
+          "patchedSha256": "2de4c7465459366989e4726fb70e54c6980c5b941c0615660ca0d520858adeac",
+          "edits": [
+            {
+              "before": "const walk = (node, parent = {}) => {",
+              "after": "const walk = (node, parent = {}, depth = 0) => {\n    utils.checkDepth(depth);"
+            },
+            {
+              "before": "output += walk(child, node);",
+              "after": "output += walk(child, node, depth + 1);"
+            }
+          ]
+        },
+        {
+          "path": "lib/stringify.js",
+          "originalSha256": "379f22d77bfa1478341ccd49c5e4267464aabcbba03558bab332aac23fc6f23a",
+          "patchedSha256": "979570dfaa70334bddff8e5206d0b49db1603095b66903d9f552e8949b8be0f8",
+          "edits": [
+            {
+              "before": "const stringify = (node, parent = {}) => {",
+              "after": "const stringify = (node, parent = {}, depth = 0) => {\n    utils.checkDepth(depth);"
+            },
+            {
+              "before": "output += stringify(child);",
+              "after": "output += stringify(child, {}, depth + 1);"
+            }
+          ]
+        },
+        {
+          "path": "lib/expand.js",
+          "originalSha256": "41ccc196ebfa7b7781a634e721eb744e4e7bcb54cba427a7e3d6806a1b9e58f7",
+          "patchedSha256": "0ef70c74aded1fa73e95976441907e79dc1647deb7f7389da792ff94ec173fda",
+          "edits": [
+            {
+              "before": "const append = (queue = '', stash = '', enclose = false) => {",
+              "after": "const append = (queue = '', stash = '', enclose = false, depth = 0) => {\n  utils.checkDepth(depth);"
+            },
+            {
+              "before": "append(value, stash, enclose)",
+              "after": "append(value, stash, enclose, depth + 1)"
+            },
+            {
+              "before": "append(item, ele, enclose)",
+              "after": "append(item, ele, enclose, depth + 1)"
+            },
+            {
+              "before": "const walk = (node, parent = {}) => {",
+              "after": "const walk = (node, parent = {}, depth = 0) => {\n    utils.checkDepth(depth);"
+            },
+            {
+              "before": "walk(child, node);",
+              "after": "walk(child, node, depth + 1);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "node-forge",
+      "version": "1.4.0",
+      "advisory": "GHSA-86w9-cpqp-85rv",
+      "source": "https://github.com/digitalbazaar/forge/pull/1152",
+      "integrity": "sha512-LarFH0+6VfriEhqMMcLX2F7SwSXeWwnEAJEsYm5QKWchiVYVvJyV9v7UDvUv+w5HO23ZpQTXDv/GxdDdMyOuoQ==",
+      "files": [
+        {
+          "path": "lib/rsa.js",
+          "originalSha256": "fd4740238145ec26470eb3f06a627c72039538ce1307dbdce40521f94dfd0a50",
+          "patchedSha256": "c9b1e3799e230528b6d6815c1f6cd3c6058b9d45975264b55d995abb976589af",
+          "edits": [
+            {
+              "before": "obj.value.length !== 2) {",
+              "after": "obj.value.length !== 2 ||\n            obj.value[0].value.length !==\n              (('parameters' in capture) ? 2 : 1)) {"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

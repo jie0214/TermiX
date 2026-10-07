@@ -111,7 +111,7 @@ func TestResourceFailuresAndBounds(t *testing.T) {
 		}
 	}
 	raw := config("https://127.0.0.1:1", "", "qa-token")
-	for _, kind := range []string{"secrets", "../pods", ""} {
+	for _, kind := range []string{"nodes", "../pods", ""} {
 		if _, err := ListResources(raw, "dev", kind); err == nil || err.Error() != "invalid_resource" {
 			t.Fatalf("非法類型：%v", err)
 		}

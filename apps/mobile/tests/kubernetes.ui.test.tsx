@@ -7,7 +7,13 @@ import { KubeImportButton } from '../src/features/kubernetes/KubeImportButton';
 import Kubernetes from '../src/app/(tabs)/kubernetes';
 import { KubernetesWorkspace } from '../src/features/kubernetes/workspace';
 
+jest.mock('react-native/Libraries/Components/RefreshControl/RefreshControl',()=>{
+ const {View}=jest.requireActual('react-native');
+ return {__esModule:true,default:(props:import('react-native').RefreshControlProps)=><View {...props}/>};
+});
+
 const unusedResources = {
+ deleteResource: async()=>{throw new Error('非預期刪除');},
   getDocument: async () => { throw new Error('非預期 YAML 查詢'); },
   updateDocument: async () => { throw new Error('非預期資源寫入'); },
   listPodMetrics:async()=>({}),
@@ -70,13 +76,15 @@ test('切換資源查看副本，點開 ConfigMap 並關閉內容', async () => 
   }, {load:async()=>'config',save:async()=>{}});
   await render(<SafeAreaProvider initialMetrics={{frame:{x:0,y:0,width:390,height:844},insets:{top:59,left:0,right:0,bottom:34}}}><KubernetesProvider workspace={workspace}><Kubernetes /></KubernetesProvider></SafeAreaProvider>);
   await screen.findByText('local');
-  await fireEvent.press(screen.getByRole('radio',{name:'Deployment'}));
+  await fireEvent.press(screen.getByRole('button',{name:'選擇資源類型'}));
+ await fireEvent.press(screen.getByRole('radio',{name:'Deployment'}));
 
-  await screen.findByText('就緒 2/3 · 已更新 1');
-  await fireEvent.press(screen.getByRole('radio',{name:'StatefulSet'}));
+  await screen.findByText('2/3 就緒');
+  await fireEvent.press(screen.getByRole('button',{name:'選擇資源類型'}));
+ await fireEvent.press(screen.getByRole('radio',{name:'StatefulSet'}));
 
   await screen.findByText('api');
-  await fireEvent.press(screen.getByRole('radio',{name:'ConfigMap'}));
+  await fireEvent.press(screen.getByRole('radio',{name:'Configuration'}));
 
   await screen.findByText('settings');
   expect(screen.queryByText('mode=prod')).toBeNull();
@@ -116,7 +124,7 @@ test('Pod Log 可選容器、切換前次紀錄、重新整理及關閉', async 
   expect(screen.queryByText('setup previous log')).toBeNull();
 });
 
-test('縮放面板要求確認，顯示目標與零副本影響，再送出變更', async () => {
+test('縮放面板要求確認，顯示目標與副本差異，再送出變更', async () => {
  const updateScale=jest.fn(async()=>({uid:'id',resourceVersion:'8',replicas:0}));
  const workspace=new KubernetesWorkspace({...unusedResources,inspect:async()=>({context:'qa',cluster:'local',namespace:'dev'}),listPods:async()=>({items:[],hasMore:false}),
   listResources:async()=>({items:[{name:'api',namespace:'dev',ready:3,desired:3,updated:3,keyCount:0,immutable:false}],hasMore:false}),
@@ -124,26 +132,38 @@ test('縮放面板要求確認，顯示目標與零副本影響，再送出變�
  },{load:async()=>'config',save:async()=>{}});
  await render(<SafeAreaProvider initialMetrics={{frame:{x:0,y:0,width:390,height:844},insets:{top:59,left:0,right:0,bottom:34}}}><KubernetesProvider workspace={workspace}><Kubernetes /></KubernetesProvider></SafeAreaProvider>);
  await screen.findByText('local');
+ await fireEvent.press(screen.getByRole('button',{name:'選擇資源類型'}));
  await fireEvent.press(screen.getByRole('radio',{name:'Deployment'}));
 
  await fireEvent.press(await screen.findByRole('button',{name:'查看 api'}));
  await fireEvent.press(await screen.findByRole('button',{name:'調整 api 副本數'}));
- await screen.findByLabelText('期望副本數');
- await fireEvent.changeText(screen.getByLabelText('期望副本數'),'1.5');
+ await screen.findByLabelText('副本數');
+ await fireEvent.press(screen.getByRole('button',{name:'增加副本數'}));
+ expect(screen.getByLabelText('副本數').props.value).toBe('4');
+ await fireEvent.press(screen.getByRole('button',{name:'減少副本數'}));
+ expect(screen.getByLabelText('副本數').props.value).toBe('3');
+ await fireEvent.changeText(screen.getByLabelText('副本數'),'1.5');
  await fireEvent.press(screen.getByRole('button',{name:'檢查變更'}));
  expect(screen.getByText('請輸入 0 至 2147483647 的整數副本數。')).toBeTruthy();
- await fireEvent.changeText(screen.getByLabelText('期望副本數'),'0');
+ await fireEvent.changeText(screen.getByLabelText('副本數'),'0');
+ expect(screen.getByRole('button',{name:'減少副本數'})).toBeDisabled();
  await fireEvent.press(screen.getByRole('button',{name:'檢查變更'}));
  expect(updateScale).not.toHaveBeenCalled();
  expect(screen.getByText('dev · Deployment · api')).toBeTruthy();
  expect(screen.getByText('3 → 0')).toBeTruthy();
- expect(screen.getByText('設為 0 將停止此工作負載的所有副本。')).toBeTruthy();
+
  await fireEvent.press(screen.getByRole('button',{name:'返回修改'}));
  expect(updateScale).not.toHaveBeenCalled();
  await fireEvent.press(screen.getByRole('button',{name:'檢查變更'}));
  await fireEvent.press(screen.getByRole('button',{name:'確認調整'}));
- await screen.findByText('叢集已接受期望副本數 0，不代表已就緒；請重新查詢。');
+ await screen.findByText('副本數已更新。');
  expect(updateScale).toHaveBeenCalledTimes(1);
+ await fireEvent.press(screen.getByRole('button',{name:'關閉副本設定'}));
+ expect(screen.queryByRole('button',{name:'關閉副本設定'})).toBeNull();
+ await fireEvent.press(await screen.findByRole('button',{name:'調整 api 副本數'}));
+ await screen.findByLabelText('副本數');
+ await fireEvent.press(screen.getByRole('button',{name:'關閉副本設定'}));
+ expect(screen.getByRole('button',{name:'調整 api 副本數'})).toBeTruthy();
 });
 
 test('Pod 用量面板顯示採樣、合計與容器，無資料可重試且不顯示假的零', async () => {
@@ -250,4 +270,118 @@ test('image 面板顯示一般與初始化容器，修改選定容器後確認�
  await fireEvent.press(screen.getByRole('button',{name:'確認儲存'}));
  await screen.findByText('叢集已接受變更，請重新查詢資源狀態。');
  expect(updateDocument).toHaveBeenCalledWith('config','dev','pods','web',{uid:'id',resourceVersion:'7',container:{name:'setup',group:'initContainers',image:'setup:v2'}});
+});
+
+test('刪除資源直接再次確認，取消不送出',async()=>{
+ const deleteResource=jest.fn(async()=>{});
+ const workspace=new KubernetesWorkspace({...unusedResources,deleteResource,inspect:async()=>({context:'qa',cluster:'local',namespace:'dev'}),
+ listPods:async()=>({items:[{name:'web',namespace:'dev',phase:'Running',ready:1,total:1}],hasMore:false}),
+ getDocument:async()=>({yaml:'kind: Pod',uid:'id',resourceVersion:'7',containers:[]})},{load:async()=>'config',save:async()=>{}});
+ await render(<SafeAreaProvider initialMetrics={{frame:{x:0,y:0,width:390,height:844},insets:{top:59,left:0,right:0,bottom:34}}}><KubernetesProvider workspace={workspace}><Kubernetes /></KubernetesProvider></SafeAreaProvider>);
+ await fireEvent.press(await screen.findByRole('button',{name:'查看 web'}));
+ await fireEvent.press(screen.getByRole('button',{name:'刪除資源'}));
+ const confirm=await screen.findByRole('button',{name:'再次確認刪除'});
+ expect(confirm).toBeEnabled();
+ expect(screen.queryByRole('checkbox')).toBeNull();
+ expect(deleteResource).not.toHaveBeenCalled();
+ await fireEvent.press(screen.getByRole('button',{name:'取消'}));expect(deleteResource).not.toHaveBeenCalled();
+ await fireEvent.press(screen.getByRole('button',{name:'刪除資源'}));
+ await fireEvent.press(await screen.findByRole('button',{name:'再次確認刪除'}));
+ await screen.findByText('已送出刪除要求。');
+ expect(deleteResource).toHaveBeenCalledTimes(1);
+ expect(deleteResource).toHaveBeenCalledWith('config','dev','pods','web',{uid:'id',resourceVersion:'7'});
+});
+
+test('每 10 秒靜默更新，列表保持掛載且不顯示刷新按鈕，進入背景及離頁停止查詢',async()=>{
+ jest.useFakeTimers();
+ const listeners=new Set<(state:import('react-native').AppStateStatus)=>void>();
+ const {AppState}=jest.requireActual('react-native');
+ const originalListener=AppState.addEventListener.getMockImplementation();
+ const listener=jest.spyOn(AppState,'addEventListener').mockImplementation((...args:unknown[])=>{const fn=args[1] as (state:import('react-native').AppStateStatus)=>void;listeners.add(fn);return {remove:()=>listeners.delete(fn)};});
+ let count=0;let finish!:(value:import('../src/features/kubernetes/workspace').PodList)=>void;
+ const pod={name:'web',namespace:'dev',phase:'Running',ready:1,total:1};
+ const workspace=new KubernetesWorkspace({...unusedResources,inspect:async()=>({context:'qa',cluster:'local',namespace:'dev'}),listPods:async()=>{count++;return count===2?new Promise(resolve=>{finish=resolve;}):{items:[pod],hasMore:false};}},{load:async()=>'config',save:async()=>{}});
+ try {
+  await render(<SafeAreaProvider initialMetrics={{frame:{x:0,y:0,width:390,height:844},insets:{top:59,left:0,right:0,bottom:34}}}><KubernetesProvider workspace={workspace}><Kubernetes /></KubernetesProvider></SafeAreaProvider>);
+  await screen.findByRole('button',{name:'查看 web'});
+  const row=screen.getByRole('button',{name:'查看 web'});expect(screen.queryByRole('button',{name:'查看 Pod'})).toBeNull();
+  await act(async()=>{jest.advanceTimersByTime(10_000);});
+  expect(count).toBe(2);expect(screen.getByRole('button',{name:'查看 web'})).toBe(row);expect(screen.queryByRole('button',{name:'查看 Pod'})).toBeNull();expect(screen.queryByText('讀取中…')).toBeNull();
+  await act(async()=>{jest.advanceTimersByTime(20_000);});expect(count).toBe(2);
+  await act(async()=>{finish({items:[{...pod,ready:0}],hasMore:false});});await screen.findByText('0/1 就緒 · Running');
+  await act(async()=>{listeners.forEach(fn=>fn('background'));jest.advanceTimersByTime(30_000);});expect(count).toBe(2);
+  await act(async()=>{listeners.forEach(fn=>fn('active'));});expect(count).toBe(3);
+  await screen.unmount();await act(async()=>{jest.advanceTimersByTime(30_000);});expect(count).toBe(3);
+ }finally{listener.mockImplementation(originalListener);jest.useRealTimers();}
+});
+
+test('下拉刷新保留列表並更新結果，不顯示整理按鈕',async()=>{
+ let calls=0;let finish!:(value:import('../src/features/kubernetes/workspace').PodList)=>void;
+ const pod={name:'web',namespace:'dev',phase:'Running',ready:1,total:1};
+ const workspace=new KubernetesWorkspace({...unusedResources,inspect:async()=>({context:'qa',cluster:'local',namespace:'dev'}),listPods:async()=>{calls++;return calls===1?{items:[pod],hasMore:false}:new Promise(resolve=>{finish=resolve;});}},{load:async()=>'config',save:async()=>{}});
+ await render(<SafeAreaProvider initialMetrics={{frame:{x:0,y:0,width:390,height:844},insets:{top:59,left:0,right:0,bottom:34}}}><KubernetesProvider workspace={workspace}><Kubernetes /></KubernetesProvider></SafeAreaProvider>);
+ await screen.findByRole('button',{name:'查看 web'});
+ expect(screen.queryByRole('button',{name:'查看 Pod'})).toBeNull();
+ await fireEvent(screen.getByLabelText('下拉刷新'),'refresh');
+ expect(calls).toBe(2);expect(screen.getByLabelText('下拉刷新').props.refreshing).toBe(true);expect(screen.getByRole('button',{name:'查看 web'})).toBeTruthy();expect(screen.queryByText('讀取中…')).toBeNull();
+ await act(async()=>{finish({items:[{...pod,ready:0}],hasMore:false});});
+ await screen.findByText('0/1 就緒 · Running');expect(screen.getByLabelText('下拉刷新').props.refreshing).toBe(false);
+ await screen.unmount();
+});
+
+test('新增分類可查詢資源與唯讀 YAML，不提供修改或刪除',async()=>{
+ const listResources=jest.fn(async()=>({items:[{name:'reader',namespace:'dev',ready:0,desired:0,updated:0,keyCount:0,immutable:false,detail:'Rules 1'}],hasMore:false}));
+ const getDocument=jest.fn(async()=>({yaml:'kind: Role\nrules: []',uid:'id',resourceVersion:'7',containers:[]}));
+ const workspace=new KubernetesWorkspace({...unusedResources,listResources,getDocument,inspect:async()=>({context:'qa',cluster:'local',namespace:'dev'}),listPods:async()=>({items:[],hasMore:false})},{load:async()=>'config',save:async()=>{}});
+ await render(<SafeAreaProvider initialMetrics={{frame:{x:0,y:0,width:390,height:844},insets:{top:59,left:0,right:0,bottom:34}}}><KubernetesProvider workspace={workspace}><Kubernetes /></KubernetesProvider></SafeAreaProvider>);
+ await screen.findByText('此 namespace 沒有 Pod');
+ await fireEvent.press(screen.getByRole('radio',{name:'Access Control'}));
+ await screen.findByRole('button',{name:'查看 reader'});
+ expect(listResources).toHaveBeenLastCalledWith('config','dev','serviceaccounts');
+ await fireEvent.press(screen.getByRole('button',{name:'選擇資源類型'}));
+ await fireEvent.press(screen.getByRole('radio',{name:'Role'}));
+ await screen.findByRole('button',{name:'查看 reader'});
+ expect(listResources).toHaveBeenLastCalledWith('config','dev','roles');
+ await fireEvent.press(screen.getByRole('button',{name:'查看 reader'}));
+ expect(screen.queryByRole('button',{name:'刪除資源'})).toBeNull();
+ expect(screen.queryByRole('button',{name:'變更 image'})).toBeNull();
+ await fireEvent.press(screen.getByRole('button',{name:'查看 YAML'}));
+ await screen.findByText('kind: Role\nrules: []');
+ expect(getDocument).toHaveBeenCalledWith('config','dev','roles','reader');
+ expect(screen.queryByRole('button',{name:'編輯 YAML'})).toBeNull();
+ await act(async()=>{workspace.editDocument();await workspace.openDelete('reader');});
+ expect(workspace.getSnapshot().editor?.status).toBe('viewing');
+ expect(workspace.getSnapshot().deletion).toBeUndefined();
+});
+
+
+test.each(['success','forbidden'] as const)('Scale 請求尚未完成時關閉，%s 回應不會重新開啟視窗',async outcome=>{
+ let resolve!:(value:{uid:string;resourceVersion:string;replicas:number})=>void;
+ let reject!:(error:Error)=>void;
+ const updateScale=jest.fn(()=>new Promise<{uid:string;resourceVersion:string;replicas:number}>((done,fail)=>{resolve=done;reject=fail;}));
+ const workspace=new KubernetesWorkspace({...unusedResources,inspect:async()=>({context:'qa',cluster:'local',namespace:'dev'}),listPods:async()=>({items:[],hasMore:false}),
+  listResources:async()=>({items:[{name:'api',namespace:'dev',ready:1,desired:1,updated:1,keyCount:0,immutable:false}],hasMore:false}),
+  getScale:async()=>({uid:'id',resourceVersion:'7',replicas:1}),updateScale,
+ },{load:async()=>'config',save:async()=>{}});
+ await render(<SafeAreaProvider initialMetrics={{frame:{x:0,y:0,width:390,height:844},insets:{top:59,left:0,right:0,bottom:34}}}><KubernetesProvider workspace={workspace}><Kubernetes /></KubernetesProvider></SafeAreaProvider>);
+ await screen.findByText('local');
+ await fireEvent.press(screen.getByRole('button',{name:'選擇資源類型'}));
+ await fireEvent.press(screen.getByRole('radio',{name:'Deployment'}));
+ await fireEvent.press(await screen.findByRole('button',{name:'查看 api'}));
+ await fireEvent.press(screen.getByRole('button',{name:'調整 api 副本數'}));
+ await screen.findByLabelText('副本數');
+ await fireEvent.changeText(screen.getByLabelText('副本數'),'2');
+ await fireEvent.press(screen.getByRole('button',{name:'檢查變更'}));
+ await fireEvent.press(screen.getByRole('button',{name:'確認調整'}));
+ await screen.findByText('送出中…關閉畫面不會撤回已送出的變更。');
+ await fireEvent.press(screen.getByRole('button',{name:'關閉副本設定'}));
+ expect(screen.queryByRole('button',{name:'關閉副本設定'})).toBeNull();
+ await act(async()=>{if(outcome==='success')resolve({uid:'id',resourceVersion:'8',replicas:2});else reject(new Error('forbidden'));});
+ await screen.findByText(outcome==='success'?'副本數已更新。':'此帳號沒有調整副本數的權限。');
+ expect(screen.queryByRole('button',{name:'關閉副本設定'})).toBeNull();
+ expect(updateScale).toHaveBeenCalledTimes(1);
+ await fireEvent.press(await screen.findByRole('button',{name:'調整 api 副本數'}));
+ await screen.findByLabelText('副本數');
+ await fireEvent.press(screen.getByRole('button',{name:'關閉副本設定'}));
+ expect(screen.getByRole('button',{name:'返回資源'})).toBeTruthy();
 });

@@ -4,11 +4,17 @@ import {dto} from '../models';
 import {app} from '../models';
 import {sftp} from '../models';
 
+export function AnalyzeKubernetesEvent(arg1:dto.EventAnalysisRequest):Promise<dto.PodAnalysisResult>;
+
+export function AnalyzeKubernetesPod(arg1:dto.PodAnalysisRequest):Promise<dto.PodAnalysisResult>;
+
 export function CancelConnectHost(arg1:string):Promise<dto.OperationResult>;
 
 export function CancelConnectHostTerminal(arg1:dto.HostConnectionRequest):Promise<dto.OperationResult>;
 
 export function CancelConnectTerminal(arg1:dto.SSHConfig):Promise<void>;
+
+export function CancelPodAnalysis(arg1:string):Promise<void>;
 
 export function CheckForUpdate():Promise<app.UpdateInfo>;
 
@@ -120,6 +126,10 @@ export function ImportHostsBackup(arg1:string,arg2:dto.HostImportOptions):Promis
 
 export function ImportKeychainKey(arg1:dto.ImportKeychainKeyRequest):Promise<dto.OperationResult>;
 
+export function ListAIConnections():Promise<Array<dto.AIConnection>>;
+
+export function ListAIModels(arg1:string):Promise<Array<dto.AIModel>>;
+
 export function ListAWSIntegrations():Promise<dto.OperationResult>;
 
 export function ListGCPIntegrations():Promise<dto.OperationResult>;
@@ -192,15 +202,17 @@ export function SelectSFTPLocalDirectory():Promise<sftp.LocalListing>;
 
 export function SelectSFTPUpload(arg1:string,arg2:string,arg3:boolean):Promise<void>;
 
+export function SetAIConnection(arg1:string,arg2:boolean):Promise<void>;
+
 export function SetHostStartupSnippet(arg1:dto.HostStartupSnippetRequest):Promise<dto.HostStartupSnippet>;
 
 export function SetMobileCloudEnabled(arg1:boolean):Promise<dto.OperationResult>;
 
 export function ShowNativeUpdateSettings():Promise<void>;
 
-export function StartKubernetesPodPortForward(arg1:dto.KubernetesPodPortForwardRequest):Promise<dto.KubernetesPodPortForward>;
-
 export function StartKubernetesLiveUpdates(arg1:string,arg2:string):Promise<void>;
+
+export function StartKubernetesPodPortForward(arg1:dto.KubernetesPodPortForwardRequest):Promise<dto.KubernetesPodPortForward>;
 
 export function StartKubernetesPodShell(arg1:dto.KubernetesPodShellStartRequest):Promise<dto.KubernetesPodShellSession>;
 
@@ -219,6 +231,8 @@ export function SyncAWS(arg1:string):Promise<dto.OperationResult>;
 export function SyncGCP(arg1:string):Promise<dto.OperationResult>;
 
 export function SyncMobileSettings():Promise<dto.OperationResult>;
+
+export function TestAIConnection(arg1:string):Promise<void>;
 
 export function TestConnection(arg1:dto.SSHConfig):Promise<dto.OperationResult>;
 

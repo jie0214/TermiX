@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"github.com/jie0214/TermiX/backend/aiagent"
 	"github.com/jie0214/TermiX/backend/controlpanel"
 	"github.com/jie0214/TermiX/backend/hostvault"
 	"github.com/jie0214/TermiX/backend/keychain"
@@ -13,8 +14,9 @@ import (
 	"github.com/jie0214/TermiX/backend/terminal"
 )
 
-func NewApp(termMgr *terminal.Manager, ctrlPanel *controlpanel.Executor, sshConn *termixssh.Connector, snippetsSvc *snippets.Service, hostVaultSvc *hostvault.Service, kubernetesSvc *kubernetes.Service, keychainSvc *keychain.Service) *App {
+func NewApp(termMgr *terminal.Manager, ctrlPanel *controlpanel.Executor, sshConn *termixssh.Connector, snippetsSvc *snippets.Service, hostVaultSvc *hostvault.Service, kubernetesSvc *kubernetes.Service, keychainSvc *keychain.Service, aiAgentSvc *aiagent.Service) *App {
 	return &App{
+		aiAgent:      aiAgentSvc,
 		mobileCloud:  mobilecloud.NewService(hostVaultSvc, mobilecloud.Publish, mobilecloud.Capability),
 		terminal:     termMgr,
 		sftp:         sftpservice.NewManager(sshConn, hostVaultSvc),
@@ -41,5 +43,11 @@ func Initialize(a *App, ctx context.Context) {
 func ShutdownMobileSync(a *App) {
 	if a.mobileCloudCancel != nil {
 		a.mobileCloudCancel()
+	}
+}
+
+func ShutdownAI(a *App) {
+	if a.aiAgent != nil {
+		a.aiAgent.Close()
 	}
 }

@@ -116,8 +116,8 @@ func TestInvalidYAMLNeverWrites(t *testing.T) {
 	if _, err := UpdateDocument(raw, "dev", "pods", "web", string(payload)); err == nil || err.Error() != "document_identity" {
 		t.Fatal(err)
 	}
-	if _, err := GetDocument(raw, "dev", "secrets", "web"); err == nil {
-		t.Fatal("不接受 Secret")
+	if _, err := GetDocument(raw, "dev", "nodes", "web"); err == nil {
+		t.Fatal("不接受未支援資源")
 	}
 }
 func TestDocumentFailureDoesNotRetryOrLeak(t *testing.T) {

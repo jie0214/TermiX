@@ -1,16 +1,17 @@
-import { Keyboard, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KubernetesModal } from './KubernetesModal';
+import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Button } from '../../components/Button';
 import { useThemedStyles, type ThemeColors } from '../../components/theme';
 import { useLanguage } from '../language/LanguageProvider';
 import { useKubernetes } from './KubernetesProvider';
-import { resourceLabels } from './workspace';
+import { resourceLabels, isReadOnlyResource } from './workspace';
 
 export function ResourceEditorPanel() {
   const {workspace,state}=useKubernetes();
   const {t}=useLanguage();
   const styles=useThemedStyles(createStyles);
   const p=state.editor;
-  return <Modal visible={!!p} animationType="slide" presentationStyle="pageSheet" onRequestClose={()=>workspace.closeEditor()}>
+  return <KubernetesModal visible={!!p} animationType="slide" onRequestClose={()=>workspace.closeEditor()}>
     {p && <KeyboardAvoidingView style={styles.page} behavior={Platform.OS==='ios'?'padding':'height'}>
       <View style={styles.header}>
         <Button variant="secondary" label={t('關閉編輯器')} onPress={()=>workspace.closeEditor()}/>
@@ -20,8 +21,9 @@ export function ResourceEditorPanel() {
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         {p.status==='loading' && <Text style={styles.note}>{t('讀取中…')}</Text>}
         {p.mode==='yaml' && p.status==='viewing' && <>
-          <Button label={t('編輯 YAML')} onPress={()=>workspace.editDocument()}/>
-          <Text style={styles.note}>{t('已省略 status 與 managedFields；內容不會儲存在手機。')}</Text>
+          {!isReadOnlyResource(p.kind) && p.kind!=='secrets' && <Button label={t('編輯 YAML')} onPress={()=>workspace.editDocument()}/>}
+          {p.kind==='secrets' && <Text style={styles.note}>{t('Secret 資料已遮蔽。')}</Text>}
+          <Text style={styles.note}>{t(isReadOnlyResource(p.kind)?'唯讀資源；已省略 managedFields，內容不會儲存在手機。':'已省略 status 與 managedFields；內容不會儲存在手機。')}</Text>
           <Text selectable style={styles.code}>{p.value?.yaml}</Text>
         </>}
         {p.mode==='image' && p.status==='viewing' && <>
@@ -57,7 +59,7 @@ export function ResourceEditorPanel() {
         {(p.status==='success' || p.status==='error') && <Button label={t('重新查詢資源')} onPress={()=>{workspace.closeEditor();void workspace.refresh();}}/>}
       </ScrollView>
     </KeyboardAvoidingView>}
-  </Modal>;
+  </KubernetesModal>;
 }
 const createStyles=(colors:ThemeColors)=>StyleSheet.create({
  page:{flex:1,backgroundColor:colors.background},header:{padding:20,paddingTop:32,gap:10},content:{padding:20,paddingBottom:40,gap:16},

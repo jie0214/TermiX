@@ -65,3 +65,7 @@ func GetKubeDocument(raw, namespace, kind, name string) (string, error) {
 func UpdateKubeDocument(raw, namespace, kind, name, payload string) (string, error) {
 	return mobilekubernetes.UpdateDocument(raw, namespace, kind, name, payload)
 }
+
+func DeleteKubeResource(raw, namespace, kind, name, payload string) (string, error) {
+	return mobilekubernetes.DeleteResource(raw, namespace, kind, name, payload)
+}

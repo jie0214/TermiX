@@ -3216,12 +3216,12 @@ kubernetes-session-page {
 /* Quick access：nav 項目右側收藏星號。平常隱藏，hover 該列或聚焦時顯示；已收藏則常駐金色。 */
 .kubernetes-nav-link-wrap { position: relative; display: block; }
 .kubernetes-nav-link-wrap .kubernetes-section-link { width: 100%; padding-right: 30px; }
-.kubernetes-session-nav .kubernetes-nav-star { position: absolute; right: 5px; top: 50%; transform: translateY(-50%); display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; min-height: 0; padding: 0; border: 0; border-radius: 6px; background: transparent; box-shadow: none; color: var(--color-text-muted); opacity: 0; cursor: pointer; transition: opacity .12s ease, color .12s ease, background .12s ease; }
+.kubernetes-session-nav .kubernetes-nav-star { position: absolute; right: 5px; top: 50%; translate: 0 -50%; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; min-height: 0; padding: 0; border: 0; border-radius: 6px; background: transparent; box-shadow: none; color: var(--color-text-muted); opacity: 0; cursor: pointer; transition: opacity .12s ease, color .12s ease, background .12s ease; }
 .kubernetes-nav-star svg { display: block; width: 15px; height: 15px; }
 .kubernetes-nav-link-wrap:hover .kubernetes-nav-star,
 .kubernetes-session-nav .kubernetes-nav-star:focus-visible { opacity: 1; }
 .kubernetes-session-nav .kubernetes-nav-star:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
-.kubernetes-session-nav .kubernetes-nav-star:hover { transform: translateY(-50%); color: var(--color-warning); background: color-mix(in srgb, var(--color-text) 10%, transparent); }
+.kubernetes-session-nav .kubernetes-nav-star:hover { color: var(--color-warning); background: color-mix(in srgb, var(--color-text) 10%, transparent); }
 /* 已收藏＝實心金星，但仍只在 hover 該列時顯示（未 hover 一律隱藏）。 */
 .kubernetes-session-nav .kubernetes-nav-star.pinned { color: var(--color-warning); }
 .kubernetes-nav-quick-heading { display: flex; align-items: center; gap: 6px; margin: 4px 0; padding: 2px 7px; color: var(--color-text-muted); font-size: 11px; font-weight: 800; letter-spacing: 0.8px; }
@@ -3426,6 +3426,26 @@ kubernetes-session-page {
 .kubernetes-pod-filters button, .kubernetes-pod-actions button { border: 0; background: transparent; color: var(--color-subtext); cursor: pointer; font: inherit; }
 .kubernetes-pod-filters button { padding: 5px 10px; border: 1px solid var(--color-border); border-radius: 999px; }
 .kubernetes-pod-filters button.active { border-color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 15%, transparent); color: var(--color-primary); }
+/* Pod 狀態篩選列：保留文字，並用主題語意色區分狀態與選取。 */
+.kubernetes-pod-filters [data-pod-filter="running"] { --pod-status-color: var(--color-success); }
+.kubernetes-pod-filters [data-pod-filter="pending"] { --pod-status-color: var(--color-warning); }
+.kubernetes-pod-filters [data-pod-filter="unhealthy"],
+.kubernetes-pod-filters [data-pod-filter="failed"] { --pod-status-color: var(--color-danger); }
+.kubernetes-pod-filters [data-pod-filter="succeeded"] { --pod-status-color: var(--color-info); }
+.kubernetes-pod-filters button[data-pod-filter]:not([data-pod-filter="all"]) {
+  color: var(--pod-status-color);
+  border-color: color-mix(in srgb, var(--pod-status-color) 35%, transparent);
+  background: color-mix(in srgb, var(--pod-status-color) 9%, transparent);
+}
+.kubernetes-pod-filters button[data-pod-filter]:not([data-pod-filter="all"]):hover {
+  background: color-mix(in srgb, var(--pod-status-color) 16%, transparent);
+}
+.kubernetes-pod-filters button[data-pod-filter]:not([data-pod-filter="all"]).active {
+  border-color: var(--pod-status-color);
+  background: color-mix(in srgb, var(--pod-status-color) 22%, transparent);
+  box-shadow: inset 0 0 0 1px var(--pod-status-color);
+  font-weight: 700;
+}
 .kubernetes-pod-tools input { width: 220px; padding: 8px 10px; border: 1px solid var(--color-border); border-radius: 7px; background: var(--input-bg); color: var(--color-text); }
 .kubernetes-watching { padding: 7px 10px; border-radius: 7px; background: var(--color-success-bg); color: var(--color-success); font-size: 11px; font-weight: 700; }
 /* ── 底部選取列：常駐於內容區底部，勾選時滑出 ── */
@@ -3562,9 +3582,13 @@ kubernetes-session-page {
 .kubernetes-table-caption,
 .kubernetes-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
 /* ② Events Type 篩選工具列。 */
-.kubernetes-events-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 22px; }
-.kubernetes-events-filter { display: inline-flex; align-items: center; gap: 8px; color: var(--color-subtext); font-size: 11px; }
-.kubernetes-events-filter select { padding: 4px 8px; border: 1px solid var(--color-border); border-radius: 7px; background: var(--glass-bg-soft); color: var(--color-text); font-size: 11px; }
+.kubernetes-events-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 22px; }
+.kubernetes-event-filters { flex-wrap: wrap; }
+.kubernetes-event-filters [data-event-filter="Warning"] { --event-status-color: var(--color-warning); }
+.kubernetes-event-filters [data-event-filter="Normal"] { --event-status-color: var(--color-success); }
+.kubernetes-event-filters button[data-event-filter]:not([data-event-filter="all"]) { color: var(--event-status-color); border-color: color-mix(in srgb, var(--event-status-color) 35%, transparent); background: color-mix(in srgb, var(--event-status-color) 9%, transparent); }
+.kubernetes-event-filters button[data-event-filter]:not([data-event-filter="all"]):hover { background: color-mix(in srgb, var(--event-status-color) 16%, transparent); }
+.kubernetes-event-filters button[data-event-filter]:not([data-event-filter="all"]).active { border-color: var(--event-status-color); background: color-mix(in srgb, var(--event-status-color) 22%, transparent); box-shadow: inset 0 0 0 1px var(--event-status-color); font-weight: 700; }
 .kubernetes-events-toolbar + .kubernetes-eventlist-scroll { margin-top: 10px; }
 .kubernetes-events-empty { color: var(--color-subtext); text-align: center; padding: 18px 0; }
 /* 扁平（不分組）事件列表：固定欄寬對齊、最左 namespace 色條、Message 單行不省略、
@@ -3608,6 +3632,27 @@ kubernetes-session-page {
 .status-degraded,
 .status-notready { background: var(--color-danger-bg); color: var(--color-danger); }
 .status-succeeded { background: var(--color-info-bg); color: var(--color-info); }
+/* 補齊 Pods 的容器等待、完成與異常原因，不影響其他資源清單。 */
+.kubernetes-pods-table .status-containercreating,
+.kubernetes-pods-table .status-podinitializing,
+.kubernetes-pods-table .status-terminating,
+.kubernetes-pods-table [class*="status-init-"] { background: var(--color-warning-bg); color: var(--color-warning); }
+.kubernetes-pods-table .status-completed { background: var(--color-info-bg); color: var(--color-info); }
+.kubernetes-pods-table .status-crashloopbackoff,
+.kubernetes-pods-table .status-imagepullbackoff,
+.kubernetes-pods-table .status-errimagepull,
+.kubernetes-pods-table .status-createcontainerconfigerror,
+.kubernetes-pods-table .status-createcontainererror,
+.kubernetes-pods-table .status-runcontainererror,
+.kubernetes-pods-table .status-invalidimagename,
+.kubernetes-pods-table .status-oomkilled,
+.kubernetes-pods-table .status-error,
+.kubernetes-pods-table .status-evicted,
+.kubernetes-pods-table .status-nodelost,
+.kubernetes-pods-table .status-not-ready,
+.kubernetes-pods-table [class*="status-init-"][class*="error"],
+.kubernetes-pods-table [class*="status-init-"][class*="backoff"],
+.kubernetes-pods-table [class*="status-init-"][class*="oomkilled"] { background: var(--color-danger-bg); color: var(--color-danger); }
 .kubernetes-resource-empty { display: flex; min-height: 260px; align-items: center; justify-content: center; margin-top: 22px; border: 1px dashed var(--color-border); border-radius: 9px; color: var(--color-subtext); font-size: 12px; }
 
 .kubernetes-detail-backdrop { position: absolute; inset: 0; z-index: 20; background: rgba(5, 10, 18, 0.34); --wails-draggable: no-drag; }
@@ -6227,3 +6272,8 @@ button:focus-visible,
 
 /* 即時同步異常時保留內容，以小型狀態訊息提示。 */
 .kubernetes-live-status { padding: 6px 10px; color: var(--color-text-muted); font-size: 12px; }
+.kubernetes-node-usage { display: grid; gap: 5px; min-width: 130px; padding: 4px 0; font-variant-numeric: tabular-nums; }
+.kubernetes-node-usage strong { font-size: 12px; font-weight: 600; }
+.kubernetes-node-usage small, .kubernetes-node-usage-empty { color: var(--color-subtext); font-size: 11px; }
+.kubernetes-node-usage-track { height: 4px; border-radius: 2px; overflow: hidden; background: var(--color-border); }
+.kubernetes-node-usage-track > span { display: block; height: 100%; border-radius: inherit; }

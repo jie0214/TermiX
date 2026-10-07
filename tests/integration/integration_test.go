@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jie0214/TermiX/backend/aiagent"
 	termixapp "github.com/jie0214/TermiX/backend/app"
 	"github.com/jie0214/TermiX/backend/controlpanel"
 	"github.com/jie0214/TermiX/backend/hostvault"
@@ -73,7 +74,7 @@ func TestIntegrationSSHInteract(t *testing.T) {
 	secretStore := secrets.NewMemoryStore()
 	keychainSvc := keychain.NewService(repo, secretStore)
 	hostVaultSvc := hostvault.NewService(repo, secretStore, keychainSvc)
-	app := termixapp.NewApp(termMgr, ctrlPanel, connector, snippets.NewService(termMgr), hostVaultSvc, kubernetes.NewService(repo), keychainSvc)
+	app := termixapp.NewApp(termMgr, ctrlPanel, connector, snippets.NewService(termMgr), hostVaultSvc, kubernetes.NewService(repo), keychainSvc, aiagent.NewService(repo))
 	testRes := app.TestConnection(sshConfig)
 	if !testRes.Success {
 		t.Fatalf("TestConnection 失敗：%s, Output: %s", testRes.Error, testRes.Output)
@@ -237,7 +238,7 @@ func TestIntegrationSSHSudoConnect(t *testing.T) {
 	secretStore := secrets.NewMemoryStore()
 	keychainSvc := keychain.NewService(repo, secretStore)
 	hostVaultSvc := hostvault.NewService(repo, secretStore, keychainSvc)
-	app := termixapp.NewApp(termMgr, ctrlPanel, connector, snippets.NewService(termMgr), hostVaultSvc, kubernetes.NewService(repo), keychainSvc)
+	app := termixapp.NewApp(termMgr, ctrlPanel, connector, snippets.NewService(termMgr), hostVaultSvc, kubernetes.NewService(repo), keychainSvc, aiagent.NewService(repo))
 
 	connRes := app.ConnectTerminal(sshConfig)
 	if !connRes.Success {

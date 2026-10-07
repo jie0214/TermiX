@@ -1,6 +1,7 @@
+import { KubernetesModal } from './KubernetesModal';
 import { useEffect, useRef } from 'react';
 import { useLanguage } from '../language/LanguageProvider';
-import { Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { Button } from '../../components/Button';
 import { useThemedStyles, type ThemeColors } from '../../components/theme';
 import { useKubernetes } from './KubernetesProvider';
@@ -17,7 +18,7 @@ export function PodLogPanel() {
     const frame = requestAnimationFrame(() => output.current?.scrollToEnd({animated:false}));
     return () => cancelAnimationFrame(frame);
   }, [logs]);
-  return <Modal visible={!!logs} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => workspace.closeLogs()}>
+  return <KubernetesModal visible={!!logs} animationType="slide" onRequestClose={() => workspace.closeLogs()}>
     {logs && <View style={styles.page}>
       <Button variant="secondary" label={t("關閉 Log")} onPress={() => workspace.closeLogs()} />
       <Text style={styles.title}>{logs.pod}</Text>
@@ -48,7 +49,7 @@ export function PodLogPanel() {
         </ScrollView>
       </>}
     </View>}
-  </Modal>;
+  </KubernetesModal>;
 }
 const createStyles = (colors: ThemeColors) => StyleSheet.create({
   page: { flex: 1, padding: 20, paddingTop: 32, paddingBottom: 32, gap: 12, backgroundColor: colors.background },
