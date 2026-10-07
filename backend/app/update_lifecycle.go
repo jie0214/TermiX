@@ -2,6 +2,8 @@ package app
 
 import (
 	"fmt"
+
+	"github.com/jie0214/TermiX/shared/events"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -25,12 +27,19 @@ func SetNativeUpdater(a *App, check, settings func()) {
 func (a *App) HandleNativeUpdateCheck(manual bool) bool {
 	a.updateMu.Lock()
 	check := a.nativeUpdateCheck
+	version := a.nativeUpdateVersion
+	progress := a.updateProgress
 	a.updateMu.Unlock()
+	if !manual {
+		a.emitUpdateProgress(progress)
+	}
 	if check == nil {
 		return false
 	}
 	if manual {
 		check()
+	} else if version != "" && (progress.Status == "" || progress.Version != version) {
+		a.emitNativeUpdateFound(version)
 	}
 	return true
 }
@@ -121,4 +130,23 @@ func CancelPreparedClose(a *App) {
 	a.updateMu.Lock()
 	a.closing = false
 	a.updateMu.Unlock()
+}
+
+// NotifyNativeUpdateFound 保存本次執行的通知，讓較晚完成初始化的前端也能收到。
+func NotifyNativeUpdateFound(a *App, version string) {
+	if version == "" {
+		return
+	}
+	a.updateMu.Lock()
+	a.nativeUpdateVersion = version
+	progress := a.updateProgress
+	a.updateMu.Unlock()
+	if progress.Version != version || progress.Status == "" {
+		a.emitNativeUpdateFound(version)
+	}
+}
+func (a *App) emitNativeUpdateFound(version string) {
+	if a.ctx != nil {
+		runtime.EventsEmit(a.ctx, events.EventNativeUpdateFound, version)
+	}
 }

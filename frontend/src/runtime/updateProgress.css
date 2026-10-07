@@ -1,0 +1,54 @@
+.termix-download-progress {
+  position: fixed;
+  right: max(24px, env(safe-area-inset-right));
+  bottom: max(24px, env(safe-area-inset-bottom));
+  z-index: 4001;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 350px;
+  max-width: calc(100vw - 48px);
+  padding: 18px;
+  box-sizing: border-box;
+  color: var(--color-text, #eef2f7);
+  background: var(--color-panel-bg, #1e252e);
+  border: 1px solid var(--color-border, #425166);
+  border-radius: 18px;
+  box-shadow: 0 12px 36px rgb(0 0 0 / 28%);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  -webkit-app-region: no-drag;
+}
+.termix-download-progress [hidden] { display: none !important; }
+.termix-download-progress button { font: inherit; color: inherit; cursor: pointer; }
+.termix-download-progress button:focus-visible { outline: 2px solid var(--color-info, #388bff); outline-offset: 4px; }
+.termix-download-progress.is-collapsed { width: 76px; padding: 9px; border-radius: 20px; }
+.termix-download-toggle { position: relative; flex: 0 0 56px; height: 56px; padding: 0; border: 0; background: transparent; }
+.termix-download-ring { display: grid; place-items: center; position: relative; width: 56px; height: 56px; }
+.termix-download-ring svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); fill: none; stroke-width: 4; }
+.termix-download-ring .track { stroke: var(--color-border, #344155); }
+.termix-download-ring .fill { stroke: var(--color-info, #388bff); stroke-linecap: round; stroke-dasharray: var(--download-progress) 100; }
+.termix-download-symbol { font-size: 28px; line-height: 1; color: var(--color-info, #388bff); }
+.termix-download-badge { position: absolute; bottom: -4px; right: -7px; padding: 2px 5px; border-radius: 9px; background: #2274de; color: #fff; font-size: 10px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.termix-download-detail { min-width: 0; flex: 1; }
+.termix-download-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.termix-download-heading strong { font-size: 14px; }
+.termix-download-collapse { border: 0; background: transparent; font-size: 20px !important; padding: 0 4px; }
+.termix-download-version { margin-top: 4px; font-size: 12px; opacity: .7; overflow-wrap: anywhere; }
+.termix-download-bar { margin-top: 13px; height: 5px; border-radius: 5px; background: var(--color-border, #344155); overflow: hidden; }
+.termix-download-bar span { display: block; width: var(--download-width); height: 100%; border-radius: inherit; background: var(--color-info, #388bff); }
+.termix-download-footer { display: flex; justify-content: space-between; gap: 8px; margin-top: 8px; font-size: 11px; line-height: 1.5; font-variant-numeric: tabular-nums; }
+.termix-download-bytes { opacity: .7; }
+.termix-download-percent { color: var(--color-info, #388bff); }
+.termix-download-dismiss { margin-top: 10px; background: transparent; border: 1px solid var(--color-border, #425166); border-radius: 6px; padding: 4px 10px; font-size: 12px !important; }
+.termix-download-announcement { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.termix-download-progress.is-indeterminate .termix-download-ring svg { animation: termix-download-spin 1.4s linear infinite; }
+.termix-download-progress.is-indeterminate .termix-download-ring .fill { stroke-dasharray: 24 100; }
+.termix-download-progress.is-indeterminate .termix-download-bar span { animation: termix-download-slide 1.4s ease-in-out infinite alternate; }
+.termix-download-progress[data-status='error'] .termix-download-symbol { color: var(--color-danger, #f87171); }
+@keyframes termix-download-spin { to { transform: rotate(270deg); } }
+@keyframes termix-download-slide { to { transform: translateX(255%); } }
+@media (prefers-reduced-motion: reduce) {
+  .termix-download-progress.is-indeterminate .termix-download-ring svg,
+  .termix-download-progress.is-indeterminate .termix-download-bar span { animation: none; }
+}

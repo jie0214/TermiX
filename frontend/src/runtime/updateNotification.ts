@@ -25,17 +25,18 @@ function openReleasePage(url: string): void {
  * @param latestVersion 最新版本號（如 "1.2.0"）。
  * @param releaseUrl    下載 / Release 頁面連結。
  */
-export function showUpdateNotification(latestVersion: string, releaseUrl: string): void {
+export function showUpdateNotification(latestVersion: string, releaseUrl: string, native = false): void {
   if (typeof document === 'undefined' || !document.body) return;
 
   // 移除既有卡片，避免重複（例如自動檢查後又手動檢查）。
   const existing = document.getElementById(CONTAINER_ID);
-  if (existing?.dataset.version === latestVersion) return;
+  if (existing?.dataset.version === latestVersion && existing.dataset.native === String(native)) return;
   existing?.remove();
 
   const card = document.createElement('div');
   card.id = CONTAINER_ID;
   card.dataset.version = latestVersion;
+  card.dataset.native = String(native);
   card.setAttribute('role', 'status');
   card.setAttribute('aria-live', 'polite');
   card.style.cssText = [
@@ -63,8 +64,8 @@ export function showUpdateNotification(latestVersion: string, releaseUrl: string
 
   const title = escapeHtml(t('misc.update.title'));
   const ready = escapeHtml(t('misc.update.ready', { latest: latestVersion }));
-  const hint = escapeHtml(t('misc.update.hint'));
-  const confirmLabel = escapeHtml(t('misc.update.confirm'));
+  const hint = escapeHtml(t(native ? 'misc.update.nativeHint' : 'misc.update.hint'));
+  const confirmLabel = escapeHtml(t(native ? 'misc.update.nativeStatus' : 'misc.update.confirm'));
   const closeLabel = escapeHtml(t('misc.update.close'));
 
   card.innerHTML = `
@@ -90,6 +91,14 @@ export function showUpdateNotification(latestVersion: string, releaseUrl: string
 
   const downloadBtn = card.querySelector<HTMLButtonElement>('[data-action="download"]');
   downloadBtn?.addEventListener('click', async () => {
+    if (native) {
+      try {
+        const check = getAppBinding('HandleNativeUpdateCheck');
+        if (check && await check(true)) return;
+      } catch (error) { console.warn('[TermiX] 原生更新狀態無法開啟', error); }
+      if (releaseUrl) openReleasePage(releaseUrl);
+      return;
+    }
     // 半自動更新：後端下載對應平台壓縮檔至「下載」資料夾並於檔案管理員顯示；
     // 使用者解壓覆蓋即可。下載失敗時退回以瀏覽器開啟 Release 頁面。
     const downloadUpdate = getAppBinding('DownloadUpdate');
@@ -118,7 +127,7 @@ export function showUpdateNotification(latestVersion: string, releaseUrl: string
       downloadBtn.disabled = false;
       downloadBtn.style.opacity = '1';
       downloadBtn.style.cursor = 'pointer';
-      downloadBtn.textContent = t('misc.update.confirm');
+      downloadBtn.textContent = t(native ? 'misc.update.nativeStatus' : 'misc.update.confirm');
     }
   });
 

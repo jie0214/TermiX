@@ -2,17 +2,86 @@
 #import "updater_darwin.h"
 
 // 僅宣告使用中的穩定 API，透過 App 內的 framework 載入；一般開發建置不需下載 Sparkle。
-@protocol TXUpdater
+@protocol TXUpdater <NSObject>
 @property BOOL automaticallyChecksForUpdates;
 @property BOOL automaticallyDownloadsUpdates;
+@property(readonly) BOOL canCheckForUpdates;
 - (void)checkForUpdatesInBackground;
 @end
 @protocol TXUpdaterController
-- (id)initWithStartingUpdater:(BOOL)start updaterDelegate:(id)delegate userDriverDelegate:(id)driver;
-- (void)startUpdater;
+- (BOOL)startUpdater;
 - (void)checkForUpdates:(id)sender;
 - (id<TXUpdater>)updater;
 @end
+// 公開 SPUUserDriver 的裝飾器：只觀察下載事件，所有互動仍交給 Sparkle。
+@protocol TXStandardDriver <NSObject>
+- (id)initWithHostBundle:(NSBundle *)bundle delegate:(id)delegate;
+- (void)showDownloadDidReceiveExpectedContentLength:(uint64_t)length;
+- (void)showDownloadDidReceiveDataOfLength:(uint64_t)length;
+- (void)showReadyToInstallAndRelaunch:(void (^)(NSInteger))reply;
+@end
+@protocol TXConstructedUpdater <TXUpdater>
+- (id)initWithHostBundle:(NSBundle *)host applicationBundle:(NSBundle *)app userDriver:(id)driver delegate:(id)delegate;
+- (BOOL)startUpdater:(NSError **)error;
+- (void)checkForUpdates;
+@end
+static NSString *downloadVersion;
+static NSString *downloadStatus;
+static uint64_t downloadReceived, downloadTotal;
+static NSTimeInterval downloadLastReport;
+static void TXReportDownload(NSString *status, BOOL force) {
+ downloadStatus = status;
+ NSTimeInterval now = NSDate.timeIntervalSinceReferenceDate;
+ if (!force && now - downloadLastReport < 0.1) return;
+ downloadLastReport = now;
+ TermixDownloadProgress((char *)(downloadVersion ?: @"").UTF8String, (char *)status.UTF8String, downloadReceived, downloadTotal);
+}
+static void TXBeginDownload(NSString *version) {
+ [downloadVersion release]; downloadVersion = [version copy];
+ downloadReceived = 0; downloadTotal = 0;
+ TXReportDownload(@"downloading", YES);
+}
+@interface TXProgressDriver : NSObject
+@property(retain) id<TXStandardDriver> standard;
+@end
+@implementation TXProgressDriver
+- (BOOL)respondsToSelector:(SEL)selector { return [super respondsToSelector:selector] || [(id)self.standard respondsToSelector:selector]; }
+- (id)forwardingTargetForSelector:(SEL)selector { return self.standard; }
+- (void)showDownloadDidReceiveExpectedContentLength:(uint64_t)length {
+ downloadTotal = length;
+ TXReportDownload(@"downloading", YES);
+ [self.standard showDownloadDidReceiveExpectedContentLength:length];
+}
+- (void)showDownloadDidReceiveDataOfLength:(uint64_t)length {
+ downloadReceived += length;
+ TXReportDownload(@"downloading", NO);
+ [self.standard showDownloadDidReceiveDataOfLength:length];
+}
+- (void)showReadyToInstallAndRelaunch:(void (^)(NSInteger))reply {
+ TXReportDownload(@"ready", YES);
+ [self.standard showReadyToInstallAndRelaunch:reply];
+}
+- (void)dealloc { [_standard release]; [super dealloc]; }
+@end
+@interface TXProgressController : NSObject <TXUpdaterController>
+@property(retain) id<TXConstructedUpdater> actualUpdater;
+@property(retain) TXProgressDriver *driver;
+@end
+@implementation TXProgressController
+- (BOOL)startUpdater {
+ NSError *error = nil;
+ if (![self.actualUpdater startUpdater:&error]) {
+  NSLog(@"TermiX 更新器啟動失敗：%@", error);
+  return NO;
+ }
+ TermixUpdaterReady();
+ return YES;
+}
+- (void)checkForUpdates:(id)sender { [self.actualUpdater checkForUpdates]; }
+- (id<TXUpdater>)updater { return self.actualUpdater; }
+- (void)dealloc { [_actualUpdater release]; [_driver release]; [super dealloc]; }
+@end
+
 // Sparkle 2 穩定列舉值；維持開發建置不依賴 framework headers。
 typedef NS_ENUM(NSInteger, TXUpdateChoice) { TXUpdateChoiceSkip = 0, TXUpdateChoiceInstall = 1, TXUpdateChoiceDismiss = 2 };
 @protocol TXUpdateItem
@@ -27,6 +96,26 @@ static NSString *const TXDismissedUpdateVersionKey = @"TermixDismissedUpdateVers
 static TXUpdateDelegate *updateDelegate;
 static id<TXUpdaterController> updateController;
 @implementation TXUpdateDelegate
+// 背景自動下載沒有公開的位元組回呼；以總量 0 表達未知，不估算百分比。
+- (void)updater:(id)updater willDownloadUpdate:(id<TXUpdateItem>)item withRequest:(NSMutableURLRequest *)request { TXBeginDownload(item.versionString); }
+- (void)updater:(id)updater didDownloadUpdate:(id<TXUpdateItem>)item { TXReportDownload(@"verifying", YES); }
+- (void)updater:(id)updater willExtractUpdate:(id<TXUpdateItem>)item {
+ if (!downloadVersion) TXBeginDownload(item.versionString);
+ TXReportDownload(@"verifying", YES);
+}
+- (void)updater:(id)updater failedToDownloadUpdate:(id<TXUpdateItem>)item error:(NSError *)error { TXReportDownload(@"error", YES); }
+- (void)userDidCancelDownload:(id)updater { TXReportDownload(@"cancelled", YES); }
+- (BOOL)updater:(id)updater willInstallUpdateOnQuit:(id<TXUpdateItem>)item immediateInstallationBlock:(void (^)(void))install {
+ TXReportDownload(@"ready", YES);
+ return NO;
+}
+- (void)updater:(id<TXUpdater>)updater didFindValidUpdate:(id<TXUpdateItem>)item {
+    [downloadVersion release]; downloadVersion = [item.versionString copy];
+    // 自動下載不會先顯示 Sparkle 視窗，先通知使用者已找到新版。
+    if (updater.automaticallyDownloadsUpdates && [self updater:updater shouldProceedWithUpdate:item updateCheck:1 error:NULL]) {
+        TermixUpdateFound((char *)item.versionString.UTF8String);
+    }
+}
 - (NSUserDefaults *)updatePreferences { return self.preferences ?: NSUserDefaults.standardUserDefaults; }
 - (void)updater:(id)updater userDidMakeChoice:(NSInteger)choice forUpdate:(id<TXUpdateItem>)item state:(id)state {
     if (choice != TXUpdateChoiceSkip && choice != TXUpdateChoiceDismiss) return;
@@ -53,6 +142,7 @@ static id<TXUpdaterController> updateController;
 }
 - (void)updater:(id)updater didAbortWithError:(NSError *)error {
     self.readyToTerminate = NO;
+    if ([downloadStatus isEqualToString:@"downloading"] || [downloadStatus isEqualToString:@"verifying"]) TXReportDownload(@"error", YES);
     TermixUpdateAborted();
 }
 - (BOOL)updaterShouldRelaunchApplication:(id)updater {
@@ -77,7 +167,7 @@ void TermixPendingUpdate(void) {
 }
 // 集中啟動流程，供原生回歸測試驗證啟動時的檢查行為。
 static void TXStartUpdateController(id<TXUpdaterController> controller) {
- [controller startUpdater];
+ if (![controller startUpdater]) return;
  // 啟動後立即檢查，不等待上一次檢查起算的 1 小時；不覆寫使用者偏好。
  // 必須在下一個 run loop 前呼叫，避免干擾 Sparkle 後續排程。
  id<TXUpdater> updater = controller.updater;
@@ -91,18 +181,34 @@ void TermixStartUpdater(void) {
   NSString *path = [app.privateFrameworksPath stringByAppendingPathComponent:@"Sparkle.framework"];
   NSError *error = nil;
   if (![[NSBundle bundleWithPath:path] loadAndReturnError:&error]) { NSLog(@"TermiX 更新框架載入失敗：%@", error); return; }
-  Class controllerClass = NSClassFromString(@"SPUStandardUpdaterController");
-  if (!controllerClass) return;
+  Class updaterClass = NSClassFromString(@"SPUUpdater");
+  Class driverClass = NSClassFromString(@"SPUStandardUserDriver");
+  if (!updaterClass || !driverClass) return;
   updateDelegate = [TXUpdateDelegate new];
   updateDelegate.originalDelegate = NSApp.delegate;
   NSApp.delegate = (id<NSApplicationDelegate>)updateDelegate;
-  updateController = [(id<TXUpdaterController>)[controllerClass alloc] initWithStartingUpdater:NO updaterDelegate:updateDelegate userDriverDelegate:nil];
-  TermixUpdaterReady();
+  TXProgressController *controller = [TXProgressController new];
+  controller.driver = [[[TXProgressDriver alloc] init] autorelease];
+  controller.driver.standard = [[(id<TXStandardDriver>)[driverClass alloc] initWithHostBundle:app delegate:nil] autorelease];
+  controller.actualUpdater = [[(id<TXConstructedUpdater>)[updaterClass alloc] initWithHostBundle:app applicationBundle:app userDriver:controller.driver delegate:updateDelegate] autorelease];
+  updateController = controller;
   TXStartUpdateController(updateController);
  });
 }
+static void TXCheckUpdates(id<TXUpdaterController> controller, void (^busy)(void)) {
+ if (!controller) return;
+ if (!controller.updater.canCheckForUpdates) { busy(); return; }
+ [controller checkForUpdates:nil];
+}
 void TermixCheckUpdates(void) {
- dispatch_async(dispatch_get_main_queue(), ^{ [updateController checkForUpdates:nil]; });
+ dispatch_async(dispatch_get_main_queue(), ^{
+  TXCheckUpdates(updateController, ^{
+   NSAlert *alert = [[[NSAlert alloc] init] autorelease];
+   alert.messageText = @"更新正在進行";
+   alert.informativeText = @"正在背景檢查、下載或驗證更新。完成後會提供安裝提示；若已啟用自動安裝，會在結束 TermiX 時安裝。";
+   [alert addButtonWithTitle:@"好"]; [alert runModal];
+  });
+ });
 }
 void TermixUpdateSettings(void) {
  dispatch_async(dispatch_get_main_queue(), ^{

@@ -47,6 +47,11 @@ export async function checkForUpdateAndNotify(): Promise<void> {
 
 // 註冊選單「Check for Updates」事件監聽：主動檢查並提示檢查中。
 export function registerUpdateMenuListener(): void {
+  onWailsEvent('native-update-found', (version: unknown) => {
+    if (typeof version === 'string' && version && shouldNotifyUpdate(version)) {
+      showUpdateNotification(version, 'https://github.com/jie0214/TermiX/releases', true);
+    }
+  });
   onWailsEvent(MENU_CHECK_EVENT, () => {
     showToast(t('misc.update.checking'), { type: 'info' });
     void runUpdateCheck(true);

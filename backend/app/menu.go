@@ -10,10 +10,18 @@ import (
 )
 
 func NewMenu(app *App) *menu.Menu {
+	return newMenu(app, func() {
+		showAbout(Version, func(options runtime.MessageDialogOptions) (string, error) {
+			return runtime.MessageDialog(app.ctx, options)
+		}, func(url string) { runtime.BrowserOpenURL(app.ctx, url) })
+	})
+}
+
+func newMenu(app *App, about func()) *menu.Menu {
 	appMenu := menu.NewMenu()
 
 	appSubMenu := appMenu.AddSubmenu("TermiX")
-	appSubMenu.AddText("關於 TermiX", nil, func(cd *menu.CallbackData) {})
+	appSubMenu.AddText("關於 TermiX", nil, func(cd *menu.CallbackData) { about() })
 	appSubMenu.AddSeparator()
 	appSubMenu.AddText("Settings", keys.CmdOrCtrl(","), func(cd *menu.CallbackData) {
 		runtime.EventsEmit(app.ctx, events.EventOpenGlobalSettings)

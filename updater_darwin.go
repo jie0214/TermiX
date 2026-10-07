@@ -73,3 +73,25 @@ func TermixUpdateAborted() {
 		termixapp.CancelPreparedClose(app)
 	}
 }
+
+//export TermixUpdateFound
+func TermixUpdateFound(version *C.char) {
+	updaterApp.RLock()
+	app := updaterApp.app
+	updaterApp.RUnlock()
+	if app != nil {
+		termixapp.NotifyNativeUpdateFound(app, C.GoString(version))
+	}
+}
+
+//export TermixDownloadProgress
+func TermixDownloadProgress(version, status *C.char, received, total C.ulonglong) {
+	updaterApp.RLock()
+	app := updaterApp.app
+	updaterApp.RUnlock()
+	if app != nil {
+		termixapp.NotifyUpdateProgress(app, termixapp.UpdateProgress{
+			Version: C.GoString(version), Status: C.GoString(status), ReceivedBytes: int64(received), TotalBytes: int64(total),
+		})
+	}
+}

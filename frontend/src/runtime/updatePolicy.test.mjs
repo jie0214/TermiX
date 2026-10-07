@@ -58,4 +58,35 @@ test('通知不自動消失，同版本每小時檢查不重建卡片，關閉�
   listeners.get('[data-action="close"]')();
   assert.deepEqual(dismissed, ['3.0.0']);
   timers[0](); assert.equal(card, undefined);
+  show('3.1.0', ''); show('3.1.0', '', true);
+  assert.equal(creations, 3, '原生更新器就緒後應替換同版本的備援下載卡片');
+  assert.equal(card.dataset.native, 'true');
+});
+
+
+test('原生背景下載事件顯示通知、關閉後不重複，按鈕交回 Sparkle', async () => {
+  localStorage.clear();
+  const source = await readFile(new URL('./updateCheck.ts', import.meta.url), 'utf8');
+  const runnable = stripTypeScriptTypes(source.replace(/^import .*;\n/gm, '').replace(/export /g, ''));
+  const events = new Map(), shown = [];
+  const register = new Function('onWailsEvent', 'shouldNotifyUpdate', 'showUpdateNotification', `${runnable}; return registerUpdateMenuListener;`)(
+    (event, callback) => events.set(event, callback), shouldNotifyUpdate, (...args) => shown.push(args),
+  );
+  register();
+  events.get('native-update-found')('4.0.0');
+  assert.deepEqual(shown, [['4.0.0', 'https://github.com/jie0214/TermiX/releases', true]]);
+  dismissUpdateVersion('4.0.0');
+  events.get('native-update-found')('4.0.0');
+  assert.equal(shown.length, 1);
+
+  const notificationSource = await readFile(new URL('./updateNotification.ts', import.meta.url), 'utf8');
+  const notification = stripTypeScriptTypes(notificationSource.replace(/^import .*;\n/gm, '').replace(/export /g, ''));
+  const listeners = new Map(), calls = [];
+  const document = {body: {appendChild() {}}, getElementById: () => null, createElement: () => ({dataset: {}, style: {}, setAttribute() {}, querySelector: selector => ({addEventListener: (_, callback) => listeners.set(selector, callback)})})};
+  const show = new Function('document', 'requestAnimationFrame', 'getAppBinding', 't', `${notification}; return showUpdateNotification;`)(
+    document, fn => fn(), name => async manual => { calls.push([name, manual]); return true; }, key => key,
+  );
+  show('4.1.0', '', true);
+  await listeners.get('[data-action="download"]')();
+  assert.deepEqual(calls, [['HandleNativeUpdateCheck', true]], '不可啟動第二套下載');
 });

@@ -18,24 +18,27 @@ import (
 )
 
 type App struct {
-	aiAgent              *aiagent.Service
-	mobileCloud          *mobilecloud.Service
-	mobileCloudCancel    context.CancelFunc
-	sftp                 *sftpservice.Manager
-	updateMu             sync.Mutex
-	closing              bool
-	pendingOperations    int
-	closeMu              sync.Mutex
-	nativeUpdateCheck    func()
-	nativeUpdateSettings func()
-	ctx                  context.Context
-	terminal             *terminal.Manager
-	controlPanel         *controlpanel.Executor
-	sshConnector         *termixssh.Connector
-	snippets             *snippets.Service
-	hostVault            *hostvault.Service
-	kubernetes           *kubernetes.Service
-	keychain             *keychain.Service
+	aiAgent               *aiagent.Service
+	mobileCloud           *mobilecloud.Service
+	mobileCloudCancel     context.CancelFunc
+	sftp                  *sftpservice.Manager
+	updateMu              sync.Mutex
+	closing               bool
+	pendingOperations     int
+	closeMu               sync.Mutex
+	nativeUpdateCheck     func()
+	nativeUpdateVersion   string
+	updateProgress        UpdateProgress
+	updateDownloadRunning bool
+	nativeUpdateSettings  func()
+	ctx                   context.Context
+	terminal              *terminal.Manager
+	controlPanel          *controlpanel.Executor
+	sshConnector          *termixssh.Connector
+	snippets              *snippets.Service
+	hostVault             *hostvault.Service
+	kubernetes            *kubernetes.Service
+	keychain              *keychain.Service
 }
 
 type SSHConfig = dto.SSHConfig

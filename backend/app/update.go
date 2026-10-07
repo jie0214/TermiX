@@ -116,6 +116,14 @@ type DownloadResult struct {
 // DownloadUpdate 下載對應目前平台的更新壓縮檔到「下載」資料夾，並在檔案管理員中顯示。
 // 半自動更新：下載完成後由使用者自行解壓縮並覆蓋安裝（未來若導入簽章可在此升級為全自動）。
 func (a *App) DownloadUpdate() DownloadResult {
+	a.updateMu.Lock()
+	if a.updateDownloadRunning {
+		a.updateMu.Unlock()
+		return DownloadResult{Error: "更新已在下載中"}
+	}
+	a.updateDownloadRunning = true
+	a.updateMu.Unlock()
+	defer func() { a.updateMu.Lock(); a.updateDownloadRunning = false; a.updateMu.Unlock() }()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
@@ -137,9 +145,17 @@ func (a *App) DownloadUpdate() DownloadResult {
 	}
 
 	destPath := filepath.Join(downloadsDir(), assetName)
-	if err := downloadFile(ctx, asset.URL, destPath); err != nil {
+	progress := UpdateProgress{Version: strings.TrimPrefix(release.TagName, "v"), Status: "downloading"}
+	if err := downloadFileWithProgress(ctx, http.DefaultClient, asset.URL, destPath, func(received, total int64) {
+		progress.ReceivedBytes, progress.TotalBytes = received, total
+		NotifyUpdateProgress(a, progress)
+	}); err != nil {
+		progress.Status = "error"
+		NotifyUpdateProgress(a, progress)
 		return DownloadResult{Error: err.Error()}
 	}
+	progress.Status = "ready"
+	NotifyUpdateProgress(a, progress)
 
 	revealInFileManager(destPath)
 	return DownloadResult{Success: true, FilePath: destPath}
@@ -220,6 +236,9 @@ func downloadFile(ctx context.Context, url, destPath string) error {
 }
 
 func downloadFileWithClient(ctx context.Context, client *http.Client, url, destPath string) error {
+	return downloadFileWithProgress(ctx, client, url, destPath, nil)
+}
+func downloadFileWithProgress(ctx context.Context, client *http.Client, url, destPath string, report func(int64, int64)) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return err
@@ -245,7 +264,7 @@ func downloadFileWithClient(ctx context.Context, client *http.Client, url, destP
 	tempPath := out.Name()
 	defer os.Remove(tempPath)
 
-	written, copyErr := io.Copy(out, io.LimitReader(resp.Body, maxUpdatePackageBytes+1))
+	written, copyErr := copyUpdateWithProgress(out, io.LimitReader(resp.Body, maxUpdatePackageBytes+1), resp.ContentLength, report)
 	closeErr := out.Close()
 	if copyErr != nil {
 		return copyErr

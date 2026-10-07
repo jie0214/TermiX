@@ -94,3 +94,17 @@ func TestLocalSessionCloseRequiresConfirmation(t *testing.T) {
 		t.Fatal("未清理本機終端")
 	}
 }
+
+func TestNativeUpdateFoundRetainedBeforeFrontendReady(t *testing.T) {
+	a := &App{}
+	NotifyNativeUpdateFound(a, "1.10.0")
+	NotifyNativeUpdateFound(a, "")
+	if a.nativeUpdateVersion != "1.10.0" {
+		t.Fatal("前端尚未就緒時遺失新版通知")
+	}
+	checks := 0
+	SetNativeUpdater(a, func() { checks++ }, func() {})
+	if !a.HandleNativeUpdateCheck(false) || checks != 0 {
+		t.Fatal("補送通知不應重複啟動原生更新")
+	}
+}
